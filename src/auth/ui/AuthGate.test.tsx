@@ -128,6 +128,35 @@ describe("AuthGate", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/couldn't sign you in/);
   });
 
+  it("re-enables sign-in after returning from Google with the back button", async () => {
+    const { emit } = setup({
+      gateway: { signIn: vi.fn(() => new Promise<void>(() => undefined)) },
+    });
+    emit(null);
+    fireEvent.click(googleButton());
+    await act(() => Promise.resolve());
+    expect(screen.getByRole("button", { name: "Opening Google…" })).toBeDisabled();
+
+    const restored = new Event("pageshow");
+    Object.defineProperty(restored, "persisted", { value: true });
+    act(() => {
+      window.dispatchEvent(restored);
+    });
+    expect(googleButton()).toBeEnabled();
+  });
+
+  it("does not show an old failure after signing in and out", async () => {
+    const { emit } = setup({
+      gateway: {
+        completePendingSignIn: vi.fn(() => Promise.reject(new AuthFailure("unknown"))),
+      },
+    });
+    await act(() => Promise.resolve());
+    emit(carlos);
+    emit(null);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("is translated", () => {
     const { emit } = setup({ language: "es" });
     emit(null);

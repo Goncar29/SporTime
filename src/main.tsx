@@ -27,12 +27,17 @@ const timer = {
 
 // Decided at build time, so the fake gateway is never shipped in a production build.
 async function createAuthGateway(): Promise<AuthGateway> {
-  if (import.meta.env.VITE_FAKE_AUTH === "true") {
+  if (import.meta.env.MODE === "e2e") {
     const { createFakeAuthGateway } = await import("./auth/infrastructure/fakeAuthGateway");
     return createFakeAuthGateway();
   }
-  const { createFirebaseAuthGateway } = await import("./auth/infrastructure/firebaseAuthGateway");
-  return createFirebaseAuthGateway();
+  const [{ createFirebaseAuthGateway }, { withCachedSession }, { localStorageSessionStore }] =
+    await Promise.all([
+      import("./auth/infrastructure/firebaseAuthGateway"),
+      import("./auth/application/cachedSessionGateway"),
+      import("./auth/infrastructure/localStorageSessionStore"),
+    ]);
+  return withCachedSession(createFirebaseAuthGateway(), localStorageSessionStore);
 }
 
 const authGateway = await createAuthGateway();

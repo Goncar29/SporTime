@@ -37,14 +37,42 @@ export function AuthGate({ gateway, children }: AuthGateProps) {
     setFailure(kind === "cancelled" ? null : kind);
   };
 
-  useEffect(() => gateway.subscribe(setUser), [gateway]);
+  useEffect(
+    () =>
+      gateway.subscribe((next) => {
+        setUser(next);
+        if (next) setFailure(null);
+      }),
+    [gateway],
+  );
+
+  // A redirect sign-in never settles, so returning with the back button would restore a stuck page.
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setSigningIn(false);
+    };
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, []);
 
   useEffect(() => {
     gateway.completePendingSignIn().catch(handleFailure);
   }, [gateway]);
 
   const auth = useMemo(
-    () => (user ? { user, signOut: () => void gateway.signOut() } : null),
+    () =>
+      user
+        ? {
+            user,
+            signOut() {
+              gateway.signOut().catch((error: unknown) => {
+                console.error("Sign-out failed:", error);
+              });
+            },
+          }
+        : null,
     [user, gateway],
   );
 

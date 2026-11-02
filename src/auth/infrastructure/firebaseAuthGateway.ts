@@ -34,20 +34,23 @@ export function signInMethodFor(context: {
 const errorCode = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "code" in error ? String(error.code) : undefined;
 
-export function failureKindFor(error: unknown): AuthFailureKind {
+export function failureKindFor(error: unknown, online = true): AuthFailureKind {
   switch (errorCode(error)) {
     case "auth/popup-closed-by-user":
     case "auth/cancelled-popup-request":
+    case "auth/user-cancelled":
+    case "auth/redirect-cancelled-by-user":
       return "cancelled";
     case "auth/network-request-failed":
       return "network";
     default:
-      return "unknown";
+      // Offline, the SDK fails to load Google's script and reports an internal error instead.
+      return online ? "unknown" : "network";
   }
 }
 
 function toFailure(error: unknown): AuthFailure {
-  const kind = failureKindFor(error);
+  const kind = failureKindFor(error, navigator.onLine);
   // The code is what tells a misconfigured project apart; it holds no personal data.
   if (kind === "unknown") console.error("Sign-in failed:", errorCode(error) ?? "no error code");
   return new AuthFailure(kind);
@@ -79,11 +82,12 @@ export function createFirebaseAuthGateway(): AuthGateway {
           await signInWithPopup(auth, provider);
         }
       } catch (error) {
-        if (errorCode(error) === "auth/popup-blocked") {
+        if (errorCode(error) !== "auth/popup-blocked") throw toFailure(error);
+        try {
           await signInWithRedirect(auth, provider);
-          return;
+        } catch (redirectError) {
+          throw toFailure(redirectError);
         }
-        throw toFailure(error);
       }
     },
     async signOut() {

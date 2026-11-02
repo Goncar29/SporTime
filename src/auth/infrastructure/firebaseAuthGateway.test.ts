@@ -52,6 +52,19 @@ describe("failureKindFor", () => {
     expect(failureKindFor({ code: "auth/network-request-failed" })).toBe("network");
   });
 
+  it("treats every way of backing out as a cancellation", () => {
+    expect(failureKindFor({ code: "auth/user-cancelled" })).toBe("cancelled");
+    expect(failureKindFor({ code: "auth/redirect-cancelled-by-user" })).toBe("cancelled");
+  });
+
+  it("reports any failure while offline as a missing connection", () => {
+    expect(failureKindFor({ code: "auth/internal-error" }, false)).toBe("network");
+  });
+
+  it("still treats a cancellation while offline as a cancellation", () => {
+    expect(failureKindFor({ code: "auth/popup-closed-by-user" }, false)).toBe("cancelled");
+  });
+
   it("treats anything else as unknown", () => {
     expect(failureKindFor({ code: "auth/unauthorized-domain" })).toBe("unknown");
     expect(failureKindFor(new Error("boom"))).toBe("unknown");
