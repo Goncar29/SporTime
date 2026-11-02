@@ -18,6 +18,7 @@ interface WorkoutSetupProps {
   onSelectMode(mode: WorkoutMode): void;
   onChange(config: WorkoutConfig): void;
   onStart(): void;
+  library?: ReactNode;
   account?: ReactNode;
 }
 
@@ -26,6 +27,7 @@ export function WorkoutSetup({
   onSelectMode,
   onChange,
   onStart,
+  library,
   account,
 }: WorkoutSetupProps) {
   const { t } = useI18n();
@@ -68,6 +70,8 @@ export function WorkoutSetup({
           />
         ))}
       </div>
+
+      {library}
 
       {account}
 

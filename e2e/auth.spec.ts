@@ -37,3 +37,30 @@ test("the service worker never answers Firebase's auth pages", async ({ page }) 
   expect(await worker.text()).toContain("__");
   expect(await worker.text()).toMatch(/denylist:\[[^\]]*__/);
 });
+
+test("saved workouts and finished sessions survive a reload with no network", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.reload();
+  await context.setOffline(true);
+
+  await page.getByRole("button", { name: /^EMOM/ }).click();
+  await page.getByRole("textbox", { name: "Workout name" }).fill("Morning EMOM");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Morning EMOM/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Stopwatch/ }).click();
+  await page.getByRole("button", { name: /^Start/ }).click();
+  await page.getByRole("button", { name: "Finish" }).click();
+  await page.getByRole("button", { name: "New workout" }).click();
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: /^Morning EMOM/ })).toBeVisible();
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByRole("listitem")).toContainText("Stopwatch");
+});

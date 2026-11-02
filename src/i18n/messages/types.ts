@@ -40,4 +40,16 @@ export interface Messages {
   signInErrorNetwork: string;
   signInErrorUnknown: string;
   signOut: string;
+  savedWorkouts: string;
+  workoutName: string;
+  saveWorkout: string;
+  noSavedWorkouts: string;
+  deleteWorkout(name: string): string;
+  confirmDeleteWorkout(name: string): string;
+  saveFailed: string;
+  loadWorkoutsFailed: string;
+  history: string;
+  historyEmpty: string;
+  loadHistoryFailed: string;
+  back: string;
 }

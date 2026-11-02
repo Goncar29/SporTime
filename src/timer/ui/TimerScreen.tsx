@@ -1,15 +1,10 @@
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import type { Phase, Timeline } from "../../workouts/domain/timeline";
-import type { WorkoutMode } from "../../workouts/domain/workout";
+import { MARK_KINDS, type WorkoutMode } from "../../workouts/domain/workout";
 import type { TimerController, TimerView } from "../application/timerController";
 import { formatClock } from "../domain/format";
 import styles from "./TimerScreen.module.css";
 import { useTimerView } from "./useTimerView";
-
-const MARK_KINDS: Partial<Record<WorkoutMode, "lapMark" | "roundMark">> = {
-  stopwatch: "lapMark",
-  amrap: "roundMark",
-};
 
 const FINAL_COUNTDOWN_MS = 3_000;
 

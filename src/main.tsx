@@ -4,7 +4,7 @@ import "@fontsource/barlow-condensed/latin-800-italic.css";
 import "./app/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./app/App";
+import { SignedInApp, type UserStores } from "./app/SignedInApp";
 import type { AuthGateway } from "./auth/application/ports";
 import { AccountMenu } from "./auth/ui/AccountMenu";
 import { AuthGate } from "./auth/ui/AuthGate";
@@ -40,13 +40,37 @@ async function createAuthGateway(): Promise<AuthGateway> {
   return withCachedSession(createFirebaseAuthGateway(), localStorageSessionStore);
 }
 
-const authGateway = await createAuthGateway();
+// Decided at build time, so the fake stores are never shipped in a production build.
+async function createStoresFactory(): Promise<(userId: string) => UserStores> {
+  if (import.meta.env.MODE === "e2e") {
+    const [{ createFakeWorkoutLibrary }, { createFakeHistoryLog }] = await Promise.all([
+      import("./workouts/infrastructure/fakeWorkoutLibrary"),
+      import("./history/infrastructure/fakeHistoryLog"),
+    ]);
+    return (userId) => ({
+      workouts: createFakeWorkoutLibrary(userId),
+      history: createFakeHistoryLog(userId),
+    });
+  }
+  const [{ firestore }, { createFirestoreWorkoutLibrary }, { createFirestoreHistoryLog }] =
+    await Promise.all([
+      import("./shared/firebase/firestore"),
+      import("./workouts/infrastructure/firestoreWorkoutLibrary"),
+      import("./history/infrastructure/firestoreHistoryLog"),
+    ]);
+  return (userId) => ({
+    workouts: createFirestoreWorkoutLibrary(firestore(), userId),
+    history: createFirestoreHistoryLog(firestore(), userId),
+  });
+}
+
+const [authGateway, storesFor] = await Promise.all([createAuthGateway(), createStoresFactory()]);
 
 createRoot(root).render(
   <StrictMode>
     <I18nProvider store={localStorageLanguageStore} browserLanguages={navigator.languages}>
       <AuthGate gateway={authGateway}>
-        <App timer={timer} account={<AccountMenu />} />
+        <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />
       </AuthGate>
     </I18nProvider>
   </StrictMode>,

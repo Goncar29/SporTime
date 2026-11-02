@@ -1,9 +1,21 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { HistoryLog } from "../history/application/ports";
+import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
+import type { WorkoutLibrary } from "../workouts/application/ports";
+import { createFakeWorkoutLibrary } from "../workouts/infrastructure/fakeWorkoutLibrary";
 import { App } from "./App";
 
-function setup() {
+interface Stores {
+  workouts?: WorkoutLibrary;
+  history?: HistoryLog;
+}
+
+function setup({
+  workouts = createFakeWorkoutLibrary("test"),
+  history = createFakeHistoryLog("test"),
+}: Stores = {}) {
   let now = 0;
   const timer = {
     clock: { now: () => now },
@@ -13,7 +25,7 @@ function setup() {
   const store = { get: () => null, set: vi.fn() };
   render(
     <I18nProvider store={store} browserLanguages={["en-US"]}>
-      <App timer={timer} />
+      <App timer={timer} workouts={workouts} history={history} />
     </I18nProvider>,
   );
   return {
@@ -33,6 +45,7 @@ const clock = () => screen.getByRole("timer").textContent;
 describe("App", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    localStorage.clear();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -176,7 +189,11 @@ describe("App in Spanish", () => {
     };
     render(
       <I18nProvider store={{ get: () => "es", set: vi.fn() }} browserLanguages={[]}>
-        <App timer={timer} />
+        <App
+          timer={timer}
+          workouts={createFakeWorkoutLibrary("spanish")}
+          history={createFakeHistoryLog("spanish")}
+        />
       </I18nProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: /^Cronómetro/ }));
@@ -189,5 +206,195 @@ describe("App in Spanish", () => {
     expect(screen.getByText("Prepárate")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pausa" })).toBeInTheDocument();
     vi.useRealTimers();
+  });
+});
+
+describe("App account data", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const nameInput = () => screen.getByRole("textbox", { name: "Workout name" });
+  const typeName = (value: string) => {
+    fireEvent.change(nameInput(), { target: { value } });
+  };
+  const settledCalls = () => act(() => vi.advanceTimersByTimeAsync(0));
+  const fieldValue = (name: string) =>
+    within(screen.getByRole("group", { name })).getByRole("status").textContent;
+
+  describe("saved workouts", () => {
+    it("saves the current settings under a name and loads them back", () => {
+      setup();
+      click(/^EMOM/);
+      click("Increase Rounds");
+      typeName("  Morning EMOM ");
+      click("Save");
+      expect(nameInput()).toHaveValue("");
+
+      click(/^Tabata/);
+      click(/^Morning EMOM/);
+      expect(screen.getByRole("button", { name: /^EMOM/ })).toHaveAttribute("aria-pressed", "true");
+      expect(fieldValue("Rounds")).toBe("11");
+    });
+
+    it("does not save a blank name", () => {
+      setup();
+      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+      typeName("   ");
+      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    });
+
+    it("deletes a workout only after confirming", () => {
+      setup();
+      typeName("Leg day");
+      click("Save");
+      const confirm = vi.spyOn(window, "confirm");
+
+      confirm.mockReturnValueOnce(false);
+      click("Delete Leg day");
+      expect(screen.getByRole("button", { name: /^Leg day/ })).toBeInTheDocument();
+
+      confirm.mockReturnValueOnce(true);
+      click("Delete Leg day");
+      expect(screen.queryByRole("button", { name: /^Leg day/ })).not.toBeInTheDocument();
+      confirm.mockRestore();
+    });
+
+    it("tells the user when a save is refused, and the timer still starts", async () => {
+      const fake = createFakeWorkoutLibrary("test");
+      setup({ workouts: { ...fake, save: () => Promise.reject(new Error("denied")) } });
+      typeName("Leg day");
+      click("Save");
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent("couldn't save");
+
+      click(/^Start/);
+      expect(screen.getByRole("timer")).toBeInTheDocument();
+    });
+
+    it("tells the user when saved workouts cannot be read", () => {
+      const fake = createFakeWorkoutLibrary("test");
+      setup({
+        workouts: {
+          ...fake,
+          subscribe(_onData, onError) {
+            onError(new Error("denied"));
+            return () => undefined;
+          },
+        },
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent("couldn't load");
+    });
+
+    it("does not wait for the server, which never answers offline", () => {
+      const fake = createFakeWorkoutLibrary("test");
+      setup({
+        workouts: {
+          ...fake,
+          save(draft) {
+            void fake.save(draft);
+            return new Promise(() => undefined);
+          },
+        },
+      });
+      typeName("Leg day");
+      click("Save");
+      expect(screen.getByRole("button", { name: /^Leg day/ })).toBeInTheDocument();
+      expect(nameInput()).toHaveValue("");
+    });
+  });
+
+  describe("history", () => {
+    const finishStopwatch = (advance: (ms: number) => void) => {
+      click(/^Stopwatch/);
+      click(/^Start/);
+      advance(65_000);
+      click("Finish");
+    };
+
+    it("starts empty", () => {
+      setup();
+      click("History");
+      expect(screen.getByText("No finished workouts yet.")).toBeInTheDocument();
+    });
+
+    it("lists a finished workout with its mode, time and laps", () => {
+      const { advance } = setup();
+      click(/^Stopwatch/);
+      click(/^Start/);
+      advance(5_000);
+      click("Lap");
+      advance(60_000);
+      click("Finish");
+      click("New workout");
+
+      click("History");
+      const [entry] = screen.getAllByRole("listitem");
+      expect(entry).toHaveTextContent("Stopwatch");
+      expect(entry).toHaveTextContent("1:05");
+      expect(entry).toHaveTextContent("Laps: 1");
+    });
+
+    it("records nothing when leaving a workout early", () => {
+      const { advance } = setup();
+      click(/^Stopwatch/);
+      click(/^Start/);
+      advance(5_000);
+      click("Pause");
+      click("Exit");
+
+      click("History");
+      expect(screen.getByText("No finished workouts yet.")).toBeInTheDocument();
+    });
+
+    it("records each repeat of a workout", () => {
+      const { advance } = setup();
+      finishStopwatch(advance);
+      click("Go again");
+      advance(1_000);
+      click("Finish");
+      click("New workout");
+
+      click("History");
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    });
+
+    it("returns to the setup screen", () => {
+      setup();
+      click("History");
+      click("Back");
+      expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
+    });
+
+    it("keeps the finished screen and warns afterwards when the entry is refused", async () => {
+      const fake = createFakeHistoryLog("test");
+      const { advance } = setup({
+        history: { ...fake, add: () => Promise.reject(new Error("denied")) },
+      });
+      finishStopwatch(advance);
+      await settledCalls();
+      expect(screen.getByRole("region", { name: "Workout complete" })).toBeInTheDocument();
+      click("New workout");
+      expect(screen.getByRole("alert")).toHaveTextContent("couldn't save");
+    });
+
+    it("tells the user when the history cannot be read", () => {
+      const fake = createFakeHistoryLog("test");
+      setup({
+        history: {
+          ...fake,
+          subscribe(_onData, onError) {
+            onError(new Error("denied"));
+            return () => undefined;
+          },
+        },
+      });
+      click("History");
+      expect(screen.getByRole("alert")).toHaveTextContent("couldn't load");
+    });
   });
 });

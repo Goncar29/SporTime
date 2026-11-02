@@ -93,6 +93,12 @@ export const MODES: readonly ModeDefinition[] = [
   },
 ];
 
+/** Modes where the athlete counts something by hand while the clock runs. */
+export const MARK_KINDS: Partial<Record<WorkoutMode, "lapMark" | "roundMark">> = {
+  stopwatch: "lapMark",
+  amrap: "roundMark",
+};
+
 export function modeDefinition(mode: WorkoutMode): ModeDefinition {
   const definition = MODES.find((candidate) => candidate.id === mode);
   if (!definition) throw new Error(`Unknown workout mode: ${String(mode)}`);
