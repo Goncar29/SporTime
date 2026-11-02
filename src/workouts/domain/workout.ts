@@ -125,6 +125,13 @@ export function sanitizeConfig(mode: WorkoutMode, raw: unknown): WorkoutConfig {
   return config;
 }
 
+/** Reads a stored config, or returns null when its mode is unknown. */
+export function parseConfig(raw: unknown): WorkoutConfig | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const definition = MODES.find(({ id }) => id === (raw as { mode?: unknown }).mode);
+  return definition ? sanitizeConfig(definition.id, raw) : null;
+}
+
 function durationStep(seconds: number): number {
   if (seconds < 60) return 5;
   if (seconds < 300) return 15;
