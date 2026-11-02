@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { App } from "./App";
 
 function setup() {
@@ -9,7 +10,12 @@ function setup() {
     cues: { unlock: vi.fn(), play: vi.fn() },
     screenAwake: { acquire: vi.fn(), release: vi.fn() },
   };
-  render(<App timer={timer} />);
+  const store = { get: () => null, set: vi.fn() };
+  render(
+    <I18nProvider store={store} browserLanguages={["en-US"]}>
+      <App timer={timer} />
+    </I18nProvider>,
+  );
   return {
     timer,
     advance(ms: number) {
@@ -157,5 +163,31 @@ describe("App", () => {
     click("Pause");
     click("Exit");
     expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
+  });
+});
+
+describe("App in Spanish", () => {
+  it("translates the setup and a running workout", () => {
+    vi.useFakeTimers();
+    const timer = {
+      clock: { now: () => 0 },
+      cues: { unlock: vi.fn(), play: vi.fn() },
+      screenAwake: { acquire: vi.fn(), release: vi.fn() },
+    };
+    render(
+      <I18nProvider store={{ get: () => "es", set: vi.fn() }} browserLanguages={[]}>
+        <App timer={timer} />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Cronómetro/ }));
+    expect(screen.getByRole("button", { name: /^Iniciar/ })).toHaveTextContent("Sin límite");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Tabata/ }));
+    expect(screen.getByRole("group", { name: "Rondas" })).toHaveTextContent("8");
+    fireEvent.click(screen.getByRole("button", { name: "Aumentar Rondas" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Iniciar/ }));
+    expect(screen.getByText("Prepárate")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pausa" })).toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

@@ -5,6 +5,8 @@ import "./app/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
+import { localStorageLanguageStore } from "./i18n/infrastructure/localStorageLanguageStore";
+import { I18nProvider } from "./i18n/ui/I18nProvider";
 import {
   createWakeLockScreenAwake,
   createWebAudioCuePlayer,
@@ -22,6 +24,8 @@ const timer = {
 
 createRoot(root).render(
   <StrictMode>
-    <App timer={timer} />
+    <I18nProvider store={localStorageLanguageStore} browserLanguages={navigator.languages}>
+      <App timer={timer} />
+    </I18nProvider>
   </StrictMode>,
 );

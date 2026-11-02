@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { MODES, defaultConfig, sanitizeConfig, stepDuration } from "./workout";
+import { defaultConfig, sanitizeConfig, stepDuration } from "./workout";
 
 describe("defaultConfig", () => {
   it("Tabata defaults to 20s work, 10s rest and 8 rounds", () => {
@@ -9,13 +9,6 @@ describe("defaultConfig", () => {
       rounds: 8,
       sets: 1,
     });
-  });
-
-  it("every mode offers a label and description", () => {
-    for (const mode of MODES) {
-      expect(mode.label).not.toBe("");
-      expect(mode.description).not.toBe("");
-    }
   });
 });
 

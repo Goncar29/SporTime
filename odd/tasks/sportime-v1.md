@@ -11,13 +11,15 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 - S5. Design: "moderno, que genere energia y motivacion asique debe de ser dinamico pero rapido"
 - S6. Login: "el usuario debe de hacer login con cuenta de google, solo debera pedir datos basicos como nombre, email y foto de perfil si tiene"
 - S7. Cloud data: "guardar entrenamientos e historial en la nube con firestore"
-- S8. Approved plan details: only finished sessions are saved to history; profile data stays in Firebase Auth; each user reads and writes only their own data; privacy notice and account deletion; timer never depends on the network once signed in. Interface in English unless the user asks otherwise. Deploy only with the user's OK.
+- S8. Approved plan details: only finished sessions are saved to history; profile data stays in Firebase Auth; each user reads and writes only their own data; privacy notice and account deletion; timer never depends on the network once signed in. Deploy only with the user's OK.
+- S9. Language: "vamos con i18n entre ambos idiomas" (English and Spanish).
 
 ## Tasks
 
 - [x] T0 (S3, S4) Tooling: repository, Node 24, pnpm, Vite+, PWA build. Route: inline. Evidence: `vp build` exit 0, generates `dist/sw.js` with 8 precache entries.
 - [x] T1 (S1, S2) Timer engine and workout modes. Route: inline. Evidence: `pnpm test` 62 passed, `pnpm typecheck` clean.
 - [x] T2 (S1, S2, S5) Timer screen, design, sound, screen wake. Route: inline. Evidence: 73 unit tests and 8 Chrome end-to-end tests pass.
+- [x] T2b (S9) English and Spanish with a language switcher. Route: inline. Evidence: 88 unit tests and 10 Chrome end-to-end tests pass, checked by exit code.
 - [ ] T3 (S6) Google login behind `AuthGateway`. Route: inline. Needs the user's Firebase project for a real login.
 - [ ] T4 (S7, S8) Saved workouts, history, Firestore rules. Route: inline. Rules tests need Java for the emulator (not installed).
 - [ ] T5 (S3, S8) Offline, privacy notice, account deletion, deploy. Route: inline. Deploy needs the user's OK.
@@ -33,3 +35,5 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 - L7 (2026-11-01): "actualicemos node para que funcione o revisa si no esta instalado ya y es solo cambiar la version si esto genera problema". Node 24.21 was already installed; pinned in `.nvmrc`. The default nvm version was left unchanged.
 - L8 (2026-11-01): The missing `sw.js` was not caused by Vite+: plain Vite 8 behaved the same. Native Rollup exits 132 (SIGILL) on this i7-3610QM, which lacks AVX2 and BMI. Fixed with a `@rollup/wasm-node` pnpm override.
 - L9 (2026-11-01): T0 to T2 complete. T3 waits on the user creating a Firebase project; T4 rules tests also need Java. Next step: T3.
+- L10 (2026-11-01): "vamos con i18n entre ambos idiomas". Typed dictionaries with no library; UI copy moves out of the domain.
+- L11 (2026-11-01): Correction: earlier "73 tests pass" reports hid a failing `pnpm test` exit because Vitest was also collecting the Playwright spec. Fixed by restricting Vitest `include`. Checks are now judged by exit code.

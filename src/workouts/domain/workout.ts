@@ -12,16 +12,25 @@ export interface WorkoutConfig {
 
 type NumericField = Exclude<keyof WorkoutConfig, "mode">;
 
+export type FieldId =
+  | "prepare"
+  | "timeCap"
+  | "duration"
+  | "every"
+  | "work"
+  | "rest"
+  | "rounds"
+  | "sets"
+  | "setRest";
+
 export interface FieldDefinition {
+  id: FieldId;
   key: NumericField;
-  label: string;
   kind: "duration" | "count";
 }
 
 export interface ModeDefinition {
   id: WorkoutMode;
-  label: string;
-  description: string;
   fields: readonly FieldDefinition[];
   defaults: Omit<WorkoutConfig, "mode">;
 }
@@ -35,14 +44,12 @@ const LIMITS: Record<NumericField, { min: number; max: number }> = {
   setRestSeconds: { min: 0, max: 3_600 },
 };
 
-const PREPARE: FieldDefinition = { key: "prepareSeconds", label: "Get ready", kind: "duration" };
-const SETS: FieldDefinition = { key: "sets", label: "Sets", kind: "count" };
-const SET_REST: FieldDefinition = {
-  key: "setRestSeconds",
-  label: "Rest between sets",
-  kind: "duration",
-};
-const ROUNDS: FieldDefinition = { key: "rounds", label: "Rounds", kind: "count" };
+const PREPARE: FieldDefinition = { id: "prepare", key: "prepareSeconds", kind: "duration" };
+const WORK: FieldDefinition = { id: "work", key: "workSeconds", kind: "duration" };
+const REST: FieldDefinition = { id: "rest", key: "restSeconds", kind: "duration" };
+const ROUNDS: FieldDefinition = { id: "rounds", key: "rounds", kind: "count" };
+const SETS: FieldDefinition = { id: "sets", key: "sets", kind: "count" };
+const SET_REST: FieldDefinition = { id: "setRest", key: "setRestSeconds", kind: "duration" };
 
 const BASE = {
   prepareSeconds: 10,
@@ -56,64 +63,32 @@ const BASE = {
 export const MODES: readonly ModeDefinition[] = [
   {
     id: "stopwatch",
-    label: "Stopwatch",
-    description: "Count up with no limit and record laps.",
     fields: [PREPARE],
     defaults: { ...BASE, prepareSeconds: 0 },
   },
   {
     id: "forTime",
-    label: "For Time",
-    description: "Finish the work as fast as you can, up to a time cap.",
-    fields: [PREPARE, { key: "workSeconds", label: "Time cap", kind: "duration" }, SETS, SET_REST],
+    fields: [PREPARE, { ...WORK, id: "timeCap" }, SETS, SET_REST],
     defaults: { ...BASE, workSeconds: 1_200, setRestSeconds: 120 },
   },
   {
     id: "amrap",
-    label: "AMRAP",
-    description: "As many rounds as possible in a fixed time.",
-    fields: [PREPARE, { key: "workSeconds", label: "Duration", kind: "duration" }, SETS, SET_REST],
+    fields: [PREPARE, { ...WORK, id: "duration" }, SETS, SET_REST],
     defaults: { ...BASE, workSeconds: 720, setRestSeconds: 120 },
   },
   {
     id: "emom",
-    label: "EMOM",
-    description: "Start your work at the top of every interval.",
-    fields: [
-      PREPARE,
-      { key: "workSeconds", label: "Every", kind: "duration" },
-      ROUNDS,
-      SETS,
-      SET_REST,
-    ],
+    fields: [PREPARE, { ...WORK, id: "every" }, ROUNDS, SETS, SET_REST],
     defaults: { ...BASE, workSeconds: 60, rounds: 10 },
   },
   {
     id: "tabata",
-    label: "Tabata",
-    description: "Short, all-out efforts with brief rests.",
-    fields: [
-      PREPARE,
-      { key: "workSeconds", label: "Work", kind: "duration" },
-      { key: "restSeconds", label: "Rest", kind: "duration" },
-      ROUNDS,
-      SETS,
-      SET_REST,
-    ],
+    fields: [PREPARE, WORK, REST, ROUNDS, SETS, SET_REST],
     defaults: { ...BASE, workSeconds: 20, restSeconds: 10, rounds: 8 },
   },
   {
     id: "intervals",
-    label: "Intervals",
-    description: "Build your own work and rest cycles.",
-    fields: [
-      PREPARE,
-      { key: "workSeconds", label: "Work", kind: "duration" },
-      { key: "restSeconds", label: "Rest", kind: "duration" },
-      ROUNDS,
-      SETS,
-      SET_REST,
-    ],
+    fields: [PREPARE, WORK, REST, ROUNDS, SETS, SET_REST],
     defaults: { ...BASE, workSeconds: 40, restSeconds: 20, rounds: 5 },
   },
 ];

@@ -1,20 +1,14 @@
+import { useI18n } from "../../i18n/ui/I18nProvider";
+import type { Phase, Timeline } from "../../workouts/domain/timeline";
 import type { WorkoutMode } from "../../workouts/domain/workout";
-import type { Phase, PhaseKind, Timeline } from "../../workouts/domain/timeline";
 import type { TimerController, TimerView } from "../application/timerController";
 import { formatClock } from "../domain/format";
 import styles from "./TimerScreen.module.css";
 import { useTimerView } from "./useTimerView";
 
-const PHASE_LABELS: Record<PhaseKind, string> = {
-  prepare: "Get ready",
-  work: "Work",
-  rest: "Rest",
-  setRest: "Rest between sets",
-};
-
-const MARK_ACTIONS: Partial<Record<WorkoutMode, { action: string; count: string }>> = {
-  stopwatch: { action: "Lap", count: "Laps" },
-  amrap: { action: "+1 Round", count: "Rounds" },
+const MARK_KINDS: Partial<Record<WorkoutMode, "lapMark" | "roundMark">> = {
+  stopwatch: "lapMark",
+  amrap: "roundMark",
 };
 
 const FINAL_COUNTDOWN_MS = 3_000;
@@ -79,9 +73,11 @@ function ActiveTimer({
   onMark,
   onExit,
 }: ActiveTimerProps) {
+  const { t } = useI18n();
   const { phase, phaseElapsedMs, phaseRemainingMs, status, marks } = view;
   const paused = status === "paused";
-  const markAction = phase.kind === "work" ? MARK_ACTIONS[mode] : undefined;
+  const markKind = MARK_KINDS[mode];
+  const mark = markKind && t[markKind];
   const openEnded = phase.durationMs === null;
 
   const clock =
@@ -93,6 +89,13 @@ function ActiveTimer({
     !paused && phaseRemainingMs !== null && phaseRemainingMs <= FINAL_COUNTDOWN_MS
       ? Math.ceil(phaseRemainingMs / 1_000)
       : null;
+  const nextLabel =
+    next &&
+    t.next(
+      next.durationMs
+        ? `${t.phases[next.kind]} ${formatClock(next.durationMs)}`
+        : t.phases[next.kind],
+    );
 
   return (
     <main className={styles.screen} data-phase={phase.kind} data-paused={paused}>
@@ -105,14 +108,12 @@ function ActiveTimer({
       </div>
 
       <header className={styles.header}>
-        <h1 className={styles.phaseLabel}>{paused ? "Paused" : PHASE_LABELS[phase.kind]}</h1>
-        {paused && <span className={styles.visuallyHidden}>{PHASE_LABELS[phase.kind]}</span>}
+        <h1 className={styles.phaseLabel}>{paused ? t.paused : t.phases[phase.kind]}</h1>
+        {paused && <span className={styles.visuallyHidden}>{t.phases[phase.kind]}</span>}
         <p className={styles.counters}>
-          {phase.totalRounds > 1 && <span>{`Round ${phase.round}/${phase.totalRounds}`}</span>}
-          {phase.totalSets > 1 && <span>{`Set ${phase.set}/${phase.totalSets}`}</span>}
-          {MARK_ACTIONS[mode] && marks.length > 0 && (
-            <span>{`${MARK_ACTIONS[mode].count}: ${marks.length}`}</span>
-          )}
+          {phase.totalRounds > 1 && <span>{t.round(phase.round, phase.totalRounds)}</span>}
+          {phase.totalSets > 1 && <span>{t.set(phase.set, phase.totalSets)}</span>}
+          {mark && marks.length > 0 && <span>{mark.count(marks.length)}</span>}
         </p>
       </header>
 
@@ -124,35 +125,31 @@ function ActiveTimer({
         >
           {clock}
         </div>
-        {next && (
-          <p
-            className={styles.next}
-          >{`Next: ${PHASE_LABELS[next.kind]}${next.durationMs ? ` ${formatClock(next.durationMs)}` : ""}`}</p>
-        )}
+        {nextLabel && <p className={styles.next}>{nextLabel}</p>}
       </div>
 
       <footer className={styles.controls}>
         {paused ? (
           <>
             <button className={styles.primary} onClick={onResume}>
-              Resume
+              {t.resume}
             </button>
             <button className={styles.secondary} onClick={onExit}>
-              Exit
+              {t.exit}
             </button>
           </>
         ) : (
           <button className={styles.primary} onClick={onPause}>
-            Pause
+            {t.pause}
           </button>
         )}
-        {markAction && !paused && (
+        {mark && phase.kind === "work" && !paused && (
           <button className={styles.secondary} onClick={onMark}>
-            {markAction.action}
+            {mark.action}
           </button>
         )}
         <button className={styles.secondary} onClick={onSkip}>
-          {phase.display === "countup" ? "Finish" : "Skip"}
+          {phase.display === "countup" ? t.finish : t.skip}
         </button>
       </footer>
     </main>
@@ -168,24 +165,27 @@ interface FinishedSummaryProps {
 }
 
 function FinishedSummary({ mode, timeline, view, onAgain, onExit }: FinishedSummaryProps) {
-  const markAction = MARK_ACTIONS[mode];
+  const { t } = useI18n();
+  const markKind = MARK_KINDS[mode];
+  const mark = markKind && t[markKind];
+
   return (
     <main className={styles.screen} data-phase="finished">
-      <section className={styles.summary} aria-label="Workout complete">
-        <h1 className={styles.summaryTitle}>Done!</h1>
-        <p className={styles.summaryCaption}>Total time</p>
+      <section className={styles.summary} aria-label={t.workoutComplete}>
+        <h1 className={styles.summaryTitle}>{t.done}</h1>
+        <p className={styles.summaryCaption}>{t.totalTime}</p>
         <p className={`${styles.clock} ${styles.summaryClock}`}>
           {formatClock(view.activeElapsedMs)}
         </p>
-        {markAction && (
-          <p className={styles.summaryStat}>{`${markAction.count}: ${view.marks.length}`}</p>
-        )}
+        {mark && <p className={styles.summaryStat}>{mark.count(view.marks.length)}</p>}
         {mode === "forTime" && view.marks.length > 0 && (
           <ul className={styles.summaryList}>
-            {view.marks.map((mark) => {
-              const set = timeline.phases[mark.phaseIndex]?.set;
+            {view.marks.map((result) => {
+              const set = timeline.phases[result.phaseIndex]?.set ?? 1;
               return (
-                <li key={mark.phaseIndex}>{`Set ${set}: ${formatClock(mark.phaseElapsedMs)}`}</li>
+                <li key={result.phaseIndex}>
+                  {t.setResult(set, formatClock(result.phaseElapsedMs))}
+                </li>
               );
             })}
           </ul>
@@ -193,10 +193,10 @@ function FinishedSummary({ mode, timeline, view, onAgain, onExit }: FinishedSumm
       </section>
       <footer className={styles.controls}>
         <button className={styles.primary} onClick={onAgain}>
-          Go again
+          {t.goAgain}
         </button>
         <button className={styles.secondary} onClick={onExit}>
-          New workout
+          {t.newWorkout}
         </button>
       </footer>
     </main>

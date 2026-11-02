@@ -1,0 +1,31 @@
+.switcher {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.option {
+  min-width: 48px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.option[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--accent);
+}
+
+.option:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}

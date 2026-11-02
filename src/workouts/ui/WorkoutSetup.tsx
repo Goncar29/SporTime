@@ -1,3 +1,5 @@
+import { useI18n } from "../../i18n/ui/I18nProvider";
+import { LanguageSwitcher } from "../../i18n/ui/LanguageSwitcher";
 import { formatClock } from "../../timer/domain/format";
 import { buildTimeline } from "../domain/timeline";
 import {
@@ -18,6 +20,7 @@ interface WorkoutSetupProps {
 }
 
 export function WorkoutSetup({ config, onSelectMode, onChange, onStart }: WorkoutSetupProps) {
+  const { t } = useI18n();
   const { totalMs } = buildTimeline(config);
   const definition = modeDefinition(config.mode);
 
@@ -25,7 +28,8 @@ export function WorkoutSetup({ config, onSelectMode, onChange, onStart }: Workou
     <main className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.brand}>Sportime</h1>
-        <p className={styles.tagline}>Pick your fight.</p>
+        <p className={styles.tagline}>{t.tagline}</p>
+        <LanguageSwitcher />
       </header>
 
       <div className={styles.modes}>
@@ -38,8 +42,8 @@ export function WorkoutSetup({ config, onSelectMode, onChange, onStart }: Workou
               onSelectMode(mode.id);
             }}
           >
-            <span className={styles.modeLabel}>{mode.label}</span>
-            <span className={styles.modeDescription}>{mode.description}</span>
+            <span className={styles.modeLabel}>{t.modes[mode.id].label}</span>
+            <span className={styles.modeDescription}>{t.modes[mode.id].description}</span>
           </button>
         ))}
       </div>
@@ -59,9 +63,9 @@ export function WorkoutSetup({ config, onSelectMode, onChange, onStart }: Workou
 
       <div className={styles.startBar}>
         <button className={styles.start} onClick={onStart}>
-          <span>Start</span>
+          <span>{t.start}</span>
           <span className={styles.startTotal}>
-            {totalMs === null ? "No limit" : formatClock(totalMs)}
+            {totalMs === null ? t.noLimit : formatClock(totalMs)}
           </span>
         </button>
       </div>
@@ -76,18 +80,20 @@ interface StepperProps {
 }
 
 function Stepper({ field, value, onChange }: StepperProps) {
+  const { t } = useI18n();
+  const label = t.fields[field.id];
   const decreased = stepField(field, value, -1);
   const increased = stepField(field, value, 1);
 
   return (
-    <div className={styles.stepper} role="group" aria-label={field.label}>
+    <div className={styles.stepper} role="group" aria-label={label}>
       <span className={styles.stepperLabel} aria-hidden="true">
-        {field.label}
+        {label}
       </span>
       <div className={styles.stepperControls}>
         <button
           className={styles.stepButton}
-          aria-label={`Decrease ${field.label}`}
+          aria-label={t.decrease(label)}
           disabled={decreased === value}
           onClick={() => {
             onChange(decreased);
@@ -100,7 +106,7 @@ function Stepper({ field, value, onChange }: StepperProps) {
         </output>
         <button
           className={styles.stepButton}
-          aria-label={`Increase ${field.label}`}
+          aria-label={t.increase(label)}
           disabled={increased === value}
           onClick={() => {
             onChange(increased);

@@ -82,6 +82,33 @@ test("still loads and runs with no network after the first visit", async ({ page
   await expect(page.getByRole("timer")).toHaveText("00:01", { timeout: 3_000 });
 });
 
+test.describe("in Spanish", () => {
+  test.use({ locale: "es-AR" });
+
+  test("uses the browser language and remembers a manual change", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: /^Iniciar/ })).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "es");
+
+    await page.getByRole("button", { name: "English" }).click();
+    await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
+  });
+
+  test("the longest labels fit on a small phone", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto("/");
+    await page.getByRole("button", { name: /^Tabata/ }).click();
+    const fits = () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(await fits()).toBe(true);
+    await page.getByRole("button", { name: /^Iniciar/ }).click();
+    await page.getByRole("button", { name: "Pausa" }).click();
+    expect(await fits()).toBe(true);
+  });
+});
+
 for (const [name, viewport] of [
   ["phone", { width: 390, height: 844 }],
   ["phone landscape", { width: 844, height: 390 }],
