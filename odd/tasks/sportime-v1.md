@@ -16,7 +16,7 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 ## Tasks
 
 - [x] T0 (S3, S4) Tooling: repository, Node 24, pnpm, Vite+, PWA build. Route: inline. Evidence: `vp build` exit 0, generates `dist/sw.js` with 8 precache entries.
-- [ ] T1 (S1, S2) Timer engine and workout modes. Route: inline.
+- [x] T1 (S1, S2) Timer engine and workout modes. Route: inline. Evidence: `pnpm test` 62 passed, `pnpm typecheck` clean.
 - [ ] T2 (S1, S2, S5) Timer screen, design, sound, screen wake. Route: inline.
 - [ ] T3 (S6) Google login behind `AuthGateway`. Route: inline. Needs the user's Firebase project for a real login.
 - [ ] T4 (S7, S8) Saved workouts, history, Firestore rules. Route: inline. Rules tests need Java for the emulator (not installed).
