@@ -4,11 +4,29 @@ import { doc, setDoc, type Firestore } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createFirestoreHistoryLog } from "../src/history/infrastructure/firestoreHistoryLog";
 import { createFirestoreWorkoutLibrary } from "../src/workouts/infrastructure/firestoreWorkoutLibrary";
+import type { HistoryDraft } from "../src/history/domain/historyEntry";
+import type { OutboxStore, Pending } from "../src/shared/application/outbox";
 import { MODES, defaultConfig } from "../src/workouts/domain/workout";
 
 let env: RulesTestEnvironment;
 
 const dbFor = (uid: string) => env.authenticatedContext(uid).firestore() as unknown as Firestore;
+
+function memoryStore<Draft>(): OutboxStore<Draft> {
+  let items: Pending<Draft>[] = [];
+  return {
+    load: () => items,
+    save(next) {
+      items = next;
+    },
+  };
+}
+
+const ready = () => Promise.resolve(true);
+const libraryFor = (uid: string, owner = uid) =>
+  createFirestoreWorkoutLibrary(dbFor(uid), owner, { store: memoryStore(), whenReady: ready });
+const logFor = (uid: string) =>
+  createFirestoreHistoryLog(dbFor(uid), uid, { store: memoryStore(), whenReady: ready });
 
 /** Resolves with the first server-backed value the subscription reports. */
 function nextValue<T>(
@@ -49,7 +67,7 @@ afterAll(async () => {
 
 describe("Firestore workout library", () => {
   it("saves every mode through the real rules and lists the newest first", async () => {
-    const library = createFirestoreWorkoutLibrary(dbFor("alice"), "alice");
+    const library = libraryFor("alice");
     for (const [index, { id }] of MODES.entries()) {
       await library.save({ name: `Workout ${id}`, config: defaultConfig(id), createdAt: index });
     }
@@ -59,7 +77,7 @@ describe("Firestore workout library", () => {
   });
 
   it("removes a workout", async () => {
-    const library = createFirestoreWorkoutLibrary(dbFor("alice"), "alice");
+    const library = libraryFor("alice");
     await library.save({ name: "Leg day", config: defaultConfig("emom"), createdAt: 1 });
     const [saved] = await nextValue(library.subscribe, (items) => items.length === 1);
     await library.remove(saved?.id ?? "");
@@ -70,19 +88,19 @@ describe("Firestore workout library", () => {
     await env.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "users/alice/workouts/bad"), { createdAt: 9 });
     });
-    const library = createFirestoreWorkoutLibrary(dbFor("alice"), "alice");
+    const library = libraryFor("alice");
     await library.save({ name: "Leg day", config: defaultConfig("emom"), createdAt: 1 });
     const workouts = await nextValue(library.subscribe, (items) => items.length > 0);
     expect(workouts.map(({ name }) => name)).toEqual(["Leg day"]);
   });
 
   it("reports an error instead of another user's workouts", async () => {
-    await createFirestoreWorkoutLibrary(dbFor("alice"), "alice").save({
+    await libraryFor("alice").save({
       name: "Leg day",
       config: defaultConfig("emom"),
       createdAt: 1,
     });
-    const library = createFirestoreWorkoutLibrary(dbFor("mallory"), "alice");
+    const library = libraryFor("mallory", "alice");
     const onData = vi.fn();
     await new Promise<void>((resolve) => {
       library.subscribe(onData, () => {
@@ -93,7 +111,7 @@ describe("Firestore workout library", () => {
   });
 
   it("rejects a save the rules deny", async () => {
-    const library = createFirestoreWorkoutLibrary(dbFor("mallory"), "alice");
+    const library = libraryFor("mallory", "alice");
     await expect(
       library.save({ name: "Leg day", config: defaultConfig("emom"), createdAt: 1 }),
     ).rejects.toThrow();
@@ -102,7 +120,7 @@ describe("Firestore workout library", () => {
 
 describe("Firestore history log", () => {
   it("adds every mode through the real rules and lists the newest first", async () => {
-    const log = createFirestoreHistoryLog(dbFor("alice"), "alice");
+    const log = logFor("alice");
     for (const [index, { id }] of MODES.entries()) {
       await log.add({ config: defaultConfig(id), finishedAt: index, activeMs: 1_000, marks: 0 });
     }
@@ -113,13 +131,57 @@ describe("Firestore history log", () => {
 
   it("keeps each user's history apart", async () => {
     const config = defaultConfig("tabata");
-    await createFirestoreHistoryLog(dbFor("alice"), "alice").add({
+    await logFor("alice").add({
       config,
       finishedAt: 1,
       activeMs: 1,
       marks: 0,
     });
-    const bob = createFirestoreHistoryLog(dbFor("bob"), "bob");
+    const bob = logFor("bob");
     expect(await nextValue(bob.subscribe, () => true)).toEqual([]);
+  });
+});
+
+describe("a session finished while the account is not ready", () => {
+  const draft: HistoryDraft = {
+    config: defaultConfig("stopwatch"),
+    finishedAt: 7,
+    activeMs: 1_000,
+    marks: 0,
+  };
+
+  it("reaches the server once, after the page reloads and the account is ready", async () => {
+    const store = memoryStore<HistoryDraft>();
+    const stalled = createFirestoreHistoryLog(dbFor("alice"), "alice", {
+      store,
+      whenReady: () => new Promise(() => undefined),
+    });
+    void stalled.add(draft);
+    expect(store.load()).toHaveLength(1);
+
+    const reloaded = createFirestoreHistoryLog(dbFor("alice"), "alice", {
+      store,
+      whenReady: ready,
+    });
+    const entries = await nextValue(reloaded.subscribe, (items) => items.length === 1);
+    expect(entries[0]).toMatchObject({ finishedAt: 7 });
+    await vi.waitFor(() => {
+      expect(store.load()).toEqual([]);
+    });
+  });
+
+  it("is not written twice when a reload finds it already in the local cache", async () => {
+    const store = memoryStore<HistoryDraft>();
+    const db = dbFor("alice");
+    const log = createFirestoreHistoryLog(db, "alice", { store, whenReady: ready });
+    await log.add(draft);
+    const [entry] = await nextValue(log.subscribe, (items) => items.length === 1);
+
+    store.save([{ id: entry?.id ?? "", draft }]);
+    const reloaded = createFirestoreHistoryLog(db, "alice", { store, whenReady: ready });
+    await vi.waitFor(() => {
+      expect(store.load()).toEqual([]);
+    });
+    expect(await nextValue(reloaded.subscribe, () => true)).toHaveLength(1);
   });
 });

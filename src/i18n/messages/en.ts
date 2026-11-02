@@ -71,4 +71,5 @@ export const en: Messages = {
   historyEmpty: "No finished workouts yet.",
   loadHistoryFailed: "We couldn't load your history.",
   back: "Back",
+  loading: "Loading…",
 };

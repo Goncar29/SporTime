@@ -78,4 +78,5 @@ export const es: Messages = {
   historyEmpty: "Todavía no hay entrenamientos terminados.",
   loadHistoryFailed: "No pudimos cargar tu historial.",
   back: "Volver",
+  loading: "Cargando…",
 };

@@ -1,3 +1,4 @@
+import { isTimestamp } from "../../shared/domain/timestamp";
 import { parseConfig, type WorkoutConfig } from "../../workouts/domain/workout";
 
 /** One week and 10,000 marks; `firestore/firestore.rules` enforces the same limits. */
@@ -42,7 +43,7 @@ export function parseHistoryEntry(id: string, raw: unknown): HistoryEntry | null
   const parsedConfig = parseConfig(config);
   if (
     !parsedConfig ||
-    typeof finishedAt !== "number" ||
+    !isTimestamp(finishedAt) ||
     typeof activeMs !== "number" ||
     typeof marks !== "number"
   ) {

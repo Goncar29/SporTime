@@ -7,6 +7,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vite-plus/test";
+import { MAX_TIMESTAMP_MS } from "../src/shared/domain/timestamp";
 import { MODES, LIMITS, defaultConfig, type NumericField } from "../src/workouts/domain/workout";
 
 let env: RulesTestEnvironment;
@@ -121,9 +122,17 @@ describe("saved workout shape", () => {
     await assertFails(save({ name: workout.name, createdAt: workout.createdAt }));
   });
 
-  it("rejects a createdAt that is not an integer", async () => {
+  it("rejects a createdAt that is not a date the app can show", async () => {
     await assertFails(save({ ...workout, createdAt: "today" }));
     await assertFails(save({ ...workout, createdAt: 1.5 }));
+    await assertFails(save({ ...workout, createdAt: -1 }));
+    await assertFails(save({ ...workout, createdAt: MAX_TIMESTAMP_MS + 1 }));
+    await assertSucceeds(save({ ...workout, createdAt: MAX_TIMESTAMP_MS }));
+  });
+
+  it("counts a name's length like the app does", async () => {
+    await assertSucceeds(save({ ...workout, name: "💪".repeat(20) }));
+    await assertFails(save({ ...workout, name: "💪".repeat(21) }));
   });
 });
 
@@ -147,6 +156,8 @@ describe("history entry shape", () => {
       { marks: -1 },
       { marks: 10_001 },
       { finishedAt: "now" },
+      { finishedAt: -1 },
+      { finishedAt: MAX_TIMESTAMP_MS + 1 },
     ]) {
       await assertFails(add({ ...entry, ...change }));
     }

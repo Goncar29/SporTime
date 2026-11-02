@@ -114,7 +114,7 @@ export function App({ timer, workouts, history, account }: AppProps) {
       onStart={handleStart}
       library={
         <SavedWorkouts
-          workouts={library.items ?? []}
+          workouts={library.failed ? (library.items ?? []) : library.items}
           errors={errors}
           onSave={(name) => {
             setSaveFailed(false);

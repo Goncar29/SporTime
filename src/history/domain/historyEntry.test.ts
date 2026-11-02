@@ -36,6 +36,7 @@ describe("parseHistoryEntry", () => {
   it("ignores documents it cannot read", () => {
     expect(parseHistoryEntry("h1", undefined)).toBeNull();
     expect(parseHistoryEntry("h1", { ...raw, finishedAt: "x" })).toBeNull();
+    expect(parseHistoryEntry("h1", { ...raw, finishedAt: 8_640_000_000_000_001 })).toBeNull();
     expect(parseHistoryEntry("h1", { ...raw, activeMs: null })).toBeNull();
     expect(parseHistoryEntry("h1", { ...raw, marks: "3" })).toBeNull();
     expect(parseHistoryEntry("h1", { ...raw, config: {} })).toBeNull();

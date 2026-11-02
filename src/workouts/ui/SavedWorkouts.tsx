@@ -8,7 +8,8 @@ import {
 import styles from "./SavedWorkouts.module.css";
 
 interface SavedWorkoutsProps {
-  workouts: readonly SavedWorkout[];
+  /** Null until the first answer arrives. */
+  workouts: readonly SavedWorkout[] | null;
   errors: readonly string[];
   onSave(name: string): void;
   onLoad(workout: SavedWorkout): void;
@@ -67,9 +68,9 @@ export function SavedWorkouts({
         </button>
       </form>
 
-      {workouts.length === 0 ? (
-        <p className={styles.empty}>{t.noSavedWorkouts}</p>
-      ) : (
+      {workouts === null && <p className={styles.empty}>{t.loading}</p>}
+      {workouts?.length === 0 && <p className={styles.empty}>{t.noSavedWorkouts}</p>}
+      {workouts && workouts.length > 0 && (
         <ul className={styles.list}>
           {workouts.map((workout) => (
             <li key={workout.id} className={styles.item}>

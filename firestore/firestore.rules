@@ -14,6 +14,11 @@ service cloud.firestore {
     }
 
     // Limits mirror LIMITS in src/workouts/domain/workout.ts; firestore/rules.test.ts keeps them in step.
+    // Beyond this a JavaScript Date is invalid; mirrors MAX_TIMESTAMP_MS in src/shared/domain/timestamp.ts.
+    function isTimestamp(value) {
+      return intBetween(value, 0, 8640000000000000);
+    }
+
     function isConfig(config) {
       return config is map
         && hasExactly(config, ['mode', 'prepareSeconds', 'workSeconds', 'restSeconds', 'rounds', 'sets', 'setRestSeconds'])
@@ -32,13 +37,13 @@ service cloud.firestore {
         && data.name.size() <= 40
         && data.name.trim().size() > 0
         && isConfig(data.config)
-        && data.createdAt is int;
+        && isTimestamp(data.createdAt);
     }
 
     function isHistoryEntry(data) {
       return hasExactly(data, ['config', 'finishedAt', 'activeMs', 'marks'])
         && isConfig(data.config)
-        && data.finishedAt is int
+        && isTimestamp(data.finishedAt)
         && intBetween(data.activeMs, 0, 604800000)
         && intBetween(data.marks, 0, 10000);
     }

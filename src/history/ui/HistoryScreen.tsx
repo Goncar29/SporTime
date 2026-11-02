@@ -30,6 +30,8 @@ export function HistoryScreen({ log, onBack }: HistoryScreenProps) {
         </p>
       )}
 
+      {items === null && !failed && <p className={styles.empty}>{t.loading}</p>}
+
       {items?.length === 0 && !failed && <p className={styles.empty}>{t.historyEmpty}</p>}
 
       {items && items.length > 0 && (

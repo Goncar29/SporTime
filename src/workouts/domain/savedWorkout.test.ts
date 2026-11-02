@@ -11,6 +11,16 @@ describe("normalizeWorkoutName", () => {
     expect(normalizeWorkoutName("   ")).toBeNull();
   });
 
+  it("rejects a name with nothing visible in it", () => {
+    expect(normalizeWorkoutName("\u0001\u0002")).toBeNull();
+    expect(normalizeWorkoutName("\u200b\u0085")).toBeNull();
+  });
+
+  it("keeps names in any script, and emoji", () => {
+    expect(normalizeWorkoutName("Día de piernas 💪")).toBe("Día de piernas 💪");
+    expect(normalizeWorkoutName("脚の日")).toBe("脚の日");
+  });
+
   it("accepts the longest name and rejects anything longer", () => {
     expect(normalizeWorkoutName("a".repeat(MAX_WORKOUT_NAME_LENGTH))).not.toBeNull();
     expect(normalizeWorkoutName("a".repeat(MAX_WORKOUT_NAME_LENGTH + 1))).toBeNull();
@@ -33,6 +43,7 @@ describe("parseSavedWorkout", () => {
     expect(parseSavedWorkout("w1", null)).toBeNull();
     expect(parseSavedWorkout("w1", { ...raw, name: 7 })).toBeNull();
     expect(parseSavedWorkout("w1", { ...raw, createdAt: "x" })).toBeNull();
+    expect(parseSavedWorkout("w1", { ...raw, createdAt: 8_640_000_000_000_001 })).toBeNull();
     expect(parseSavedWorkout("w1", { ...raw, config: { mode: "yoga" } })).toBeNull();
     expect(parseSavedWorkout("w1", { ...raw, config: null })).toBeNull();
   });

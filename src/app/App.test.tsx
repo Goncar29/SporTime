@@ -226,6 +226,23 @@ describe("App account data", () => {
   const fieldValue = (name: string) =>
     within(screen.getByRole("group", { name })).getByRole("status").textContent;
 
+  describe("while the account data has not answered", () => {
+    const silent = () => () => undefined;
+
+    it("shows no empty message for saved workouts", () => {
+      setup({ workouts: { ...createFakeWorkoutLibrary("test"), subscribe: silent } });
+      expect(screen.queryByText(/Save your settings here/)).not.toBeInTheDocument();
+      expect(screen.getByText("Loading…")).toBeInTheDocument();
+    });
+
+    it("shows no empty message for the history", () => {
+      setup({ history: { ...createFakeHistoryLog("test"), subscribe: silent } });
+      click("History");
+      expect(screen.queryByText("No finished workouts yet.")).not.toBeInTheDocument();
+      expect(screen.getByText("Loading…")).toBeInTheDocument();
+    });
+  });
+
   describe("saved workouts", () => {
     it("saves the current settings under a name and loads them back", () => {
       setup();

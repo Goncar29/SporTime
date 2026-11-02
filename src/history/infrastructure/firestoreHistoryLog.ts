@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDocFromCache,
   limit,
   onSnapshot,
   orderBy,
@@ -8,26 +9,47 @@ import {
   setDoc,
   type Firestore,
 } from "firebase/firestore";
+import { withOutbox, type OutboxStore } from "../../shared/application/outbox";
+import { isInLocalCache } from "../../shared/firebase/localCache";
 import type { HistoryLog } from "../application/ports";
-import { parseHistoryEntry } from "../domain/historyEntry";
+import { parseHistoryEntry, type HistoryDraft, type HistoryEntry } from "../domain/historyEntry";
 
 const VISIBLE_ENTRIES = 100;
 
-export function createFirestoreHistoryLog(db: Firestore, userId: string): HistoryLog {
+interface Durability {
+  store: OutboxStore<HistoryDraft>;
+  whenReady(): Promise<boolean>;
+}
+
+export function createFirestoreHistoryLog(
+  db: Firestore,
+  userId: string,
+  { store, whenReady }: Durability,
+): HistoryLog {
   const history = collection(db, "users", userId, "history");
 
-  return {
-    subscribe(onData, onError) {
-      return onSnapshot(
-        query(history, orderBy("finishedAt", "desc"), limit(VISIBLE_ENTRIES)),
-        (snapshot) => {
-          onData(snapshot.docs.flatMap((item) => parseHistoryEntry(item.id, item.data()) ?? []));
-        },
-        onError,
-      );
+  const outbox = withOutbox<HistoryEntry, HistoryDraft>({
+    store,
+    whenReady,
+    parse: parseHistoryEntry,
+    newestFirst: (a, b) => b.finishedAt - a.finishedAt,
+    collection: {
+      subscribe(onData, onError) {
+        return onSnapshot(
+          query(history, orderBy("finishedAt", "desc"), limit(VISIBLE_ENTRIES)),
+          (snapshot) => {
+            onData(snapshot.docs.flatMap((item) => parseHistoryEntry(item.id, item.data()) ?? []));
+          },
+          onError,
+        );
+      },
+      newId: () => doc(history).id,
+      async put(id, draft) {
+        await setDoc(doc(history, id), draft);
+      },
+      has: (id) => isInLocalCache(() => getDocFromCache(doc(history, id))),
     },
-    async add(draft) {
-      await setDoc(doc(history), draft);
-    },
-  };
+  });
+
+  return { subscribe: outbox.subscribe, add: outbox.add };
 }

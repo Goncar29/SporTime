@@ -52,16 +52,36 @@ async function createStoresFactory(): Promise<(userId: string) => UserStores> {
       history: createFakeHistoryLog(userId),
     });
   }
-  const [{ firestore }, { createFirestoreWorkoutLibrary }, { createFirestoreHistoryLog }] =
-    await Promise.all([
-      import("./shared/firebase/firestore"),
-      import("./workouts/infrastructure/firestoreWorkoutLibrary"),
-      import("./history/infrastructure/firestoreHistoryLog"),
-    ]);
-  return (userId) => ({
-    workouts: createFirestoreWorkoutLibrary(firestore(), userId),
-    history: createFirestoreHistoryLog(firestore(), userId),
-  });
+  const [
+    { accountReady, firestore },
+    { createLocalStorageOutboxStore },
+    { createFirestoreWorkoutLibrary },
+    { createFirestoreHistoryLog },
+  ] = await Promise.all([
+    import("./shared/firebase/firestore"),
+    import("./shared/infrastructure/localStorageOutboxStore"),
+    import("./workouts/infrastructure/firestoreWorkoutLibrary"),
+    import("./history/infrastructure/firestoreHistoryLog"),
+  ]);
+  // One set per account: two outboxes over the same storage would send the same write twice.
+  const stores = new Map<string, UserStores>();
+  return (userId) => {
+    const existing = stores.get(userId);
+    if (existing) return existing;
+    const whenReady = () => accountReady(userId);
+    const created: UserStores = {
+      workouts: createFirestoreWorkoutLibrary(firestore(), userId, {
+        store: createLocalStorageOutboxStore(`sportime.outbox.workouts.${userId}`),
+        whenReady,
+      }),
+      history: createFirestoreHistoryLog(firestore(), userId, {
+        store: createLocalStorageOutboxStore(`sportime.outbox.history.${userId}`),
+        whenReady,
+      }),
+    };
+    stores.set(userId, created);
+    return created;
+  };
 }
 
 const [authGateway, storesFor] = await Promise.all([createAuthGateway(), createStoresFactory()]);

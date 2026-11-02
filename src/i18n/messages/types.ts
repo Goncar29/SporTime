@@ -52,4 +52,5 @@ export interface Messages {
   historyEmpty: string;
   loadHistoryFailed: string;
   back: string;
+  loading: string;
 }
