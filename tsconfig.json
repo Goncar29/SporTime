@@ -20,5 +20,12 @@
       "@testing-library/jest-dom/vitest"
     ]
   },
-  "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]
+  "include": [
+    "src",
+    "e2e",
+    "firestore",
+    "vite.config.ts",
+    "vitest.rules.config.ts",
+    "playwright.config.ts"
+  ]
 }

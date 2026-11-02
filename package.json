@@ -11,6 +11,7 @@
     "test": "vp test run",
     "test:watch": "vp test",
     "test:e2e": "playwright test",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-sportime \"vp test run --config vitest.rules.config.ts\"",
     "prepare": "vp config"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -27,6 +29,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "firebase-tools": "^15.34.2",
     "jsdom": "^27.0.1",
     "typescript": "^7.0.2",
     "vite": "catalog:",

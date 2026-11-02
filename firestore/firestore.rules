@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function hasExactly(data, fields) {
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields);
+    }
+
+    function intBetween(value, min, max) {
+      return value is int && value >= min && value <= max;
+    }
+
+    // Limits mirror LIMITS in src/workouts/domain/workout.ts; firestore/rules.test.ts keeps them in step.
+    function isConfig(config) {
+      return config is map
+        && hasExactly(config, ['mode', 'prepareSeconds', 'workSeconds', 'restSeconds', 'rounds', 'sets', 'setRestSeconds'])
+        && config.mode in ['stopwatch', 'forTime', 'amrap', 'emom', 'tabata', 'intervals']
+        && intBetween(config.prepareSeconds, 0, 300)
+        && intBetween(config.workSeconds, 1, 10800)
+        && intBetween(config.restSeconds, 0, 3600)
+        && intBetween(config.rounds, 1, 99)
+        && intBetween(config.sets, 1, 20)
+        && intBetween(config.setRestSeconds, 0, 3600);
+    }
+
+    function isWorkout(data) {
+      return hasExactly(data, ['name', 'config', 'createdAt'])
+        && data.name is string
+        && data.name.size() <= 40
+        && data.name.trim().size() > 0
+        && isConfig(data.config)
+        && data.createdAt is int;
+    }
+
+    function isHistoryEntry(data) {
+      return hasExactly(data, ['config', 'finishedAt', 'activeMs', 'marks'])
+        && isConfig(data.config)
+        && data.finishedAt is int
+        && intBetween(data.activeMs, 0, 604800000)
+        && intBetween(data.marks, 0, 10000);
+    }
+
+    // Anything not matched below is denied by default.
+    match /users/{uid}/workouts/{workoutId} {
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && isWorkout(request.resource.data);
+    }
+
+    match /users/{uid}/history/{entryId} {
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && isHistoryEntry(request.resource.data);
+    }
+  }
+}

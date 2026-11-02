@@ -10,7 +10,7 @@ export interface WorkoutConfig {
   setRestSeconds: number;
 }
 
-type NumericField = Exclude<keyof WorkoutConfig, "mode">;
+export type NumericField = Exclude<keyof WorkoutConfig, "mode">;
 
 export type FieldId =
   | "prepare"
@@ -35,7 +35,7 @@ export interface ModeDefinition {
   defaults: Omit<WorkoutConfig, "mode">;
 }
 
-const LIMITS: Record<NumericField, { min: number; max: number }> = {
+export const LIMITS: Record<NumericField, { min: number; max: number }> = {
   prepareSeconds: { min: 0, max: 300 },
   workSeconds: { min: 1, max: 10_800 },
   restSeconds: { min: 0, max: 3_600 },

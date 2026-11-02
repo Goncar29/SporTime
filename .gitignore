@@ -7,3 +7,7 @@ coverage
 test-results
 playwright-report
 dist-e2e
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase
