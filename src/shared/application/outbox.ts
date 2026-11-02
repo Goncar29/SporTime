@@ -93,9 +93,9 @@ export function withOutbox<T extends { id: string }, Draft>({
 
   const flush = () => {
     queue = queue.then(async () => {
-      const pending = store.load();
-      if (pending.length === 0 || !(await whenReady())) return;
-      for (const item of pending) {
+      if (store.load().length === 0 || !(await whenReady())) return;
+      // Read after waiting: anything cancelled during the wait must not be sent.
+      for (const item of store.load()) {
         // A broken cache leaves the write here for the next page load.
         await send(item).catch((error: unknown) => {
           console.error("A pending write could not be stored", error);

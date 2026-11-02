@@ -167,6 +167,20 @@ describe("withOutbox", () => {
     expect(onData).not.toHaveBeenCalled();
   });
 
+  it("does not send a write cancelled while waiting for the account", async () => {
+    const ready = deferred<boolean>();
+    const { outbox, store, fake } = setup({ whenReady: () => ready.promise });
+    void outbox.add({ order: 1 });
+    await flushed();
+    outbox.cancel(store.load()[0]?.id ?? "");
+
+    ready.resolve(true);
+    await flushed();
+
+    expect(fake.collection.put).not.toHaveBeenCalled();
+    expect(fake.stored.size).toBe(0);
+  });
+
   it("forgets a write that is cancelled before it was sent", async () => {
     const { outbox, store, fake } = setup({ whenReady: () => new Promise(() => undefined) });
     const onData = vi.fn();
