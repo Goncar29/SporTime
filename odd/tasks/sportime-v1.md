@@ -20,8 +20,8 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 - [x] T1 (S1, S2) Timer engine and workout modes. Route: inline. Evidence: `pnpm test` 62 passed, `pnpm typecheck` clean.
 - [x] T2 (S1, S2, S5) Timer screen, design, sound, screen wake. Route: inline. Evidence: 73 unit tests and 8 Chrome end-to-end tests pass.
 - [x] T2b (S9) English and Spanish with a language switcher. Route: inline. Evidence: 88 unit tests and 10 Chrome end-to-end tests pass, checked by exit code.
-- [ ] T3 (S6) Google login behind `AuthGateway`. Route: inline. Needs the user's Firebase project for a real login.
-- [ ] T4 (S7, S8) Saved workouts, history, Firestore rules. Route: inline. Rules tests need Java for the emulator (not installed).
+- [x] T3 (S6) Google login behind `AuthGateway`. Route: inline. Evidence: independent verifier recheck on 3e8b39e; the user completed a real Google login on 2026-11-02.
+- [ ] T4 (S7, S8) Saved workouts, history, Firestore rules. Route: inline. Firestore database created by the user; Java 25 installed for the emulator.
 - [ ] T5 (S3, S8) Offline, privacy notice, account deletion, deploy. Route: inline. Deploy needs the user's OK.
 
 ## Log
@@ -41,3 +41,5 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 - L13 (2026-11-01): T3 code complete with a fake gateway. A real Google login still needs the user: enable the Google provider and try it. Risk: item 2 (auth), independent verifier required.
 - L14 (2026-11-01): Independent verifier on d68a0be: 3 blockers. B1 sign-in button stuck after back-forward restore from a redirect. B2 stalled network blanks a signed-in user for 30-60 s because `onAuthStateChanged` waits for an account lookup. B3 offline popup failure reports the unknown message. One correction batch: `pageshow` reset, `withCachedSession` snapshot, offline mapping. S8 note: name, email and photo URL are now also cached in this device's localStorage until sign-out (never in Firestore); this must appear in the T5 privacy notice.
 - L15 (2026-11-01): Verifier recheck on 3e8b39e: B1, B2 and B3 fixed for their reported cases (stalled start 30.5 s to 239 ms; ended sessions still lock). Known limits, not corrected: a stalled load with no snapshot yet still takes about 30 s once; an unreachable network with `navigator.onLine=true` shows the generic message; sign-out during a stalled start is untested. T3 stays open until the user completes a real Google login. Next: T4.
+- L16 (2026-11-02): "si, entro con mi cuenta de google, ya instale java pero chquea si es la version recomendada ya que hubieron grandes riesgos de seguridad segun los medios en estas ultimas semanas". T3 closed. The user also created the Firestore database (Standard edition, production mode).
+- L17 (2026-11-02): Java check: OpenJDK 25.0.4.1 from Ubuntu 26.04, the newest in its archive. The OpenJDK advisory of 2026-10-20 lists 25.0.4.1 and earlier as affected (highest CVSS 7.0) and no Ubuntu October update was found. For the CVSS 9.1 eMudhra issue, Ubuntu marks CVE-2026-91403 as not affected, while openjdk.org/emudhra asks Debian-derived systems for a manual workaround; the trust store holds `emsign_root_ca_-_g1`, one of the four named roots. Java is used only for the local Firestore emulator and does not ship with the app. Next: T4, waiting on the user's OK to use this Java.
