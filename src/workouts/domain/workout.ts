@@ -166,3 +166,9 @@ export function stepDuration(seconds: number, direction: 1 | -1): number {
   const step = durationStep(seconds - 1);
   return Math.max(0, (Math.ceil(seconds / step) - 1) * step);
 }
+
+/** The value a stepper moves to; equals `value` when it has reached its limit. */
+export function stepField(field: FieldDefinition, value: number, direction: 1 | -1): number {
+  const next = field.kind === "duration" ? stepDuration(value, direction) : value + direction;
+  return clampField(field.key, next);
+}

@@ -4,3 +4,5 @@ dev-dist
 *.local
 coverage
 .vitest/
+test-results
+playwright-report

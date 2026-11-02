@@ -1,0 +1,212 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(100%, 960px);
+  margin-inline: auto;
+  padding: max(20px, env(safe-area-inset-top)) 16px 120px;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 16px;
+}
+
+.brand {
+  margin: 0;
+  color: var(--accent);
+  font-size: clamp(2.75rem, 11vw, 4.5rem);
+  font-style: italic;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.mode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 112px;
+  padding: 14px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 110ms ease-out,
+    background-color 110ms ease-out,
+    color 110ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.mode:active {
+  transform: scale(0.97);
+}
+.mode[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: var(--accent);
+}
+
+.modeLabel {
+  font-size: 1.75rem;
+  font-style: italic;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.modeDescription {
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 0.75;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 10px;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.stepperLabel {
+  min-width: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.stepperControls {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.stepperValue {
+  min-width: 3.1em;
+  font-size: 1.75rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.stepButton {
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--line);
+  font: inherit;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.stepButton:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.stepButton:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.mode:focus-visible,
+.stepButton:focus-visible,
+.start:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+.startBar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--ground) 65%, transparent);
+}
+
+.start {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  width: min(100%, 928px);
+  min-height: 76px;
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 16px;
+  color: var(--ink);
+  background: var(--accent);
+  font: inherit;
+  font-size: 2.25rem;
+  font-style: italic;
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.start:active {
+  transform: scale(0.98);
+}
+
+.startTotal {
+  font-size: 1.75rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 359px) {
+  .stepper {
+    padding-left: 12px;
+  }
+  .stepButton {
+    width: 44px;
+    height: 44px;
+  }
+  .stepperValue {
+    min-width: 2.8em;
+    font-size: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode,
+  .stepButton,
+  .start {
+    transition: none;
+  }
+}

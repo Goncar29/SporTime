@@ -1,0 +1,24 @@
+:root {
+  --ground: #0b0d10;
+  --surface: #171a20;
+  --line: #2a2f38;
+  --text: #f4f6f8;
+  --muted: #9aa3af;
+  --ink: #0b0d10;
+  --accent: #c6ff2e;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: var(--ground);
+  font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
