@@ -1,0 +1,16 @@
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
+  vitest: 5.0.5
+  vite-plus: 1.4.0
+overrides:
+  # The native Rollup binary crashes with SIGILL on CPUs without newer instruction sets.
+  rollup: npm:@rollup/wasm-node@^4
+  vite@*: "catalog:"
+  vitest@*: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: "*"
+    vitest: "*"

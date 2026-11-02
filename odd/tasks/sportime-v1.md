@@ -1,0 +1,34 @@
+Objective: gym timer PWA with Google login and cloud-saved workouts and history.
+Branch: feat/sportime-v1. Delivery strategy: exception-ok (new repository with no remote; each phase is a reviewable commit group). Test runner: `pnpm exec vp test`.
+Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
+
+## Specs
+
+- S1. Timer types: "temporizador de varios tipos, como cronometro, amrap, tabata, emom, etc."
+- S2. Workout shapes: "en un tiempo determinado un entrenamiento sin parar o con pausas con varias sesiones o no"
+- S3. Platform: "Web instalable (PWA)" that keeps timing without a network connection after first load.
+- S4. Tooling: "me gustaria usar pnpm en lugar de npm", "arquitectura me parece bien hexagonal", "react + typescript". Vite+ if `vite-plugin-pwa` builds under it; plain Vite otherwise.
+- S5. Design: "moderno, que genere energia y motivacion asique debe de ser dinamico pero rapido"
+- S6. Login: "el usuario debe de hacer login con cuenta de google, solo debera pedir datos basicos como nombre, email y foto de perfil si tiene"
+- S7. Cloud data: "guardar entrenamientos e historial en la nube con firestore"
+- S8. Approved plan details: only finished sessions are saved to history; profile data stays in Firebase Auth; each user reads and writes only their own data; privacy notice and account deletion; timer never depends on the network once signed in. Interface in English unless the user asks otherwise. Deploy only with the user's OK.
+
+## Tasks
+
+- [x] T0 (S3, S4) Tooling: repository, Node 24, pnpm, Vite+, PWA build. Route: inline. Evidence: `vp build` exit 0, generates `dist/sw.js` with 8 precache entries.
+- [ ] T1 (S1, S2) Timer engine and workout modes. Route: inline.
+- [ ] T2 (S1, S2, S5) Timer screen, design, sound, screen wake. Route: inline.
+- [ ] T3 (S6) Google login behind `AuthGateway`. Route: inline. Needs the user's Firebase project for a real login.
+- [ ] T4 (S7, S8) Saved workouts, history, Firestore rules. Route: inline. Rules tests need Java for the emulator (not installed).
+- [ ] T5 (S3, S8) Offline, privacy notice, account deletion, deploy. Route: inline. Deploy needs the user's OK.
+
+## Log
+
+- L1 (2026-11-01, original request): "necesito que me ayudes a hacer una aplicacion para uso en un gimnasio, este sera para uso de temporizador de varios tipos, como cronometro, amrap, tabata, emom, etc. Esto quiere decir que tendra varios tipos de tiempo donde el usuario al entrenar pueda hacer en un tiempo determinado un entrenamiento sin parar o con pausas con varias sesiones o no"
+- L2 (2026-11-01): "bien pero creo que deberiamos de pensar que tipo de arquietectura, tecnologias, herramientas, etc de como hacerlo antes de escribir codigo, deberiamos planificarlo mejor"
+- L3 (2026-11-01): "bien, igual me gustaria usar pnpm en lugar de npm, creo que es mas rapido y seguro, la arquitectura me parece bien hexagonal, esta bien react + typescript, sobre vite que es mejor asi como dices o vite+?. sobre el dieño de la app me gustaria que fuese moderno, que genere energia y motivacion asique debe de ser dinamico pero rapido, el usuario debe de hacer login con cuenta de google, solo debera pedir datos basicos como nombre, email y foto de perfil si tiene"
+- L4 (2026-11-01): "si, guardar entrenamientos e historial en la nube con firestore"
+- L5 (2026-11-01): Plan approved: "si, crees que es mejor aplicar ODD?" Workflow confirmed as ODD.
+- L6 (2026-11-01): `gentle-ai` CLI is not installed, so native review assessment is unavailable. Java is not installed, so the Firestore emulator cannot run yet.
+- L7 (2026-11-01): "actualicemos node para que funcione o revisa si no esta instalado ya y es solo cambiar la version si esto genera problema". Node 24.21 was already installed; pinned in `.nvmrc`. The default nvm version was left unchanged.
+- L8 (2026-11-01): The missing `sw.js` was not caused by Vite+: plain Vite 8 behaved the same. Native Rollup exits 132 (SIGILL) on this i7-3610QM, which lacks AVX2 and BMI. Fixed with a `@rollup/wasm-node` pnpm override.
