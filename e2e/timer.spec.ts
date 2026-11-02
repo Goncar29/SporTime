@@ -72,6 +72,11 @@ test("still loads and runs with no network after the first visit", async ({ page
 
   await context.setOffline(true);
   await page.reload();
+  const loadedFaces = await page.evaluate(async () => {
+    const faces = await document.fonts.load('800 20px "Barlow Condensed"');
+    return faces.filter((face) => face.status === "loaded").length;
+  });
+  expect(loadedFaces).toBeGreaterThan(0);
   await page.getByRole("button", { name: /^Stopwatch/ }).click();
   await page.getByRole("button", { name: /^Start/ }).click();
   await expect(page.getByRole("timer")).toHaveText("00:01", { timeout: 3_000 });

@@ -16,6 +16,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        // Fonts are not precached by default, and the design relies on them offline.
+        globPatterns: ["**/*.{js,css,html,woff2,png,svg}"],
+      },
       includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
         name: "Sportime",
