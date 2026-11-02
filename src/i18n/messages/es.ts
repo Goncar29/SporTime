@@ -58,4 +58,12 @@ export const es: Messages = {
   setResult: (set, time) => `Serie ${set}: ${time}`,
   goAgain: "Repetir",
   newWorkout: "Nuevo entrenamiento",
+  signInHeadline: "Cada segundo cuenta.",
+  continueWithGoogle: "Continuar con Google",
+  signingIn: "Abriendo Google…",
+  signInDataNote: "Solo usamos tu nombre, correo y foto de perfil.",
+  signInErrorNetwork:
+    "Necesitas conexión para iniciar sesión. Inténtalo de nuevo cuando vuelvas a estar en línea.",
+  signInErrorUnknown: "No pudimos iniciar tu sesión. Inténtalo de nuevo.",
+  signOut: "Cerrar sesión",
 };

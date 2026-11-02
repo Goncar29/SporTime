@@ -8,7 +8,8 @@ export default defineConfig({
     channel: "chrome",
   },
   webServer: {
-    command: "pnpm exec vp build && pnpm exec vp preview --port 4173 --strictPort",
+    command:
+      "pnpm exec vp build --mode e2e --outDir dist-e2e && pnpm exec vp preview --outDir dist-e2e --port 4173 --strictPort",
     url: "http://localhost:4173",
     reuseExistingServer: true,
   },

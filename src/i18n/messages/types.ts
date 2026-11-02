@@ -33,4 +33,11 @@ export interface Messages {
   setResult(set: number, time: string): string;
   goAgain: string;
   newWorkout: string;
+  signInHeadline: string;
+  continueWithGoogle: string;
+  signingIn: string;
+  signInDataNote: string;
+  signInErrorNetwork: string;
+  signInErrorUnknown: string;
+  signOut: string;
 }

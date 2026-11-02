@@ -52,4 +52,11 @@ export const en: Messages = {
   setResult: (set, time) => `Set ${set}: ${time}`,
   goAgain: "Go again",
   newWorkout: "New workout",
+  signInHeadline: "Every second counts.",
+  continueWithGoogle: "Continue with Google",
+  signingIn: "Opening Google…",
+  signInDataNote: "We only use your name, email and profile photo.",
+  signInErrorNetwork: "You need a connection to sign in. Try again when you're back online.",
+  signInErrorUnknown: "We couldn't sign you in. Please try again.",
+  signOut: "Sign out",
 };

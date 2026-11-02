@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Clock, CuePlayer, ScreenAwake } from "../timer/application/ports";
 import { createTimerController, type TimerController } from "../timer/application/timerController";
 import { TimerScreen } from "../timer/ui/TimerScreen";
@@ -29,7 +29,12 @@ const initialConfigs = () =>
     WorkoutConfig
   >;
 
-export function App({ timer }: { timer: TimerDependencies }) {
+interface AppProps {
+  timer: TimerDependencies;
+  account?: ReactNode;
+}
+
+export function App({ timer, account }: AppProps) {
   const [configs, setConfigs] = useState(initialConfigs);
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("tabata");
   const [active, setActive] = useState<ActiveWorkout | null>(null);
@@ -66,6 +71,7 @@ export function App({ timer }: { timer: TimerDependencies }) {
         setConfigs((current) => ({ ...current, [config.mode]: config }));
       }}
       onStart={handleStart}
+      account={account}
     />
   );
 }

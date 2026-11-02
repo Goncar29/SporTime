@@ -19,6 +19,8 @@ export default defineConfig({
       workbox: {
         // Fonts are not precached by default, and the design relies on them offline.
         globPatterns: ["**/*.{js,css,html,woff2,png,svg}"],
+        // Firebase Hosting serves its sign-in handler here; the app shell must not answer it.
+        navigateFallbackDenylist: [/^\/__\//],
       },
       includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {

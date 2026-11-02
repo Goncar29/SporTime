@@ -37,3 +37,5 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 - L9 (2026-11-01): T0 to T2 complete. T3 waits on the user creating a Firebase project; T4 rules tests also need Java. Next step: T3.
 - L10 (2026-11-01): "vamos con i18n entre ambos idiomas". Typed dictionaries with no library; UI copy moves out of the domain.
 - L11 (2026-11-01): Correction: earlier "73 tests pass" reports hid a failing `pnpm test` exit because Vitest was also collecting the Playwright spec. Fixed by restricting Vitest `include`. Checks are now judged by exit code.
+- L12 (2026-11-01): User provided the Firebase web config. Google Analytics from the setup snippet was left out because S6 asks for basic data only. Fake auth gateway exists for end-to-end tests and only loads in `--mode e2e` builds.
+- L13 (2026-11-01): T3 code complete with a fake gateway. A real Google login still needs the user: enable the Google provider and try it. Risk: item 2 (auth), independent verifier required.

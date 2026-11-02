@@ -14,3 +14,9 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+# Install scripts stay off unless a package needs one. These only auto-configure
+# from an unused environment variable, print a version warning, or fetch a binary we do not use.
+allowBuilds:
+  "@firebase/util": false
+  protobufjs: false
+  esbuild: false

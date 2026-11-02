@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { LanguageSwitcher } from "../../i18n/ui/LanguageSwitcher";
 import { formatClock } from "../../timer/domain/format";
@@ -17,9 +18,16 @@ interface WorkoutSetupProps {
   onSelectMode(mode: WorkoutMode): void;
   onChange(config: WorkoutConfig): void;
   onStart(): void;
+  account?: ReactNode;
 }
 
-export function WorkoutSetup({ config, onSelectMode, onChange, onStart }: WorkoutSetupProps) {
+export function WorkoutSetup({
+  config,
+  onSelectMode,
+  onChange,
+  onStart,
+  account,
+}: WorkoutSetupProps) {
   const { t } = useI18n();
   const { totalMs } = buildTimeline(config);
   const definition = modeDefinition(config.mode);
@@ -60,6 +68,8 @@ export function WorkoutSetup({ config, onSelectMode, onChange, onStart }: Workou
           />
         ))}
       </div>
+
+      {account}
 
       <div className={styles.startBar}>
         <button className={styles.start} onClick={onStart}>
