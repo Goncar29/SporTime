@@ -84,6 +84,12 @@ async function createStoresFactory(): Promise<(userId: string) => UserStores> {
   };
 }
 
+// Decided at build time, so this is never shipped in a production build.
+if (import.meta.env.MODE === "emulator") {
+  const { connectToEmulators } = await import("./shared/firebase/emulators");
+  connectToEmulators();
+}
+
 const [authGateway, storesFor] = await Promise.all([createAuthGateway(), createStoresFactory()]);
 
 createRoot(root).render(

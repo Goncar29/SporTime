@@ -48,15 +48,22 @@ service cloud.firestore {
         && intBetween(data.marks, 0, 10000);
     }
 
+    // The SDK resends a write when its answer was lost, so an identical rewrite must succeed.
+    function isUnchanged() {
+      return request.resource.data == resource.data;
+    }
+
     // Anything not matched below is denied by default.
     match /users/{uid}/workouts/{workoutId} {
       allow read, delete: if isOwner(uid);
       allow create: if isOwner(uid) && isWorkout(request.resource.data);
+      allow update: if isOwner(uid) && isUnchanged();
     }
 
     match /users/{uid}/history/{entryId} {
       allow read, delete: if isOwner(uid);
       allow create: if isOwner(uid) && isHistoryEntry(request.resource.data);
+      allow update: if isOwner(uid) && isUnchanged();
     }
   }
 }

@@ -81,7 +81,17 @@ describe("ownership", () => {
 
       it("keeps a saved document immutable", async () => {
         await seed(path("alice"), data);
-        await assertFails(updateDoc(doc(asUser("alice"), path("alice")), { config }));
+        const changed = { ...data, config: defaultConfig("amrap") };
+        await assertFails(
+          updateDoc(doc(asUser("alice"), path("alice")), { config: changed.config }),
+        );
+        await assertFails(setDoc(doc(asUser("alice"), path("alice")), changed));
+      });
+
+      it("accepts the same document again, as the SDK resends after a lost answer", async () => {
+        await seed(path("alice"), data);
+        await assertSucceeds(setDoc(doc(asUser("alice"), path("alice")), data));
+        await assertFails(setDoc(doc(asUser("mallory"), path("alice")), data));
       });
     });
   }

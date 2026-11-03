@@ -11,6 +11,7 @@
     "test": "vp test run",
     "test:watch": "vp test",
     "test:e2e": "playwright test",
+    "test:emulator": "firebase emulators:exec --only auth,firestore --project demo-sportime \"playwright test --config playwright.emulator.config.ts\"",
     "test:rules": "firebase emulators:exec --only firestore --project demo-sportime \"vp test run --config vitest.rules.config.ts\"",
     "prepare": "vp config"
   },

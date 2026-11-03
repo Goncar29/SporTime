@@ -23,9 +23,11 @@
   "include": [
     "src",
     "e2e",
+    "e2e-emulator",
     "firestore",
     "vite.config.ts",
     "vitest.rules.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "playwright.emulator.config.ts"
   ]
 }
