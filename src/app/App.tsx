@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { DeleteAccountScreen } from "../account/ui/DeleteAccountScreen";
+import { PrivacyScreen } from "../account/ui/PrivacyScreen";
 import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
@@ -17,6 +19,7 @@ import {
 } from "../workouts/domain/workout";
 import { SavedWorkouts } from "../workouts/ui/SavedWorkouts";
 import { WorkoutSetup } from "../workouts/ui/WorkoutSetup";
+import styles from "./App.module.css";
 
 export interface TimerDependencies {
   clock: Clock;
@@ -40,15 +43,18 @@ interface AppProps {
   timer: TimerDependencies;
   workouts: WorkoutLibrary;
   history: HistoryLog;
+  deleteAccount(): Promise<void>;
   account?: ReactNode;
 }
 
-export function App({ timer, workouts, history, account }: AppProps) {
+type Screen = "setup" | "history" | "privacy" | "deleteAccount";
+
+export function App({ timer, workouts, history, deleteAccount, account }: AppProps) {
   const { t } = useI18n();
   const [configs, setConfigs] = useState(initialConfigs);
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("tabata");
   const [active, setActive] = useState<ActiveWorkout | null>(null);
-  const [showingHistory, setShowingHistory] = useState(false);
+  const [screen, setScreen] = useState<Screen>("setup");
   const [saveFailed, setSaveFailed] = useState(false);
   const library = useLiveList(workouts.subscribe);
 
@@ -88,15 +94,14 @@ export function App({ timer, workouts, history, account }: AppProps) {
     );
   }
 
-  if (showingHistory) {
-    return (
-      <HistoryScreen
-        log={history}
-        onBack={() => {
-          setShowingHistory(false);
-        }}
-      />
-    );
+  const backToSetup = () => {
+    setScreen("setup");
+  };
+
+  if (screen === "history") return <HistoryScreen log={history} onBack={backToSetup} />;
+  if (screen === "privacy") return <PrivacyScreen onBack={backToSetup} />;
+  if (screen === "deleteAccount") {
+    return <DeleteAccountScreen onDelete={deleteAccount} onBack={backToSetup} />;
   }
 
   const errors = [
@@ -132,11 +137,33 @@ export function App({ timer, workouts, history, account }: AppProps) {
             workouts.remove(id).catch(reportSaveFailure);
           }}
           onOpenHistory={() => {
-            setShowingHistory(true);
+            setScreen("history");
           }}
         />
       }
-      account={account}
+      account={
+        <>
+          {account}
+          <nav className={styles.links}>
+            <button
+              className={styles.link}
+              onClick={() => {
+                setScreen("privacy");
+              }}
+            >
+              {t.privacy}
+            </button>
+            <button
+              className={styles.link}
+              onClick={() => {
+                setScreen("deleteAccount");
+              }}
+            >
+              {t.deleteAccount}
+            </button>
+          </nav>
+        </>
+      }
     />
   );
 }

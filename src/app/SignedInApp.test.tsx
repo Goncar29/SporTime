@@ -30,6 +30,7 @@ function setup() {
   const storesFor = (userId: string) => ({
     workouts: createFakeWorkoutLibrary(userId),
     history: createFakeHistoryLog(userId),
+    deleteAccount: () => Promise.resolve(),
   });
   render(
     <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["en-US"]}>

@@ -186,4 +186,13 @@ describe("AccountMenu", () => {
     fireEvent.error(screen.getByRole("img"));
     expect(screen.getByText("CG")).toBeInTheDocument();
   });
+
+  it("shows the privacy notice before anyone signs in, and comes back", () => {
+    const { emit } = setup();
+    emit(null);
+    fireEvent.click(screen.getByRole("button", { name: "Privacy" }));
+    expect(screen.getByRole("main")).toHaveTextContent(/name, email and profile photo/);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
+  });
 });

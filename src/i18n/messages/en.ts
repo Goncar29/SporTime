@@ -65,11 +65,46 @@ export const en: Messages = {
   noSavedWorkouts: "Save your settings here to use them again.",
   deleteWorkout: (name) => `Delete ${name}`,
   confirmDeleteWorkout: (name) => `Delete "${name}"?`,
-  saveFailed: "We couldn't save that to your account. Please try again.",
+  saveFailed: "We couldn't save that to your account.",
   loadWorkoutsFailed: "We couldn't load your saved workouts.",
   history: "History",
   historyEmpty: "No finished workouts yet.",
   loadHistoryFailed: "We couldn't load your history.",
   back: "Back",
   loading: "Loading…",
+  privacy: "Privacy",
+  privacySections: [
+    {
+      heading: "What we keep",
+      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts and finished sessions, so you can use them on any device.",
+    },
+    {
+      heading: "Where it is kept",
+      body: "Your account and your data are stored with Google Firebase. Each account can only reach its own data.",
+    },
+    {
+      heading: "On this device",
+      body: "This browser keeps your name, email and photo address until you sign out, so the app opens without a connection. Your saved workouts and finished sessions stay in this browser after you sign out, until you delete your account or clear the browser's data, so avoid signing in on a device you share if that matters to you. Your language choice and anything not yet sent are kept here too.",
+    },
+    {
+      heading: "What we don't do",
+      body: "We use no analytics and no advertising, and we don't sell your data. Your profile photo loads directly from Google.",
+    },
+    {
+      heading: "Removing your data",
+      body: "Delete account, on the main screen, permanently removes your account, your saved workouts and your finished sessions.",
+    },
+  ],
+  deleteAccount: "Delete account",
+  deleteAccountWarning:
+    "This permanently removes your account, your saved workouts and your finished sessions. It cannot be undone.",
+  deleteAccountConfirmNote:
+    "Google may ask you to confirm it's you. If that brings you back to the app, come here and press the button again.",
+  confirmDeleteAccount: "Delete my account",
+  deletingAccount: "Deleting…",
+  keepAccount: "Keep my account",
+  deleteAccountErrorNetwork:
+    "This needs a stable connection and could not finish. Your account is still here; some of your data may already be deleted. Try again when you're back online.",
+  deleteAccountErrorUnknown:
+    "We couldn't finish. Your account is still here, and some of your data may already be deleted. Please try again.",
 };

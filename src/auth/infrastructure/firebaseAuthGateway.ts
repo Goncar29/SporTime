@@ -31,7 +31,7 @@ export function signInMethodFor(context: {
   return context.standalone || context.mobile ? "redirect" : "popup";
 }
 
-const errorCode = (error: unknown): string | undefined =>
+export const errorCode = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "code" in error ? String(error.code) : undefined;
 
 export function failureKindFor(error: unknown, online = true): AuthFailureKind {
@@ -49,14 +49,14 @@ export function failureKindFor(error: unknown, online = true): AuthFailureKind {
   }
 }
 
-function toFailure(error: unknown): AuthFailure {
+export function toFailure(error: unknown): AuthFailure {
   const kind = failureKindFor(error, navigator.onLine);
   // The code is what tells a misconfigured project apart; it holds no personal data.
   if (kind === "unknown") console.error("Sign-in failed:", errorCode(error) ?? "no error code");
   return new AuthFailure(kind);
 }
 
-function currentSignInMethod() {
+export function currentSignInMethod() {
   return signInMethodFor({
     standalone: matchMedia("(display-mode: standalone)").matches,
     mobile: /Android|iPhone|iPad|iPod/i.test(navigator.userAgent),

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { PrivacyScreen } from "../../account/ui/PrivacyScreen";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { LanguageSwitcher } from "../../i18n/ui/LanguageSwitcher";
 import type { AuthGateway } from "../application/ports";
@@ -106,6 +107,18 @@ interface SignInScreenProps {
 
 function SignInScreen({ signingIn, failure, onSignIn }: SignInScreenProps) {
   const { t } = useI18n();
+  const [showingPrivacy, setShowingPrivacy] = useState(false);
+
+  if (showingPrivacy) {
+    return (
+      <PrivacyScreen
+        onBack={() => {
+          setShowingPrivacy(false);
+        }}
+      />
+    );
+  }
+
   return (
     <main className={styles.page}>
       <div className={styles.language}>
@@ -126,6 +139,14 @@ function SignInScreen({ signingIn, failure, onSignIn }: SignInScreenProps) {
           {signingIn ? t.signingIn : t.continueWithGoogle}
         </button>
         <p className={styles.note}>{t.signInDataNote}</p>
+        <button
+          className={styles.privacy}
+          onClick={() => {
+            setShowingPrivacy(true);
+          }}
+        >
+          {t.privacy}
+        </button>
       </div>
     </main>
   );

@@ -1,5 +1,6 @@
 import { getAuth } from "firebase/auth";
 import {
+  connectFirestoreEmulator,
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
@@ -17,6 +18,10 @@ export function firestore(): Firestore {
     instance = initializeFirestore(firebaseApp(), {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     });
+    // Decided at build time, so this is never shipped in a production build.
+    if (import.meta.env.MODE === "emulator") {
+      connectFirestoreEmulator(instance, "127.0.0.1", 8080);
+    }
   } catch {
     // Already initialized, for example after a hot reload.
     instance = getFirestore(firebaseApp());

@@ -53,4 +53,14 @@ export interface Messages {
   loadHistoryFailed: string;
   back: string;
   loading: string;
+  privacy: string;
+  privacySections: readonly { heading: string; body: string }[];
+  deleteAccount: string;
+  deleteAccountWarning: string;
+  deleteAccountConfirmNote: string;
+  confirmDeleteAccount: string;
+  deletingAccount: string;
+  keepAccount: string;
+  deleteAccountErrorNetwork: string;
+  deleteAccountErrorUnknown: string;
 }

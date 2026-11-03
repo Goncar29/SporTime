@@ -5,8 +5,6 @@ import {
   GoogleAuthProvider,
   signInWithCredential,
 } from "firebase/auth";
-import { connectFirestoreEmulator } from "firebase/firestore";
-import { firestore } from "./firestore";
 
 declare global {
   interface Window {
@@ -28,7 +26,6 @@ export function connectToEmulators(): void {
   });
   const auth = getAuth(app);
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(firestore(), "127.0.0.1", 8080);
 
   window.signInForTest = (name) =>
     signInWithCredential(

@@ -7,6 +7,7 @@ import { App, type TimerDependencies } from "./App";
 export interface UserStores {
   workouts: WorkoutLibrary;
   history: HistoryLog;
+  deleteAccount(): Promise<void>;
 }
 
 interface SignedInAppProps {

@@ -8,8 +8,10 @@ import { SignedInApp, type UserStores } from "./app/SignedInApp";
 import type { AuthGateway } from "./auth/application/ports";
 import { AccountMenu } from "./auth/ui/AccountMenu";
 import { AuthGate } from "./auth/ui/AuthGate";
+import type { HistoryDraft } from "./history/domain/historyEntry";
 import { localStorageLanguageStore } from "./i18n/infrastructure/localStorageLanguageStore";
 import { I18nProvider } from "./i18n/ui/I18nProvider";
+import type { SavedWorkoutDraft } from "./workouts/domain/savedWorkout";
 import {
   createWakeLockScreenAwake,
   createWebAudioCuePlayer,
@@ -41,7 +43,9 @@ async function createAuthGateway(): Promise<AuthGateway> {
 }
 
 // Decided at build time, so the fake stores are never shipped in a production build.
-async function createStoresFactory(): Promise<(userId: string) => UserStores> {
+async function createStoresFactory(
+  authGateway: AuthGateway,
+): Promise<(userId: string) => UserStores> {
   if (import.meta.env.MODE === "e2e") {
     const [{ createFakeWorkoutLibrary }, { createFakeHistoryLog }] = await Promise.all([
       import("./workouts/infrastructure/fakeWorkoutLibrary"),
@@ -50,6 +54,7 @@ async function createStoresFactory(): Promise<(userId: string) => UserStores> {
     return (userId) => ({
       workouts: createFakeWorkoutLibrary(userId),
       history: createFakeHistoryLog(userId),
+      deleteAccount: () => authGateway.signOut(),
     });
   }
   const [
@@ -57,11 +62,17 @@ async function createStoresFactory(): Promise<(userId: string) => UserStores> {
     { createLocalStorageOutboxStore },
     { createFirestoreWorkoutLibrary },
     { createFirestoreHistoryLog },
+    { deleteAccount },
+    { createFirebaseAccountIdentity },
+    { createFirestoreAccountData },
   ] = await Promise.all([
     import("./shared/firebase/firestore"),
     import("./shared/infrastructure/localStorageOutboxStore"),
     import("./workouts/infrastructure/firestoreWorkoutLibrary"),
     import("./history/infrastructure/firestoreHistoryLog"),
+    import("./account/application/deleteAccount"),
+    import("./account/infrastructure/firebaseAccountIdentity"),
+    import("./account/infrastructure/firestoreAccountData"),
   ]);
   // One set per account: two outboxes over the same storage would send the same write twice.
   const stores = new Map<string, UserStores>();
@@ -69,15 +80,34 @@ async function createStoresFactory(): Promise<(userId: string) => UserStores> {
     const existing = stores.get(userId);
     if (existing) return existing;
     const whenReady = () => accountReady(userId);
+    const workoutOutbox = createLocalStorageOutboxStore<SavedWorkoutDraft>(
+      `sportime.outbox.workouts.${userId}`,
+    );
+    const historyOutbox = createLocalStorageOutboxStore<HistoryDraft>(
+      `sportime.outbox.history.${userId}`,
+    );
+    const discardPendingWrites = () => {
+      workoutOutbox.save([]);
+      historyOutbox.save([]);
+    };
     const created: UserStores = {
       workouts: createFirestoreWorkoutLibrary(firestore(), userId, {
-        store: createLocalStorageOutboxStore(`sportime.outbox.workouts.${userId}`),
+        store: workoutOutbox,
         whenReady,
       }),
-      history: createFirestoreHistoryLog(firestore(), userId, {
-        store: createLocalStorageOutboxStore(`sportime.outbox.history.${userId}`),
-        whenReady,
-      }),
+      history: createFirestoreHistoryLog(firestore(), userId, { store: historyOutbox, whenReady }),
+      deleteAccount: () =>
+        deleteAccount({
+          identity: createFirebaseAccountIdentity(),
+          data: createFirestoreAccountData({
+            db: firestore(),
+            userId,
+            discardPendingWrites,
+            reloadPage() {
+              location.reload();
+            },
+          }),
+        }),
     };
     stores.set(userId, created);
     return created;
@@ -90,7 +120,8 @@ if (import.meta.env.MODE === "emulator") {
   connectToEmulators();
 }
 
-const [authGateway, storesFor] = await Promise.all([createAuthGateway(), createStoresFactory()]);
+const authGateway = await createAuthGateway();
+const storesFor = await createStoresFactory(authGateway);
 
 createRoot(root).render(
   <StrictMode>

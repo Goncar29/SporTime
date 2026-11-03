@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HistoryLog } from "../history/application/ports";
+import { AuthFailure } from "../auth/domain/user";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import type { WorkoutLibrary } from "../workouts/application/ports";
@@ -10,11 +11,13 @@ import { App } from "./App";
 interface Stores {
   workouts?: WorkoutLibrary;
   history?: HistoryLog;
+  deleteAccount?: () => Promise<void>;
 }
 
 function setup({
   workouts = createFakeWorkoutLibrary("test"),
   history = createFakeHistoryLog("test"),
+  deleteAccount = () => Promise.resolve(),
 }: Stores = {}) {
   let now = 0;
   const timer = {
@@ -25,7 +28,7 @@ function setup({
   const store = { get: () => null, set: vi.fn() };
   render(
     <I18nProvider store={store} browserLanguages={["en-US"]}>
-      <App timer={timer} workouts={workouts} history={history} />
+      <App timer={timer} workouts={workouts} history={history} deleteAccount={deleteAccount} />
     </I18nProvider>,
   );
   return {
@@ -193,6 +196,7 @@ describe("App in Spanish", () => {
           timer={timer}
           workouts={createFakeWorkoutLibrary("spanish")}
           history={createFakeHistoryLog("spanish")}
+          deleteAccount={() => Promise.resolve()}
         />
       </I18nProvider>,
     );
@@ -225,6 +229,98 @@ describe("App account data", () => {
   const settledCalls = () => act(() => vi.advanceTimersByTimeAsync(0));
   const fieldValue = (name: string) =>
     within(screen.getByRole("group", { name })).getByRole("status").textContent;
+
+  describe("privacy notice", () => {
+    it("says what is kept, where, and how to remove it", () => {
+      setup();
+      click("Privacy");
+      const notice = screen.getByRole("main");
+      for (const text of [
+        /name, email and profile photo/,
+        /Firebase/,
+        /saved workouts and finished sessions/,
+        /stay in this browser after you sign out/,
+        /no analytics/i,
+        /Delete account/,
+      ]) {
+        expect(notice).toHaveTextContent(text);
+      }
+      click("Back");
+      expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
+    });
+  });
+
+  describe("deleting the account", () => {
+    const openScreen = () => {
+      click("Delete account");
+    };
+
+    it("says what will be lost and deletes nothing until confirmed", () => {
+      const deleteAccount = vi.fn(() => Promise.resolve());
+      setup({ deleteAccount });
+      openScreen();
+      expect(screen.getByRole("main")).toHaveTextContent(/cannot be undone/);
+      expect(screen.getByRole("main")).toHaveTextContent(/saved workouts/);
+      expect(deleteAccount).not.toHaveBeenCalled();
+
+      click("Keep my account");
+      expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
+      expect(deleteAccount).not.toHaveBeenCalled();
+    });
+
+    it("deletes once, however many times the button is pressed", () => {
+      const deleteAccount = vi.fn(() => new Promise<void>(() => undefined));
+      setup({ deleteAccount });
+      openScreen();
+      click("Delete my account");
+      expect(screen.getByRole("button", { name: "Deleting…" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Deleting…" }));
+      expect(deleteAccount).toHaveBeenCalledOnce();
+    });
+
+    it("reports a failure and allows another try", async () => {
+      const deleteAccount = vi
+        .fn<() => Promise<void>>()
+        .mockRejectedValueOnce(new AuthFailure("network"))
+        .mockResolvedValue(undefined);
+      setup({ deleteAccount });
+      openScreen();
+      click("Delete my account");
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
+      click("Delete my account");
+      expect(deleteAccount).toHaveBeenCalledTimes(2);
+    });
+
+    it("warns that part of the data may be gone when the failure is not understood", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      setup({ deleteAccount: () => Promise.reject(new Error("boom")) });
+      openScreen();
+      click("Delete my account");
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent(/may already be deleted/);
+      consoleError.mockRestore();
+    });
+
+    it("stays quiet when the user cancels the confirmation", async () => {
+      setup({ deleteAccount: () => Promise.reject(new AuthFailure("cancelled")) });
+      openScreen();
+      click("Delete my account");
+      await settledCalls();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Delete my account" })).toBeEnabled();
+    });
+
+    it("recovers the button when the browser restores the page after a redirect", () => {
+      setup({ deleteAccount: () => new Promise<void>(() => undefined) });
+      openScreen();
+      click("Delete my account");
+      act(() => {
+        window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+      });
+      expect(screen.getByRole("button", { name: "Delete my account" })).toBeEnabled();
+    });
+  });
 
   describe("while the account data has not answered", () => {
     const silent = () => () => undefined;

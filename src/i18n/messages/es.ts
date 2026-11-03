@@ -72,11 +72,46 @@ export const es: Messages = {
   noSavedWorkouts: "Guarda aquí tu configuración para volver a usarla.",
   deleteWorkout: (name) => `Eliminar ${name}`,
   confirmDeleteWorkout: (name) => `¿Eliminar "${name}"?`,
-  saveFailed: "No pudimos guardarlo en tu cuenta. Inténtalo de nuevo.",
+  saveFailed: "No pudimos guardarlo en tu cuenta.",
   loadWorkoutsFailed: "No pudimos cargar tus entrenamientos guardados.",
   history: "Historial",
   historyEmpty: "Todavía no hay entrenamientos terminados.",
   loadHistoryFailed: "No pudimos cargar tu historial.",
   back: "Volver",
   loading: "Cargando…",
+  privacy: "Privacidad",
+  privacySections: [
+    {
+      heading: "Qué guardamos",
+      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo.",
+    },
+    {
+      heading: "Dónde se guarda",
+      body: "Tu cuenta y tus datos se guardan en Google Firebase. Cada cuenta solo puede acceder a sus propios datos.",
+    },
+    {
+      heading: "En este dispositivo",
+      body: "Este navegador conserva tu nombre, correo y dirección de la foto hasta que cierres sesión, para que la app abra sin conexión. Tus entrenamientos guardados y sesiones terminadas siguen en este navegador después de cerrar sesión, hasta que elimines tu cuenta o borres los datos del navegador, así que evita iniciar sesión en un dispositivo compartido si eso te importa. También se conservan aquí tu idioma y lo que aún no se haya enviado.",
+    },
+    {
+      heading: "Lo que no hacemos",
+      body: "No usamos analítica ni publicidad, y no vendemos tus datos. Tu foto de perfil se carga directamente desde Google.",
+    },
+    {
+      heading: "Eliminar tus datos",
+      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas.",
+    },
+  ],
+  deleteAccount: "Eliminar cuenta",
+  deleteAccountWarning:
+    "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas. No se puede deshacer.",
+  deleteAccountConfirmNote:
+    "Google puede pedirte que confirmes que eres tú. Si eso te devuelve a la app, vuelve aquí y presiona el botón otra vez.",
+  confirmDeleteAccount: "Eliminar mi cuenta",
+  deletingAccount: "Eliminando…",
+  keepAccount: "Conservar mi cuenta",
+  deleteAccountErrorNetwork:
+    "Esto necesita una conexión estable y no pudo terminar. Tu cuenta sigue aquí; parte de tus datos puede estar ya eliminada. Inténtalo de nuevo cuando vuelvas a estar en línea.",
+  deleteAccountErrorUnknown:
+    "No pudimos terminar. Tu cuenta sigue aquí y parte de tus datos puede estar ya eliminada. Inténtalo de nuevo.",
 };
