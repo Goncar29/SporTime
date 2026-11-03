@@ -54,6 +54,16 @@ describe("recordFinishedSessions", () => {
     });
   });
 
+  it("does not save again when the finished timer notifies again", () => {
+    const { add, controller, advance } = setup();
+    controller.start();
+    advance(10_000);
+    controller.pause();
+    controller.skip();
+    controller.tick();
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+
   it("saves each repeat of the workout", () => {
     const { add, controller, advance } = setup();
     controller.start();
