@@ -4,6 +4,7 @@ import {
   getAuth,
   reauthenticateWithPopup,
   reauthenticateWithRedirect,
+  signOut,
 } from "firebase/auth";
 import { AuthFailure } from "../../auth/domain/user";
 import {
@@ -17,17 +18,28 @@ import type { AccountIdentity } from "../application/ports";
 /** Firebase refuses to remove an account after about five minutes; this leaves a margin. */
 const RECENT_MS = 4 * 60 * 1_000;
 
-export function isRecentSignIn(authTime: string, now: number): boolean {
+/** Both times come from the provider, so a wrong device clock cannot make an old sign-in look recent. */
+export function isRecentSignIn(authTime: string, tokenIssuedAt: string): boolean {
   // A time that cannot be read compares false, so it never counts as recent.
-  return now - Date.parse(authTime) < RECENT_MS;
+  return Date.parse(tokenIssuedAt) - Date.parse(authTime) < RECENT_MS;
 }
 
-export function createFirebaseAccountIdentity(): AccountIdentity {
+export function meansAccountIsGone(code: string | undefined): boolean {
+  return (
+    code === "auth/user-token-expired" ||
+    code === "auth/user-not-found" ||
+    code === "auth/invalid-user-token" ||
+    code === "auth/invalid-refresh-token"
+  );
+}
+
+export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
   const auth = getAuth(firebaseApp());
 
   const signedInUser = async () => {
     await auth.authStateReady();
-    if (!auth.currentUser) throw new AuthFailure("unknown");
+    // Never act on whoever else may have signed in since this screen opened.
+    if (auth.currentUser?.uid !== userId) throw new AuthFailure("unknown");
     return auth.currentUser;
   };
 
@@ -35,10 +47,20 @@ export function createFirebaseAccountIdentity(): AccountIdentity {
     async isRecentlyConfirmed() {
       const user = await signedInUser();
       try {
-        const { authTime } = await user.getIdTokenResult();
-        return isRecentSignIn(authTime, Date.now());
+        // Forcing a new token is what makes its issue time the provider's current time.
+        const { authTime, issuedAtTime } = await user.getIdTokenResult(true);
+        if (
+          import.meta.env.MODE === "emulator" &&
+          localStorage.getItem("sportime.test.staleSignIn") === "true"
+        ) {
+          return false;
+        }
+        return isRecentSignIn(authTime, issuedAtTime);
       } catch (error) {
-        throw toFailure(error);
+        if (!meansAccountIsGone(errorCode(error))) throw toFailure(error);
+        // An earlier attempt finished but its answer was lost: this is the success it never saw.
+        await signOut(auth);
+        throw new AuthFailure("cancelled");
       }
     },
     async confirm() {
@@ -64,7 +86,9 @@ export function createFirebaseAccountIdentity(): AccountIdentity {
       try {
         await deleteUser(user);
       } catch (error) {
-        throw toFailure(error);
+        if (!meansAccountIsGone(errorCode(error))) throw toFailure(error);
+        // An earlier attempt finished but its answer was lost: this is the success it never saw.
+        await signOut(auth);
       }
     },
   };

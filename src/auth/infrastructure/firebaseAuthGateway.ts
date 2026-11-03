@@ -43,6 +43,10 @@ export function failureKindFor(error: unknown, online = true): AuthFailureKind {
       return "cancelled";
     case "auth/network-request-failed":
       return "network";
+    case "auth/requires-recent-login":
+      return "staleSignIn";
+    case "auth/user-mismatch":
+      return "wrongAccount";
     default:
       // Offline, the SDK fails to load Google's script and reports an internal error instead.
       return online ? "unknown" : "network";

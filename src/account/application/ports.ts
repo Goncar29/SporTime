@@ -7,8 +7,9 @@ export interface AccountIdentity {
 }
 
 export interface AccountData {
-  /** Erases everything stored for the account. Safe to repeat after a partial failure. */
+  /**
+   * Erases everything stored for the account, which also removes it from this
+   * browser's cache. Safe to repeat after a partial failure.
+   */
   erase(): Promise<void>;
-  /** Removes this browser's copy. */
-  clearDevice(): Promise<void>;
 }

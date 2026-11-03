@@ -1,3 +1,4 @@
+import { AuthFailure } from "../../auth/domain/user";
 import type { AccountData, AccountIdentity } from "./ports";
 
 interface Dependencies {
@@ -13,9 +14,12 @@ interface Dependencies {
 export async function deleteAccount({ identity, data }: Dependencies): Promise<void> {
   if (!(await identity.isRecentlyConfirmed())) await identity.confirm();
   await data.erase();
-  await identity.remove();
-  await data.clearDevice().catch((error: unknown) => {
-    // The account is already gone, so this must not read as a failed deletion.
-    console.error("This browser's copy could not be cleared:", error);
-  });
+  try {
+    await identity.remove();
+  } catch (error) {
+    if (!(error instanceof AuthFailure) || error.kind !== "staleSignIn") throw error;
+    // Only the provider's own clock can settle this, so it may still refuse here.
+    await identity.confirm();
+    await identity.remove();
+  }
 }

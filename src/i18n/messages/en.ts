@@ -65,7 +65,8 @@ export const en: Messages = {
   noSavedWorkouts: "Save your settings here to use them again.",
   deleteWorkout: (name) => `Delete ${name}`,
   confirmDeleteWorkout: (name) => `Delete "${name}"?`,
-  saveFailed: "We couldn't save that to your account.",
+  saveFailed: "We couldn't save that to your account. Please try again.",
+  sessionSaveFailed: "We couldn't save your last session to your account.",
   loadWorkoutsFailed: "We couldn't load your saved workouts.",
   history: "History",
   historyEmpty: "No finished workouts yet.",
@@ -104,7 +105,8 @@ export const en: Messages = {
   deletingAccount: "Deleting…",
   keepAccount: "Keep my account",
   deleteAccountErrorNetwork:
-    "This needs a stable connection and could not finish. Your account is still here; some of your data may already be deleted. Try again when you're back online.",
+    "We couldn't confirm the deletion on this connection. Your account may still exist. Part or all of your data may already be gone, or may finish being deleted when the connection returns. Try again when you're back online.",
   deleteAccountErrorUnknown:
-    "We couldn't finish. Your account is still here, and some of your data may already be deleted. Please try again.",
+    "We couldn't confirm the deletion finished. Your account may still exist, and part or all of your data may already be gone. Please try again.",
+  deleteAccountErrorWrongAccount: "Use the same Google account you signed in with, then try again.",
 };

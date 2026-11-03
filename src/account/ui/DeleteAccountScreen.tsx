@@ -47,7 +47,11 @@ export function DeleteAccountScreen({ onDelete, onBack }: DeleteAccountScreenPro
       <p className={styles.body}>{t.deleteAccountConfirmNote}</p>
       {failure && (
         <p className={styles.error} role="alert">
-          {failure === "network" ? t.deleteAccountErrorNetwork : t.deleteAccountErrorUnknown}
+          {failure === "network"
+            ? t.deleteAccountErrorNetwork
+            : failure === "wrongAccount"
+              ? t.deleteAccountErrorWrongAccount
+              : t.deleteAccountErrorUnknown}
         </p>
       )}
       <div className={styles.actions}>

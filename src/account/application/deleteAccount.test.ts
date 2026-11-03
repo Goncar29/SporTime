@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { AuthFailure } from "../../auth/domain/user";
 import { deleteAccount } from "./deleteAccount";
 
 function setup({ recent = true } = {}) {
@@ -13,21 +14,21 @@ function setup({ recent = true } = {}) {
     confirm: step("confirm"),
     remove: step("remove"),
   };
-  const data = { erase: step("erase"), clearDevice: step("clearDevice") };
+  const data = { erase: step("erase") };
   return { identity, data, calls };
 }
 
 describe("deleteAccount", () => {
-  it("erases the data, then the account, then this device's copy", async () => {
+  it("erases the data, then the account", async () => {
     const { identity, data, calls } = setup();
     await deleteAccount({ identity, data });
-    expect(calls).toEqual(["erase", "remove", "clearDevice"]);
+    expect(calls).toEqual(["erase", "remove"]);
   });
 
   it("confirms an old sign-in before touching anything", async () => {
     const { identity, data, calls } = setup({ recent: false });
     await deleteAccount({ identity, data });
-    expect(calls).toEqual(["confirm", "erase", "remove", "clearDevice"]);
+    expect(calls).toEqual(["confirm", "erase", "remove"]);
   });
 
   it("erases nothing when the confirmation fails or is cancelled", async () => {
@@ -43,21 +44,28 @@ describe("deleteAccount", () => {
     data.erase.mockRejectedValueOnce(new Error("offline"));
     await expect(deleteAccount({ identity, data })).rejects.toThrow("offline");
     expect(identity.remove).not.toHaveBeenCalled();
-    expect(data.clearDevice).not.toHaveBeenCalled();
   });
 
-  it("reports a failed account removal and keeps this device's copy", async () => {
+  it("reports a failed account removal", async () => {
     const { identity, data } = setup();
     identity.remove.mockRejectedValueOnce(new Error("denied"));
     await expect(deleteAccount({ identity, data })).rejects.toThrow("denied");
-    expect(data.clearDevice).not.toHaveBeenCalled();
+    expect(identity.confirm).not.toHaveBeenCalled();
   });
 
-  it("still succeeds when clearing this device fails: the account is already gone", async () => {
+  it("asks again when the provider says the sign-in is too old, then finishes", async () => {
+    const { identity, data, calls } = setup();
+    identity.remove.mockRejectedValueOnce(new AuthFailure("staleSignIn"));
+    await deleteAccount({ identity, data });
+    expect(calls).toEqual(["erase", "confirm", "remove"]);
+    expect(identity.remove).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up when the provider refuses again after asking", async () => {
     const { identity, data } = setup();
-    data.clearDevice.mockRejectedValueOnce(new Error("another tab is open"));
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    await expect(deleteAccount({ identity, data })).resolves.toBeUndefined();
-    consoleError.mockRestore();
+    identity.remove.mockRejectedValue(new AuthFailure("staleSignIn"));
+    await expect(deleteAccount({ identity, data })).rejects.toThrow();
+    expect(identity.confirm).toHaveBeenCalledOnce();
+    expect(identity.remove).toHaveBeenCalledTimes(2);
   });
 });

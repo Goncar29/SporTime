@@ -298,7 +298,7 @@ describe("App account data", () => {
       openScreen();
       click("Delete my account");
       await settledCalls();
-      expect(screen.getByRole("alert")).toHaveTextContent(/may already be deleted/);
+      expect(screen.getByRole("alert")).toHaveTextContent(/may already be gone/);
       consoleError.mockRestore();
     });
 
@@ -384,6 +384,7 @@ describe("App account data", () => {
       click("Save");
       await settledCalls();
       expect(screen.getByRole("alert")).toHaveTextContent("couldn't save");
+      expect(screen.getByRole("alert")).toHaveTextContent("try again");
 
       click(/^Start/);
       expect(screen.getByRole("timer")).toBeInTheDocument();
@@ -492,7 +493,8 @@ describe("App account data", () => {
       await settledCalls();
       expect(screen.getByRole("region", { name: "Workout complete" })).toBeInTheDocument();
       click("New workout");
-      expect(screen.getByRole("alert")).toHaveTextContent("couldn't save");
+      expect(screen.getByRole("alert")).toHaveTextContent("last session");
+      expect(screen.getByRole("alert")).not.toHaveTextContent("try again");
     });
 
     it("tells the user when the history cannot be read", () => {

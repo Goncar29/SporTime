@@ -72,7 +72,8 @@ export const es: Messages = {
   noSavedWorkouts: "Guarda aquí tu configuración para volver a usarla.",
   deleteWorkout: (name) => `Eliminar ${name}`,
   confirmDeleteWorkout: (name) => `¿Eliminar "${name}"?`,
-  saveFailed: "No pudimos guardarlo en tu cuenta.",
+  saveFailed: "No pudimos guardarlo en tu cuenta. Inténtalo de nuevo.",
+  sessionSaveFailed: "No pudimos guardar tu última sesión en tu cuenta.",
   loadWorkoutsFailed: "No pudimos cargar tus entrenamientos guardados.",
   history: "Historial",
   historyEmpty: "Todavía no hay entrenamientos terminados.",
@@ -111,7 +112,9 @@ export const es: Messages = {
   deletingAccount: "Eliminando…",
   keepAccount: "Conservar mi cuenta",
   deleteAccountErrorNetwork:
-    "Esto necesita una conexión estable y no pudo terminar. Tu cuenta sigue aquí; parte de tus datos puede estar ya eliminada. Inténtalo de nuevo cuando vuelvas a estar en línea.",
+    "No pudimos confirmar la eliminación con esta conexión. Es posible que tu cuenta siga existiendo. Parte o todos tus datos pueden estar ya eliminados, o terminar de eliminarse cuando vuelva la conexión. Inténtalo de nuevo cuando vuelvas a estar en línea.",
   deleteAccountErrorUnknown:
-    "No pudimos terminar. Tu cuenta sigue aquí y parte de tus datos puede estar ya eliminada. Inténtalo de nuevo.",
+    "No pudimos confirmar que la eliminación haya terminado. Es posible que tu cuenta siga existiendo, y parte o todos tus datos pueden estar ya eliminados. Inténtalo de nuevo.",
+  deleteAccountErrorWrongAccount:
+    "Usa la misma cuenta de Google con la que iniciaste sesión e inténtalo de nuevo.",
 };

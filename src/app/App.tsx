@@ -55,11 +55,11 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("tabata");
   const [active, setActive] = useState<ActiveWorkout | null>(null);
   const [screen, setScreen] = useState<Screen>("setup");
-  const [saveFailed, setSaveFailed] = useState(false);
+  const [saveFailure, setSaveFailure] = useState<"workout" | "session" | null>(null);
   const library = useLiveList(workouts.subscribe);
 
-  const reportSaveFailure = () => {
-    setSaveFailed(true);
+  const reportWorkoutFailure = () => {
+    setSaveFailure("workout");
   };
 
   const handleStart = () => {
@@ -71,7 +71,9 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
       config,
       log: history,
       clock: timer.clock,
-      onFailure: reportSaveFailure,
+      onFailure() {
+        setSaveFailure("session");
+      },
     });
     // Started inside the click handler because browsers only unlock audio during a user gesture.
     controller.start();
@@ -105,7 +107,8 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
   }
 
   const errors = [
-    ...(saveFailed ? [t.saveFailed] : []),
+    ...(saveFailure === "workout" ? [t.saveFailed] : []),
+    ...(saveFailure === "session" ? [t.sessionSaveFailed] : []),
     ...(library.failed ? [t.loadWorkoutsFailed] : []),
   ];
 
@@ -122,19 +125,19 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
           workouts={library.failed ? (library.items ?? []) : library.items}
           errors={errors}
           onSave={(name) => {
-            setSaveFailed(false);
+            setSaveFailure(null);
             // Not awaited: the server never answers offline, and the write is already queued.
             workouts
               .save({ name, config: configs[selectedMode], createdAt: timer.clock.now() })
-              .catch(reportSaveFailure);
+              .catch(reportWorkoutFailure);
           }}
           onLoad={({ config }) => {
             setConfigs((current) => ({ ...current, [config.mode]: config }));
             setSelectedMode(config.mode);
           }}
           onRemove={({ id }) => {
-            setSaveFailed(false);
-            workouts.remove(id).catch(reportSaveFailure);
+            setSaveFailure(null);
+            workouts.remove(id).catch(reportWorkoutFailure);
           }}
           onOpenHistory={() => {
             setScreen("history");

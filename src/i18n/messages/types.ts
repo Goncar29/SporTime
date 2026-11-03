@@ -47,6 +47,7 @@ export interface Messages {
   deleteWorkout(name: string): string;
   confirmDeleteWorkout(name: string): string;
   saveFailed: string;
+  sessionSaveFailed: string;
   loadWorkoutsFailed: string;
   history: string;
   historyEmpty: string;
@@ -63,4 +64,5 @@ export interface Messages {
   keepAccount: string;
   deleteAccountErrorNetwork: string;
   deleteAccountErrorUnknown: string;
+  deleteAccountErrorWrongAccount: string;
 }

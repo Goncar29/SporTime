@@ -98,14 +98,11 @@ async function createStoresFactory(
       history: createFirestoreHistoryLog(firestore(), userId, { store: historyOutbox, whenReady }),
       deleteAccount: () =>
         deleteAccount({
-          identity: createFirebaseAccountIdentity(),
+          identity: createFirebaseAccountIdentity(userId),
           data: createFirestoreAccountData({
             db: firestore(),
             userId,
             discardPendingWrites,
-            reloadPage() {
-              location.reload();
-            },
           }),
         }),
     };
