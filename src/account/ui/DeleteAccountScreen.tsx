@@ -8,6 +8,9 @@ interface DeleteAccountScreenProps {
   onBack(): void;
 }
 
+const keepIfDataErased = (current: AuthFailureKind | null) =>
+  current === "dataErased" ? current : null;
+
 export function DeleteAccountScreen({ onDelete, onBack }: DeleteAccountScreenProps) {
   const { t } = useI18n();
   const [deleting, setDeleting] = useState(false);
@@ -26,12 +29,16 @@ export function DeleteAccountScreen({ onDelete, onBack }: DeleteAccountScreenPro
 
   const handleDelete = () => {
     setDeleting(true);
-    setFailure(null);
+    setFailure(keepIfDataErased);
     onDelete()
       .catch((error: unknown) => {
         const kind = error instanceof AuthFailure ? error.kind : "unknown";
         if (kind === "unknown") console.error("Deleting the account failed:", error);
-        setFailure(kind === "cancelled" ? null : kind);
+        if (kind === "cancelled") return;
+        // A wrong account changes nothing about what already happened, and that message covers it.
+        setFailure((current) =>
+          current === "dataErased" && kind === "wrongAccount" ? current : kind,
+        );
       })
       .finally(() => {
         setDeleting(false);
@@ -47,11 +54,13 @@ export function DeleteAccountScreen({ onDelete, onBack }: DeleteAccountScreenPro
       <p className={styles.body}>{t.deleteAccountConfirmNote}</p>
       {failure && (
         <p className={styles.error} role="alert">
-          {failure === "network"
-            ? t.deleteAccountErrorNetwork
-            : failure === "wrongAccount"
-              ? t.deleteAccountErrorWrongAccount
-              : t.deleteAccountErrorUnknown}
+          {failure === "dataErased"
+            ? t.deleteAccountErrorUnfinished
+            : failure === "network"
+              ? t.deleteAccountErrorNetwork
+              : failure === "wrongAccount"
+                ? t.deleteAccountErrorWrongAccount
+                : t.deleteAccountErrorUnknown}
         </p>
       )}
       <div className={styles.actions}>

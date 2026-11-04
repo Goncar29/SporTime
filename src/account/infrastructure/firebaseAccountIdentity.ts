@@ -35,6 +35,14 @@ export function meansAccountIsGone(code: string | undefined): boolean {
 
 export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
   const auth = getAuth(firebaseApp());
+  // Kept across attempts, so one identity must serve every attempt for this account.
+  let removalAnswerLost = false;
+
+  /** Firebase signs out by itself for some of these codes, so the user always ends up signed out. */
+  const endSession = async () => {
+    await signOut(auth);
+    return new AuthFailure("sessionEnded");
+  };
 
   const signedInUser = async () => {
     await auth.authStateReady();
@@ -45,6 +53,8 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
 
   return {
     async isRecentlyConfirmed() {
+      // Asking the provider would end the session of an account already removed, and erasing still needs it.
+      if (removalAnswerLost) return true;
       const user = await signedInUser();
       try {
         // Forcing a new token is what makes its issue time the provider's current time.
@@ -58,9 +68,7 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
         return isRecentSignIn(authTime, issuedAtTime);
       } catch (error) {
         if (!meansAccountIsGone(errorCode(error))) throw toFailure(error);
-        // An earlier attempt finished but its answer was lost: this is the success it never saw.
-        await signOut(auth);
-        throw new AuthFailure("cancelled");
+        throw await endSession();
       }
     },
     async confirm() {
@@ -86,8 +94,13 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
       try {
         await deleteUser(user);
       } catch (error) {
-        if (!meansAccountIsGone(errorCode(error))) throw toFailure(error);
-        // An earlier attempt finished but its answer was lost: this is the success it never saw.
+        if (!meansAccountIsGone(errorCode(error))) {
+          const failure = toFailure(error);
+          removalAnswerLost = failure.kind === "network";
+          throw failure;
+        }
+        // These codes also mean an expired session, so only a lost answer makes this the success it never saw.
+        if (!removalAnswerLost) throw await endSession();
         await signOut(auth);
       }
     },

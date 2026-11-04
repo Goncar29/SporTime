@@ -1,5 +1,5 @@
 export interface AccountIdentity {
-  /** True only when the provider will surely accept removing the account right now. */
+  /** False when the user must prove who they are before anything is touched. */
   isRecentlyConfirmed(): Promise<boolean>;
   /** Asks the user to prove who they are. A redirect may navigate away before settling. */
   confirm(): Promise<void>;

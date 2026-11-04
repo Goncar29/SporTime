@@ -100,7 +100,7 @@ export const es: Messages = {
     },
     {
       heading: "Eliminar tus datos",
-      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas.",
+      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
     },
   ],
   deleteAccount: "Eliminar cuenta",
@@ -117,4 +117,8 @@ export const es: Messages = {
     "No pudimos confirmar que la eliminación haya terminado. Es posible que tu cuenta siga existiendo, y parte o todos tus datos pueden estar ya eliminados. Inténtalo de nuevo.",
   deleteAccountErrorWrongAccount:
     "Usa la misma cuenta de Google con la que iniciaste sesión e inténtalo de nuevo.",
+  deleteAccountErrorUnfinished:
+    "Tus datos ya están borrados, pero tu cuenta sigue existiendo. Presiona el botón otra vez y confirma con la misma cuenta de Google para terminar.",
+  deleteAccountErrorSessionEnded:
+    "Tu sesión terminó antes de que finalizara la eliminación. Es posible que tu cuenta siga existiendo, y parte o todos tus datos pueden estar ya eliminados. Inicia sesión y elimina tu cuenta otra vez para terminar.",
 };

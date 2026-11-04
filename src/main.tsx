@@ -90,6 +90,7 @@ async function createStoresFactory(
       workoutOutbox.save([]);
       historyOutbox.save([]);
     };
+    const identity = createFirebaseAccountIdentity(userId);
     const created: UserStores = {
       workouts: createFirestoreWorkoutLibrary(firestore(), userId, {
         store: workoutOutbox,
@@ -98,7 +99,7 @@ async function createStoresFactory(
       history: createFirestoreHistoryLog(firestore(), userId, { store: historyOutbox, whenReady }),
       deleteAccount: () =>
         deleteAccount({
-          identity: createFirebaseAccountIdentity(userId),
+          identity,
           data: createFirestoreAccountData({
             db: firestore(),
             userId,

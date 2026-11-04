@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 import {
   accountExists,
   clearEmulatorData,
@@ -331,10 +331,119 @@ test("a lost answer is never reported as 'your account is still here'", async ({
   await expect(page.getByRole("alert")).not.toContainText("is still here");
 
   await page.unroute(/accounts:delete/);
+  await page.getByRole("button", { name: "Keep my account" }).click();
+  await saveWorkout(page, "Saved in between");
+  await eventually(() => storedNames(uid)).toContain("Saved in between");
+
+  await openDeleteScreen(page);
   await confirmButton(page).click();
   await expect(googleButton(page)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(await storedNames(uid)).toEqual([]);
+  await expect.poll(() => cacheContains(page, "Saved in between")).toBe(false);
   await expect.poll(() => cacheContains(page, '"W"')).toBe(false);
 });
+
+const refuseRemovalAsStale = (page: Page) =>
+  page.route(/accounts:delete/, (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: 400, message: "CREDENTIAL_TOO_OLD_LOGIN_AGAIN" } }),
+    }),
+  );
+
+test("an unfinished confirmation after erasing says the data is gone and the account is not", async ({
+  page,
+}) => {
+  const stranger = uniqueName("stranger");
+  await signInAs(await openedPage(page), stranger);
+  await signOut(page);
+  const who = uniqueName("halfway");
+  const uid = await signInAs(page, who);
+  await saveWorkout(page, "W");
+  await eventually(() => storedNames(uid)).toEqual(["W"]);
+  await refuseRemovalAsStale(page);
+  await openDeleteScreen(page);
+
+  // Cancelled.
+  let [popup] = await Promise.all([page.waitForEvent("popup"), confirmButton(page).click()]);
+  await popup.waitForLoadState();
+  await popup.close();
+  await expect(page.getByRole("alert")).toContainText("already erased", { timeout: 30_000 });
+  expect(await storedNames(uid)).toEqual([]);
+  expect(await accountExists(uid)).toBe(true);
+
+  // Wrong account.
+  [popup] = await Promise.all([page.waitForEvent("popup"), confirmButton(page).click()]);
+  await pickAccount(popup, `${stranger}@example.com`);
+  await expect(page.getByRole("alert")).toContainText("already erased", { timeout: 30_000 });
+  await expect(page.getByRole("alert")).toContainText("same Google account");
+  expect(await accountExists(uid)).toBe(true);
+
+  // Cancelling the check that comes first on a retry must not hide what already happened.
+  await markSignInAsOld(page);
+  [popup] = await Promise.all([page.waitForEvent("popup"), confirmButton(page).click()]);
+  await popup.waitForLoadState();
+  await popup.close();
+  await expect(confirmButton(page)).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByRole("alert")).toContainText("already erased");
+
+  await markSignInAsRecent(page);
+  await page.unroute(/accounts:delete/);
+  await confirmButton(page).click();
+  await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
+  expect(await accountExists(uid)).toBe(false);
+});
+
+for (const answer of ["TOKEN_EXPIRED", "INVALID_ID_TOKEN"]) {
+  const refuse = (route: Route) =>
+    route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: 400, message: answer } }),
+    });
+
+  test(`${answer} when removing never reads as a finished deletion`, async ({ page }) => {
+    const who = uniqueName("expired");
+    const uid = await signInAs(await openedPage(page), who);
+    await saveWorkout(page, "W");
+    await eventually(() => storedNames(uid)).toEqual(["W"]);
+    await page.route(/accounts:delete/, refuse);
+
+    await openDeleteScreen(page);
+    await confirmButton(page).click();
+
+    await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("alert")).toContainText("session ended");
+    expect(await accountExists(uid)).toBe(true);
+
+    await page.unroute(/accounts:delete/);
+    await signInAs(page, who);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await openDeleteScreen(page);
+    await confirmButton(page).click();
+    await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(await accountExists(uid)).toBe(false);
+  });
+
+  test(`${answer} when checking the sign-in erases nothing and says so`, async ({ page }) => {
+    const who = uniqueName("expired");
+    const uid = await signInAs(await openedPage(page), who);
+    await saveWorkout(page, "W");
+    await eventually(() => storedNames(uid)).toEqual(["W"]);
+    await page.route(/securetoken\.googleapis\.com/, refuse);
+
+    await openDeleteScreen(page);
+    await confirmButton(page).click();
+
+    await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("alert")).toContainText("session ended");
+    expect(await accountExists(uid)).toBe(true);
+    expect(await storedNames(uid)).toEqual(["W"]);
+  });
+}
 
 test("an old sign-in is confirmed first: cancelling or the wrong account delete nothing", async ({
   page,

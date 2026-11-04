@@ -5,7 +5,14 @@ export interface User {
   photoUrl: string | null;
 }
 
-export type AuthFailureKind = "cancelled" | "network" | "staleSignIn" | "wrongAccount" | "unknown";
+export type AuthFailureKind =
+  | "cancelled"
+  | "dataErased"
+  | "network"
+  | "sessionEnded"
+  | "staleSignIn"
+  | "wrongAccount"
+  | "unknown";
 
 export class AuthFailure extends Error {
   constructor(readonly kind: AuthFailureKind) {

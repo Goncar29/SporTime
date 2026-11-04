@@ -65,4 +65,6 @@ export interface Messages {
   deleteAccountErrorNetwork: string;
   deleteAccountErrorUnknown: string;
   deleteAccountErrorWrongAccount: string;
+  deleteAccountErrorUnfinished: string;
+  deleteAccountErrorSessionEnded: string;
 }

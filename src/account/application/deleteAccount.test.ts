@@ -64,8 +64,27 @@ describe("deleteAccount", () => {
   it("gives up when the provider refuses again after asking", async () => {
     const { identity, data } = setup();
     identity.remove.mockRejectedValue(new AuthFailure("staleSignIn"));
-    await expect(deleteAccount({ identity, data })).rejects.toThrow();
+    await expect(deleteAccount({ identity, data })).rejects.toMatchObject({ kind: "dataErased" });
     expect(identity.confirm).toHaveBeenCalledOnce();
     expect(identity.remove).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["cancelled", "wrongAccount"] as const)(
+    "says the data is already erased when the confirmation after erasing ends as %s",
+    async (kind) => {
+      const { identity, data } = setup();
+      identity.remove.mockRejectedValueOnce(new AuthFailure("staleSignIn"));
+      identity.confirm.mockRejectedValueOnce(new AuthFailure(kind));
+      await expect(deleteAccount({ identity, data })).rejects.toMatchObject({ kind: "dataErased" });
+      expect(data.erase).toHaveBeenCalledOnce();
+      expect(identity.remove).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("keeps a connection failure during the confirmation after erasing as it is", async () => {
+    const { identity, data } = setup();
+    identity.remove.mockRejectedValueOnce(new AuthFailure("staleSignIn"));
+    identity.confirm.mockRejectedValueOnce(new AuthFailure("network"));
+    await expect(deleteAccount({ identity, data })).rejects.toMatchObject({ kind: "network" });
   });
 });

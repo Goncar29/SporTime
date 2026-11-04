@@ -93,7 +93,7 @@ export const en: Messages = {
     },
     {
       heading: "Removing your data",
-      body: "Delete account, on the main screen, permanently removes your account, your saved workouts and your finished sessions.",
+      body: "Delete account, on the main screen, permanently removes your account, your saved workouts and your finished sessions. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
     },
   ],
   deleteAccount: "Delete account",
@@ -109,4 +109,8 @@ export const en: Messages = {
   deleteAccountErrorUnknown:
     "We couldn't confirm the deletion finished. Your account may still exist, and part or all of your data may already be gone. Please try again.",
   deleteAccountErrorWrongAccount: "Use the same Google account you signed in with, then try again.",
+  deleteAccountErrorUnfinished:
+    "Your data is already erased, but your account still exists. Press the button again and confirm with the same Google account to finish.",
+  deleteAccountErrorSessionEnded:
+    "Your session ended before the deletion finished. Your account may still exist, and part or all of your data may already be gone. Sign in and delete your account again to finish.",
 };
