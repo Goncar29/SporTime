@@ -397,6 +397,40 @@ for (const answer of ["TOKEN_EXPIRED", "INVALID_ID_TOKEN"]) {
   });
 }
 
+test("a retry skips asking the provider only while the sign-in is provably recent", async ({
+  page,
+}) => {
+  // Real time cannot pass in a test, and the stale sign-in flag returns before this logic.
+  await page.addInitScript(() => {
+    const real = performance.now.bind(performance);
+    const shifted = window as unknown as { clockShift: number };
+    shifted.clockShift = 0;
+    performance.now = () => real() + shifted.clockShift;
+  });
+  await signInAs(await openedPage(page), uniqueName("window"));
+  let refreshes = 0;
+  await page.route(/securetoken\.googleapis\.com/, (route) => {
+    refreshes++;
+    return route.fallback();
+  });
+  await failRemovalBeforeItArrives(page);
+  await openDeleteScreen(page);
+  await confirmButton(page).click();
+  await expect(page.getByRole("alert")).toBeVisible({ timeout: 40_000 });
+  expect(refreshes).toBe(1);
+
+  await confirmButton(page).click();
+  await expect(confirmButton(page)).toBeEnabled({ timeout: 40_000 });
+  expect(refreshes).toBe(1);
+
+  await page.evaluate(() => {
+    (window as unknown as { clockShift: number }).clockShift = 5 * 60 * 1_000;
+  });
+  await confirmButton(page).click();
+  await expect(confirmButton(page)).toBeEnabled({ timeout: 40_000 });
+  expect(refreshes).toBe(2);
+});
+
 const refuseRemovalAsStale = (page: Page) =>
   page.route(/accounts:delete/, (route) =>
     route.fulfill({
