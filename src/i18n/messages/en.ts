@@ -112,5 +112,5 @@ export const en: Messages = {
   deleteAccountErrorUnfinished:
     "Your data is already erased, but your account still exists. Press the button again and confirm with the same Google account to finish.",
   deleteAccountErrorSessionEnded:
-    "Your session ended before the deletion finished. Your account may still exist, and part or all of your data may already be gone. Sign in and delete your account again to finish.",
+    "Your session ended before we could confirm the deletion finished. Your account may still exist, and part or all of your data may already be gone. Sign in and delete your account again to finish.",
 };

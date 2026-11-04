@@ -120,5 +120,5 @@ export const es: Messages = {
   deleteAccountErrorUnfinished:
     "Tus datos ya están borrados, pero tu cuenta sigue existiendo. Presiona el botón otra vez y confirma con la misma cuenta de Google para terminar.",
   deleteAccountErrorSessionEnded:
-    "Tu sesión terminó antes de que finalizara la eliminación. Es posible que tu cuenta siga existiendo, y parte o todos tus datos pueden estar ya eliminados. Inicia sesión y elimina tu cuenta otra vez para terminar.",
+    "Tu sesión terminó antes de que pudiéramos confirmar la eliminación. Es posible que tu cuenta siga existiendo, y parte o todos tus datos pueden estar ya eliminados. Inicia sesión y elimina tu cuenta otra vez para terminar.",
 };

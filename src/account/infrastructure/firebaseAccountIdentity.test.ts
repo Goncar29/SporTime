@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { isRecentSignIn, meansAccountIsGone } from "./firebaseAccountIdentity";
+import { isRecentSignIn, meansSessionEnded } from "./firebaseAccountIdentity";
 
 describe("isRecentSignIn", () => {
   const issuedAt = "2026-11-02T12:00:00Z";
@@ -18,16 +18,16 @@ describe("isRecentSignIn", () => {
   });
 });
 
-describe("meansAccountIsGone", () => {
-  it("recognizes the provider saying the account no longer exists", () => {
-    expect(meansAccountIsGone("auth/user-token-expired")).toBe(true);
-    expect(meansAccountIsGone("auth/user-not-found")).toBe(true);
-    expect(meansAccountIsGone("auth/invalid-user-token")).toBe(true);
-    expect(meansAccountIsGone("auth/invalid-refresh-token")).toBe(true);
+describe("meansSessionEnded", () => {
+  it("recognizes the provider refusing the session or the account", () => {
+    expect(meansSessionEnded("auth/user-token-expired")).toBe(true);
+    expect(meansSessionEnded("auth/user-not-found")).toBe(true);
+    expect(meansSessionEnded("auth/invalid-user-token")).toBe(true);
+    expect(meansSessionEnded("auth/invalid-refresh-token")).toBe(true);
   });
 
   it("does not mistake a connection problem for it", () => {
-    expect(meansAccountIsGone("auth/network-request-failed")).toBe(false);
-    expect(meansAccountIsGone(undefined)).toBe(false);
+    expect(meansSessionEnded("auth/network-request-failed")).toBe(false);
+    expect(meansSessionEnded(undefined)).toBe(false);
   });
 });

@@ -338,11 +338,64 @@ test("a lost answer is never reported as 'your account is still here'", async ({
   await openDeleteScreen(page);
   await confirmButton(page).click();
   await expect(googleButton(page)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  // The provider's answer for a removed account is the same as for an expired session.
+  await expect(page.getByRole("alert")).toContainText("session ended");
   expect(await storedNames(uid)).toEqual([]);
   await expect.poll(() => cacheContains(page, "Saved in between")).toBe(false);
   await expect.poll(() => cacheContains(page, '"W"')).toBe(false);
 });
+
+const failRemovalBeforeItArrives = (page: Page) =>
+  page.route(/accounts:delete/, (route) => route.abort("connectionreset"));
+
+test("a failed removal never reaching the server does not skip the confirmation later", async ({
+  page,
+}) => {
+  const who = uniqueName("alive");
+  const uid = await signInAs(await openedPage(page), who);
+  await failRemovalBeforeItArrives(page);
+  await openDeleteScreen(page);
+  await confirmButton(page).click();
+  await expect(page.getByRole("alert")).toBeVisible({ timeout: 40_000 });
+  expect(await accountExists(uid)).toBe(true);
+  await page.unroute(/accounts:delete/);
+
+  await page.getByRole("button", { name: "Keep my account" }).click();
+  await saveWorkout(page, "Made later");
+  await eventually(() => storedNames(uid)).toEqual(["Made later"]);
+  await markSignInAsOld(page);
+  await openDeleteScreen(page);
+  const [popup] = await Promise.all([page.waitForEvent("popup"), confirmButton(page).click()]);
+  await popup.waitForLoadState();
+  expect(await storedNames(uid)).toEqual(["Made later"]);
+  await popup.close();
+  await expect(confirmButton(page)).toBeEnabled({ timeout: 30_000 });
+  expect(await storedNames(uid)).toEqual(["Made later"]);
+  expect(await accountExists(uid)).toBe(true);
+});
+
+for (const answer of ["TOKEN_EXPIRED", "INVALID_ID_TOKEN"]) {
+  test(`${answer} after a failed removal never reads as a finished deletion`, async ({ page }) => {
+    const uid = await signInAs(await openedPage(page), uniqueName("alive"));
+    await failRemovalBeforeItArrives(page);
+    await openDeleteScreen(page);
+    await confirmButton(page).click();
+    await expect(page.getByRole("alert")).toBeVisible({ timeout: 40_000 });
+    await page.unroute(/accounts:delete/);
+
+    await page.route(/accounts:delete/, (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { code: 400, message: answer } }),
+      }),
+    );
+    await confirmButton(page).click();
+    await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("alert")).toContainText("session ended");
+    expect(await accountExists(uid)).toBe(true);
+  });
+}
 
 const refuseRemovalAsStale = (page: Page) =>
   page.route(/accounts:delete/, (route) =>

@@ -24,7 +24,8 @@ export function isRecentSignIn(authTime: string, tokenIssuedAt: string): boolean
   return Date.parse(tokenIssuedAt) - Date.parse(authTime) < RECENT_MS;
 }
 
-export function meansAccountIsGone(code: string | undefined): boolean {
+/** The provider answers the same for a removed account and an expired session, so these prove neither. */
+export function meansSessionEnded(code: string | undefined): boolean {
   return (
     code === "auth/user-token-expired" ||
     code === "auth/user-not-found" ||
@@ -35,12 +36,13 @@ export function meansAccountIsGone(code: string | undefined): boolean {
 
 export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
   const auth = getAuth(firebaseApp());
-  // Kept across attempts, so one identity must serve every attempt for this account.
-  let removalAnswerLost = false;
+  // Kept across attempts, so one identity must serve every attempt for this account. Monotonic
+  // time, so a wrong device clock cannot extend it, and a sign-in only ever gets more recent.
+  let recentUntil = 0;
 
   /** Firebase signs out by itself for some of these codes, so the user always ends up signed out. */
   const endSession = async () => {
-    await signOut(auth);
+    if (auth.currentUser?.uid === userId) await signOut(auth);
     return new AuthFailure("sessionEnded");
   };
 
@@ -53,21 +55,24 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
 
   return {
     async isRecentlyConfirmed() {
-      // Asking the provider would end the session of an account already removed, and erasing still needs it.
-      if (removalAnswerLost) return true;
       const user = await signedInUser();
+      if (
+        import.meta.env.MODE === "emulator" &&
+        localStorage.getItem("sportime.test.staleSignIn") === "true"
+      ) {
+        return false;
+      }
+      // Asking again would end the session of an account a lost answer already removed, and erasing still needs it.
+      if (performance.now() < recentUntil) return true;
       try {
         // Forcing a new token is what makes its issue time the provider's current time.
         const { authTime, issuedAtTime } = await user.getIdTokenResult(true);
-        if (
-          import.meta.env.MODE === "emulator" &&
-          localStorage.getItem("sportime.test.staleSignIn") === "true"
-        ) {
-          return false;
-        }
-        return isRecentSignIn(authTime, issuedAtTime);
+        if (!isRecentSignIn(authTime, issuedAtTime)) return false;
+        recentUntil =
+          performance.now() + RECENT_MS - (Date.parse(issuedAtTime) - Date.parse(authTime));
+        return true;
       } catch (error) {
-        if (!meansAccountIsGone(errorCode(error))) throw toFailure(error);
+        if (!meansSessionEnded(errorCode(error))) throw toFailure(error);
         throw await endSession();
       }
     },
@@ -94,14 +99,8 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
       try {
         await deleteUser(user);
       } catch (error) {
-        if (!meansAccountIsGone(errorCode(error))) {
-          const failure = toFailure(error);
-          removalAnswerLost = failure.kind === "network";
-          throw failure;
-        }
-        // These codes also mean an expired session, so only a lost answer makes this the success it never saw.
-        if (!removalAnswerLost) throw await endSession();
-        await signOut(auth);
+        if (!meansSessionEnded(errorCode(error))) throw toFailure(error);
+        throw await endSession();
       }
     },
   };
