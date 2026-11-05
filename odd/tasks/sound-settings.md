@@ -11,7 +11,7 @@ The push and deploy of main (sportime-v1 T5) wait until this feature is done, by
 
 ## Tasks
 
-- [ ] T1 (S1-S4) Sound settings, announcements, settings screen, privacy notice. Route: inline, no writer trigger. Code done; waits on the user hearing the real voice.
+- [x] T1 (S1-S4) Sound settings, announcements, settings screen, privacy notice. Route: inline, no writer trigger. Evidence: 232 unit and 17 Chrome end-to-end tests; the user heard the real voice on a phone through the preview on 2026-11-05.
 
 ## Log
 
@@ -23,3 +23,4 @@ The push and deploy of main (sportime-v1 T5) wait until this feature is done, by
 - L6 (2026-11-05): "publica la rama en un canal de vista previa de Firebase Hosting". Built 34991c2 and deployed it to channel `sound-settings` on `sportime-4dc6e`: https://sportime-4dc6e--sound-settings-icmub5i8.web.app, answers 200, expires 2026-11-12. The live site, rules and `main` were not touched. Whether Google login is authorized on this domain is unverified. Next: the user tries the voice on a phone.
 - L7 (2026-11-05): "no estoy pudiendo ingresa desde el celular, este despues de dar en el boton continuar con google, me aparece para elegir mi cuenta y al hacerlo carga unos segundo y vuelve al inicio sin cuenta". Cause: `authDomainFor` gave preview channels the project auth domain, so the phone's redirect sign-in crossed domains. Fixed for this site's preview channels. Also found by asking Google directly: `https://sportime-4dc6e.web.app/__/auth/handler` and the preview's handler are refused with `redirect_uri_mismatch`; only the `firebaseapp.com` one is accepted. So sign-in on the live domain would also fail until the user adds those URIs to the OAuth client in Google Cloud. That blocks the pending deploy of main, whose `authDomainFor` has the same live-domain path. Risk: item 2 (auth domain).
 - L8 (2026-11-05): Independent verifier on 85c09ae: no blockers. Only `sportime-4dc6e--*` hosts behave differently from the parent. Not verified: whether another project could own a site named with that prefix; the consequence looks low, since authorized domains list exact hosts. `/__/auth/handler` answers 200 on any `web.app` host, so that status proves nothing. Waiting on the user's OAuth redirect URIs.
+- L9 (2026-11-05): "bien ya funciona y estoy probando los sonidos y funciona todo bien". Phone sign-in and the real voice work on the preview. The earlier `redirect_uri_mismatch` cleared with no further change, which fits propagation, though the cause was not confirmed. Not reported individually: the phone and browser used, English, and airplane mode. Next: merge, push and deploy with the user's OK.
