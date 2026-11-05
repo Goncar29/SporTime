@@ -3,6 +3,7 @@ import { createTimerController } from "../../timer/application/timerController";
 import { buildTimeline } from "../../workouts/domain/timeline";
 import { defaultConfig } from "../../workouts/domain/workout";
 import { recordFinishedSessions } from "./recordFinishedSessions";
+import { DEFAULT_SOUND_SETTINGS } from "../../timer/domain/soundSettings";
 
 function setup(add = vi.fn(() => Promise.resolve())) {
   let now = 1_000;
@@ -11,7 +12,9 @@ function setup(add = vi.fn(() => Promise.resolve())) {
   const controller = createTimerController({
     timeline: buildTimeline(config),
     clock,
-    cues: { unlock: vi.fn(), play: vi.fn() },
+    cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+    voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+    sound: DEFAULT_SOUND_SETTINGS,
     screenAwake: { acquire: vi.fn(), release: vi.fn() },
   });
   const onFailure = vi.fn();

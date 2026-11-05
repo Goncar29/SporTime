@@ -22,7 +22,9 @@ function setup({
   let now = 0;
   const timer = {
     clock: { now: () => now },
-    cues: { unlock: vi.fn(), play: vi.fn() },
+    cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+    voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+    soundStore: { get: () => null, set: vi.fn() },
     screenAwake: { acquire: vi.fn(), release: vi.fn() },
   };
   const store = { get: () => null, set: vi.fn() };
@@ -187,7 +189,9 @@ describe("App in Spanish", () => {
     vi.useFakeTimers();
     const timer = {
       clock: { now: () => 0 },
-      cues: { unlock: vi.fn(), play: vi.fn() },
+      cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+      voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+      soundStore: { get: () => null, set: vi.fn() },
       screenAwake: { acquire: vi.fn(), release: vi.fn() },
     };
     render(
@@ -511,5 +515,50 @@ describe("App account data", () => {
       click("History");
       expect(screen.getByRole("alert")).toHaveTextContent("couldn't load");
     });
+  });
+});
+
+describe("sound settings", () => {
+  const openSettings = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("heading", { name: "Sound settings" })).toBeVisible();
+  };
+  const option = (name: string) => screen.getByRole("switch", { name });
+
+  it("lists every option, starting with the voice off and its own options unavailable", () => {
+    setup();
+    openSettings();
+    expect(option("Voice announcements")).not.toBeChecked();
+    for (const name of ["10 seconds left", "Halfway", "Interval name"]) {
+      expect(option(name)).toBeDisabled();
+    }
+    expect(option("3-2-1 countdown")).toBeEnabled();
+    expect(option("3-2-1 countdown")).toBeChecked();
+    expect(option("Interval sound")).toBeEnabled();
+    expect(option("Interval sound")).toBeChecked();
+  });
+
+  it("saves a change at once and enables the voice's own options", () => {
+    const { timer } = setup();
+    openSettings();
+    fireEvent.click(option("Voice announcements"));
+    expect(timer.soundStore.set).toHaveBeenLastCalledWith(
+      expect.objectContaining({ voice: true, halfway: true }),
+    );
+    expect(option("Halfway")).toBeEnabled();
+    fireEvent.click(option("Halfway"));
+    expect(timer.soundStore.set).toHaveBeenLastCalledWith(
+      expect.objectContaining({ voice: true, halfway: false }),
+    );
+  });
+
+  it("starts a workout with the settings chosen, spoken in the app's language", () => {
+    const { timer } = setup();
+    timer.voice.canSpeak = () => true;
+    openSettings();
+    fireEvent.click(option("Voice announcements"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Start/ }));
+    expect(timer.voice.say).toHaveBeenLastCalledWith("Get ready", "en");
   });
 });

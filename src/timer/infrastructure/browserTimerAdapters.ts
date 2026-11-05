@@ -1,5 +1,5 @@
 import type { Cue } from "../domain/cues";
-import type { Clock, CuePlayer, ScreenAwake } from "../application/ports";
+import type { Clock, CuePlayer, ScreenAwake, VoicePlayer } from "../application/ports";
 
 /** Date.now keeps advancing while a device sleeps, unlike some monotonic clocks. */
 export const systemClock: Clock = { now: () => Date.now() };
@@ -58,6 +58,43 @@ export function createWebAudioCuePlayer(): CuePlayer {
       // Mobile browsers suspend audio after interruptions such as a phone call.
       if (context.state !== "running") void context.resume();
       for (const tone of TONES[cue]) playTone(context, tone);
+    },
+    vibrate(cue) {
+      navigator.vibrate?.(VIBRATION[cue]);
+    },
+  };
+}
+
+/** Replacing a phrase reports these, so they say nothing about the voice itself. */
+const HARMLESS_SPEECH_ERRORS = new Set(["canceled", "interrupted"]);
+
+export function createSystemVoice(): VoicePlayer {
+  const synthesis = (globalThis.speechSynthesis as SpeechSynthesis | undefined) ?? null;
+  let failed = false;
+  // Some browsers only start loading their voices when first asked.
+  synthesis?.getVoices();
+
+  const voiceFor = (language: string) =>
+    synthesis?.getVoices().find(({ lang }) => lang.toLowerCase().startsWith(language));
+
+  return {
+    unlock() {
+      synthesis?.speak(new SpeechSynthesisUtterance(""));
+    },
+    canSpeak(language) {
+      return !failed && voiceFor(language) !== undefined;
+    },
+    say(text, language) {
+      if (!synthesis) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = language;
+      utterance.voice = voiceFor(language) ?? null;
+      utterance.onerror = ({ error }) => {
+        if (!HARMLESS_SPEECH_ERRORS.has(error)) failed = true;
+      };
+      // A late phrase is worse than none: only the newest one is worth hearing.
+      synthesis.cancel();
+      synthesis.speak(utterance);
     },
   };
 }

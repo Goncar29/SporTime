@@ -1,0 +1,29 @@
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.option:has(:disabled) {
+  color: var(--muted);
+  cursor: default;
+}
+
+.switch {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  accent-color: var(--accent);
+}
+
+.note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 1.125rem;
+  font-weight: 600;
+}

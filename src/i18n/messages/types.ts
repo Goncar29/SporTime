@@ -1,3 +1,4 @@
+import type { SoundSettings } from "../../timer/domain/soundSettings";
 import type { PhaseKind } from "../../workouts/domain/timeline";
 import type { FieldId, WorkoutMode } from "../../workouts/domain/workout";
 
@@ -54,6 +55,13 @@ export interface Messages {
   loadHistoryFailed: string;
   back: string;
   loading: string;
+  settings: string;
+  soundSettings: string;
+  soundOptions: Record<keyof SoundSettings, string>;
+  voiceNote: string;
+  spokenTenSecondsLeft: string;
+  spokenHalfway: string;
+  spokenFinish: string;
   privacy: string;
   privacySections: readonly { heading: string; body: string }[];
   deleteAccount: string;

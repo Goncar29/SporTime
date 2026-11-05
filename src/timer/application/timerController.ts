@@ -1,8 +1,9 @@
 import { locate, type Phase, type Timeline } from "../../workouts/domain/timeline";
-import { BEFORE_START, latestCue } from "../domain/cues";
+import { BEFORE_START, finishEvent, latestEvent, type CueEvent } from "../domain/cues";
 import * as session from "../domain/session";
 import type { Mark, Session, SessionStatus } from "../domain/session";
-import type { Clock, CuePlayer, ScreenAwake } from "./ports";
+import { effectiveSound, type SoundSettings } from "../domain/soundSettings";
+import type { Announcer, Clock, CuePlayer, ScreenAwake } from "./ports";
 
 export interface TimerView {
   status: SessionStatus;
@@ -32,6 +33,8 @@ interface Dependencies {
   timeline: Timeline;
   clock: Clock;
   cues: CuePlayer;
+  voice: Announcer;
+  sound: SoundSettings;
   screenAwake: ScreenAwake;
 }
 
@@ -39,6 +42,8 @@ export function createTimerController({
   timeline,
   clock,
   cues,
+  voice,
+  sound,
   screenAwake,
 }: Dependencies): TimerController {
   let current: Session = session.createSession();
@@ -71,15 +76,27 @@ export function createTimerController({
     else screenAwake.release();
   };
 
+  const perform = ({ cue, tone, announcement }: CueEvent) => {
+    if (cue && tone) cues.play(cue);
+    else if (cue) cues.vibrate(cue);
+    if (announcement) voice.say(announcement);
+  };
+
+  const unlockSound = () => {
+    cues.unlock();
+    if (sound.voice) voice.unlock();
+  };
+
   /** Applies a transition, then derives every side effect from the new state. */
   const commit = (next: Session) => {
     const wasFinished = current.status === "finished";
     current = session.settle(next, timeline, clock.now());
 
     const positionMs = session.positionAt(current, clock.now());
-    const cue = latestCue(timeline, lastPositionMs, positionMs);
-    if (cue) cues.play(cue);
-    else if (current.status === "finished" && !wasFinished) cues.play("finish");
+    const active = effectiveSound(sound, () => voice.canSpeak());
+    const event = latestEvent(timeline, lastPositionMs, positionMs, active);
+    if (event) perform(event);
+    else if (current.status === "finished" && !wasFinished) perform(finishEvent(active));
     lastPositionMs = positionMs;
 
     setAwake(current.status === "running");
@@ -96,14 +113,14 @@ export function createTimerController({
       return () => listeners.delete(listener);
     },
     start() {
-      cues.unlock();
+      unlockSound();
       commit(session.start(current, clock.now()));
     },
     pause() {
       commit(session.pause(current, clock.now()));
     },
     resume() {
-      cues.unlock();
+      unlockSound();
       commit(session.resume(current, clock.now()));
     },
     skip() {

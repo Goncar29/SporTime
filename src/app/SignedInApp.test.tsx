@@ -24,7 +24,9 @@ function setup() {
   };
   const timer = {
     clock: { now: () => 0 },
-    cues: { unlock: vi.fn(), play: vi.fn() },
+    cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+    voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+    soundStore: { get: () => null, set: vi.fn() },
     screenAwake: { acquire: vi.fn(), release: vi.fn() },
   };
   const storesFor = (userId: string) => ({

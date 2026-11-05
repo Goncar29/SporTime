@@ -1,14 +1,24 @@
 import { useState, type ReactNode } from "react";
 import { DeleteAccountScreen } from "../account/ui/DeleteAccountScreen";
 import { PrivacyScreen } from "../account/ui/PrivacyScreen";
+import { SettingsScreen } from "../settings/ui/SettingsScreen";
 import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
 import { useI18n } from "../i18n/ui/I18nProvider";
 import { useLiveList } from "../shared/ui/useLiveList";
-import type { Clock, CuePlayer, ScreenAwake } from "../timer/application/ports";
+import type {
+  Announcer,
+  Clock,
+  CuePlayer,
+  ScreenAwake,
+  SoundSettingsStore,
+  VoicePlayer,
+} from "../timer/application/ports";
 import { createTimerController, type TimerController } from "../timer/application/timerController";
+import { parseSoundSettings } from "../timer/domain/soundSettings";
 import { TimerScreen } from "../timer/ui/TimerScreen";
+import { spokenPhrase } from "../timer/ui/spokenPhrase";
 import type { WorkoutLibrary } from "../workouts/application/ports";
 import { buildTimeline, type Timeline } from "../workouts/domain/timeline";
 import {
@@ -24,6 +34,8 @@ import styles from "./App.module.css";
 export interface TimerDependencies {
   clock: Clock;
   cues: CuePlayer;
+  voice: VoicePlayer;
+  soundStore: SoundSettingsStore;
   screenAwake: ScreenAwake;
 }
 
@@ -47,10 +59,11 @@ interface AppProps {
   account?: ReactNode;
 }
 
-type Screen = "setup" | "history" | "privacy" | "deleteAccount";
+type Screen = "setup" | "history" | "settings" | "privacy" | "deleteAccount";
 
 export function App({ timer, workouts, history, deleteAccount, account }: AppProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const [sound, setSound] = useState(() => parseSoundSettings(timer.soundStore.get()));
   const [configs, setConfigs] = useState(initialConfigs);
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("tabata");
   const [active, setActive] = useState<ActiveWorkout | null>(null);
@@ -65,7 +78,23 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
   const handleStart = () => {
     const config = configs[selectedMode];
     const timeline = buildTimeline(config);
-    const controller = createTimerController({ timeline, ...timer });
+    const voice: Announcer = {
+      unlock: () => {
+        timer.voice.unlock();
+      },
+      canSpeak: () => timer.voice.canSpeak(language),
+      say: (announcement) => {
+        timer.voice.say(spokenPhrase(t, announcement), language);
+      },
+    };
+    const controller = createTimerController({
+      timeline,
+      clock: timer.clock,
+      cues: timer.cues,
+      screenAwake: timer.screenAwake,
+      voice,
+      sound,
+    });
     recordFinishedSessions({
       controller,
       config,
@@ -101,6 +130,18 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
   };
 
   if (screen === "history") return <HistoryScreen log={history} onBack={backToSetup} />;
+  if (screen === "settings") {
+    return (
+      <SettingsScreen
+        sound={sound}
+        onChangeSound={(next) => {
+          setSound(next);
+          timer.soundStore.set(next);
+        }}
+        onBack={backToSetup}
+      />
+    );
+  }
   if (screen === "privacy") return <PrivacyScreen onBack={backToSetup} />;
   if (screen === "deleteAccount") {
     return <DeleteAccountScreen onDelete={deleteAccount} onBack={backToSetup} />;
@@ -148,6 +189,14 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
         <>
           {account}
           <nav className={styles.links}>
+            <button
+              className={styles.link}
+              onClick={() => {
+                setScreen("settings");
+              }}
+            >
+              {t.settings}
+            </button>
             <button
               className={styles.link}
               onClick={() => {

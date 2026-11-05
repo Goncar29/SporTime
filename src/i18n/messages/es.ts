@@ -80,6 +80,20 @@ export const es: Messages = {
   loadHistoryFailed: "No pudimos cargar tu historial.",
   back: "Volver",
   loading: "Cargando…",
+  settings: "Configuración",
+  soundSettings: "Ajuste de sonidos",
+  soundOptions: {
+    voice: "Avisos por voz",
+    countdown: "Cuenta 3-2-1",
+    tenSecondsLeft: "Quedan 10 segundos",
+    halfway: "Mitad",
+    intervalName: "Nombre de intervalo",
+    intervalSound: "Sonido de intervalo",
+  },
+  voiceNote: "La voz es la de tu dispositivo. Si no tiene ninguna disponible, escucharás tonos.",
+  spokenTenSecondsLeft: "Quedan 10 segundos",
+  spokenHalfway: "Mitad",
+  spokenFinish: "Entrenamiento terminado",
   privacy: "Privacidad",
   privacySections: [
     {
@@ -92,7 +106,7 @@ export const es: Messages = {
     },
     {
       heading: "En este dispositivo",
-      body: "Este navegador conserva tu nombre, correo y dirección de la foto hasta que cierres sesión, para que la app abra sin conexión. Tus entrenamientos guardados y sesiones terminadas siguen en este navegador después de cerrar sesión, hasta que elimines tu cuenta o borres los datos del navegador, así que evita iniciar sesión en un dispositivo compartido si eso te importa. También se conservan aquí tu idioma y lo que aún no se haya enviado.",
+      body: "Este navegador conserva tu nombre, correo y dirección de la foto hasta que cierres sesión, para que la app abra sin conexión. Tus entrenamientos guardados y sesiones terminadas siguen en este navegador después de cerrar sesión, hasta que elimines tu cuenta o borres los datos del navegador, así que evita iniciar sesión en un dispositivo compartido si eso te importa. También se conservan aquí tu idioma, tus ajustes de sonido y lo que aún no se haya enviado.",
     },
     {
       heading: "Lo que no hacemos",

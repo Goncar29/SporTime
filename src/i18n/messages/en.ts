@@ -73,6 +73,20 @@ export const en: Messages = {
   loadHistoryFailed: "We couldn't load your history.",
   back: "Back",
   loading: "Loading…",
+  settings: "Settings",
+  soundSettings: "Sound settings",
+  soundOptions: {
+    voice: "Voice announcements",
+    countdown: "3-2-1 countdown",
+    tenSecondsLeft: "10 seconds left",
+    halfway: "Halfway",
+    intervalName: "Interval name",
+    intervalSound: "Interval sound",
+  },
+  voiceNote: "The voice is your device's own. If it has none available, you'll hear tones instead.",
+  spokenTenSecondsLeft: "10 seconds left",
+  spokenHalfway: "Halfway",
+  spokenFinish: "Workout complete",
   privacy: "Privacy",
   privacySections: [
     {
@@ -85,7 +99,7 @@ export const en: Messages = {
     },
     {
       heading: "On this device",
-      body: "This browser keeps your name, email and photo address until you sign out, so the app opens without a connection. Your saved workouts and finished sessions stay in this browser after you sign out, until you delete your account or clear the browser's data, so avoid signing in on a device you share if that matters to you. Your language choice and anything not yet sent are kept here too.",
+      body: "This browser keeps your name, email and photo address until you sign out, so the app opens without a connection. Your saved workouts and finished sessions stay in this browser after you sign out, until you delete your account or clear the browser's data, so avoid signing in on a device you share if that matters to you. Your language choice, your sound settings and anything not yet sent are kept here too.",
     },
     {
       heading: "What we don't do",

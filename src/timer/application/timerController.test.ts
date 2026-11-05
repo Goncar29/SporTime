@@ -1,23 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { buildTimeline } from "../../workouts/domain/timeline";
 import { defaultConfig } from "../../workouts/domain/workout";
+import { DEFAULT_SOUND_SETTINGS, type SoundSettings } from "../domain/soundSettings";
 import { createTimerController } from "./timerController";
 
 const timeline = buildTimeline({ ...defaultConfig("tabata"), prepareSeconds: 5, rounds: 2 });
 
-function setup(workout = timeline) {
+function setup(workout = timeline, sound: SoundSettings = DEFAULT_SOUND_SETTINGS) {
   let now = 1_000;
-  const cues = { unlock: vi.fn(), play: vi.fn() };
+  const cues = { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() };
+  const voice = { unlock: vi.fn(), canSpeak: vi.fn(() => true), say: vi.fn() };
   const screenAwake = { acquire: vi.fn(), release: vi.fn() };
   const controller = createTimerController({
     timeline: workout,
     clock: { now: () => now },
     cues,
+    voice,
+    sound,
     screenAwake,
   });
   return {
     controller,
     cues,
+    voice,
     screenAwake,
     advanceTo(ms: number) {
       now = 1_000 + ms;
@@ -128,5 +133,59 @@ describe("timerController", () => {
     t.controller.start();
     t.controller.dispose();
     expect(t.screenAwake.release).toHaveBeenCalledOnce();
+  });
+
+  describe("with the voice on", () => {
+    const voiceOn = { ...DEFAULT_SOUND_SETTINGS, voice: true };
+
+    it("unlocks the voice from the user gesture, only when it is on", () => {
+      const on = setup(timeline, voiceOn);
+      on.controller.start();
+      expect(on.voice.unlock).toHaveBeenCalledOnce();
+      t.controller.start();
+      expect(t.voice.unlock).not.toHaveBeenCalled();
+    });
+
+    it("says each announcement once, and only vibrates where the tone is replaced", () => {
+      const on = setup(timeline, voiceOn);
+      on.controller.start();
+      expect(on.voice.say.mock.calls).toEqual([[{ kind: "phase", phase: "prepare" }]]);
+      on.advanceTo(2_000);
+      on.advanceTo(2_100);
+      expect(on.voice.say).toHaveBeenCalledTimes(2);
+      expect(on.voice.say).toHaveBeenLastCalledWith({ kind: "count", seconds: 3 });
+      expect(on.cues.vibrate).toHaveBeenCalledWith("tick");
+      expect(on.cues.play).not.toHaveBeenCalled();
+    });
+
+    it("goes back to tones for the rest of the workout once the voice cannot speak", () => {
+      const on = setup(timeline, voiceOn);
+      on.controller.start();
+      on.voice.canSpeak.mockReturnValue(false);
+      on.voice.say.mockClear();
+      on.advanceTo(2_000);
+      expect(on.cues.play).toHaveBeenLastCalledWith("tick");
+      expect(on.voice.say).not.toHaveBeenCalled();
+    });
+  });
+
+  it("makes no sound or speech for what is switched off, but still vibrates", () => {
+    const quiet = setup(timeline, { ...DEFAULT_SOUND_SETTINGS, intervalSound: false });
+    quiet.controller.start();
+    quiet.advanceTo(5_000);
+    expect(quiet.cues.play).not.toHaveBeenCalled();
+    expect(quiet.cues.vibrate).toHaveBeenLastCalledWith("work");
+    expect(quiet.voice.say).not.toHaveBeenCalled();
+  });
+
+  it("ending an open workout respects the settings too", () => {
+    const open = buildTimeline({ ...defaultConfig("stopwatch"), prepareSeconds: 0 });
+    const quiet = setup(open, { ...DEFAULT_SOUND_SETTINGS, voice: true, intervalSound: false });
+    quiet.controller.start();
+    quiet.voice.say.mockClear();
+    quiet.controller.skip();
+    expect(quiet.cues.play).not.toHaveBeenCalled();
+    expect(quiet.cues.vibrate).toHaveBeenLastCalledWith("finish");
+    expect(quiet.voice.say).toHaveBeenLastCalledWith({ kind: "finish" });
   });
 });

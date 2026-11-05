@@ -12,7 +12,9 @@ import type { HistoryDraft } from "./history/domain/historyEntry";
 import { localStorageLanguageStore } from "./i18n/infrastructure/localStorageLanguageStore";
 import { I18nProvider } from "./i18n/ui/I18nProvider";
 import type { SavedWorkoutDraft } from "./workouts/domain/savedWorkout";
+import { localStorageSoundSettingsStore } from "./timer/infrastructure/localStorageSoundSettingsStore";
 import {
+  createSystemVoice,
   createWakeLockScreenAwake,
   createWebAudioCuePlayer,
   systemClock,
@@ -24,6 +26,8 @@ if (!root) throw new Error("Root element not found");
 const timer = {
   clock: systemClock,
   cues: createWebAudioCuePlayer(),
+  voice: createSystemVoice(),
+  soundStore: localStorageSoundSettingsStore,
   screenAwake: createWakeLockScreenAwake(),
 };
 
