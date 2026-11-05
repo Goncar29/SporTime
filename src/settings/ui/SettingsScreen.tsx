@@ -11,11 +11,17 @@ const NEEDS_VOICE: ReadonlySet<keyof SoundSettings> = new Set([
 
 interface SettingsScreenProps {
   sound: SoundSettings;
+  voiceAvailable: boolean;
   onChangeSound(next: SoundSettings): void;
   onBack(): void;
 }
 
-export function SettingsScreen({ sound, onChangeSound, onBack }: SettingsScreenProps) {
+export function SettingsScreen({
+  sound,
+  voiceAvailable,
+  onChangeSound,
+  onBack,
+}: SettingsScreenProps) {
   const { t } = useI18n();
   return (
     <main className={accountStyles.page}>
@@ -43,6 +49,11 @@ export function SettingsScreen({ sound, onChangeSound, onBack }: SettingsScreenP
           </label>
         ))}
         <p className={styles.note}>{t.voiceNote}</p>
+        {sound.voice && !voiceAvailable && (
+          <p className={accountStyles.error} role="status">
+            {t.voiceUnavailable}
+          </p>
+        )}
       </section>
     </main>
   );

@@ -84,6 +84,8 @@ export const en: Messages = {
     intervalSound: "Interval sound",
   },
   voiceNote: "The voice is your device's own. If it has none available, you'll hear tones instead.",
+  voiceUnavailable:
+    "This browser has no voice for this language, so you'll hear tones instead. Try another browser or your phone.",
   spokenTenSecondsLeft: "10 seconds left",
   spokenHalfway: "Halfway",
   spokenFinish: "Workout complete",

@@ -134,6 +134,7 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
     return (
       <SettingsScreen
         sound={sound}
+        voiceAvailable={timer.voice.canSpeak(language)}
         onChangeSound={(next) => {
           setSound(next);
           timer.soundStore.set(next);

@@ -552,6 +552,19 @@ describe("sound settings", () => {
     );
   });
 
+  it("warns when the voice is on but this browser cannot speak the app's language", () => {
+    const { timer } = setup();
+    openSettings();
+    const warning = /no voice for this language/;
+    expect(screen.queryByText(warning)).toBeNull();
+    fireEvent.click(option("Voice announcements"));
+    expect(screen.getByRole("status")).toHaveTextContent(warning);
+
+    timer.voice.canSpeak = () => true;
+    fireEvent.click(option("Halfway"));
+    expect(screen.queryByText(warning)).toBeNull();
+  });
+
   it("starts a workout with the settings chosen, spoken in the app's language", () => {
     const { timer } = setup();
     timer.voice.canSpeak = () => true;

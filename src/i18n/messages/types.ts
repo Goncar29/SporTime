@@ -59,6 +59,7 @@ export interface Messages {
   soundSettings: string;
   soundOptions: Record<keyof SoundSettings, string>;
   voiceNote: string;
+  voiceUnavailable: string;
   spokenTenSecondsLeft: string;
   spokenHalfway: string;
   spokenFinish: string;
