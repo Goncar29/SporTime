@@ -1,14 +1,15 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 
 const PROJECT_AUTH_DOMAIN = "sportime-4dc6e.firebaseapp.com";
-const HOSTING_DOMAINS = ["sportime-4dc6e.web.app"];
+/** The live site and its preview channels, which Hosting names `<site>--<channel>-<hash>.web.app`. */
+const HOSTING_DOMAIN = /^sportime-4dc6e(--[a-z0-9-]+)?\.web\.app$/;
 
 /**
  * Serving the auth handler from the app's own domain keeps redirect sign-in
  * working in browsers that block third-party storage.
  */
 export function authDomainFor(hostname: string): string {
-  return HOSTING_DOMAINS.includes(hostname) ? hostname : PROJECT_AUTH_DOMAIN;
+  return HOSTING_DOMAIN.test(hostname) ? hostname : PROJECT_AUTH_DOMAIN;
 }
 
 /** These values identify the project and are public by design: access is enforced by security rules. */
