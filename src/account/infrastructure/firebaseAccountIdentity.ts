@@ -79,6 +79,8 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
     async confirm() {
       const user = await signedInUser();
       const provider = new GoogleAuthProvider();
+      // Without it, Google silently re-confirms a single signed-in account and deletion runs unchosen.
+      provider.setCustomParameters({ prompt: "select_account" });
       try {
         if (currentSignInMethod() === "redirect") {
           await reauthenticateWithRedirect(user, provider);
