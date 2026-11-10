@@ -7,5 +7,5 @@ export function createFakeHistoryLog(userId: string): HistoryLog {
     `sportime.fakeHistory.${userId}`,
     (a, b) => b.finishedAt - a.finishedAt,
   );
-  return { subscribe: list.subscribe, add: list.add };
+  return list;
 }

@@ -69,7 +69,7 @@
 
 .item {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 2px 12px;
   padding: 12px 14px;
   border-radius: 12px;
@@ -92,4 +92,24 @@
 .detail {
   color: var(--muted);
   font-size: 1.125rem;
+}
+
+.remove {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.remove:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }

@@ -375,20 +375,38 @@ describe("App account data", () => {
       expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     });
 
-    it("deletes a workout only after confirming", () => {
+    it("deletes a workout only after confirming in the app's own dialog", () => {
       setup();
       typeName("Leg day");
       click("Save");
       const confirm = vi.spyOn(window, "confirm");
 
-      confirm.mockReturnValueOnce(false);
       click("Delete Leg day");
+      const dialog = screen.getByRole("alertdialog", { name: 'Delete "Leg day"?' });
+      expect(dialog).toHaveTextContent("This cannot be undone.");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^Leg day/ })).toBeInTheDocument();
 
-      confirm.mockReturnValueOnce(true);
       click("Delete Leg day");
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+      );
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^Leg day/ })).not.toBeInTheDocument();
+      expect(confirm).not.toHaveBeenCalled();
       confirm.mockRestore();
+    });
+
+    it("closes the dialog with Escape and keeps the workout", () => {
+      setup();
+      typeName("Leg day");
+      click("Save");
+      click("Delete Leg day");
+      expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+      fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^Leg day/ })).toBeInTheDocument();
     });
 
     it("tells the user when a save is refused, and the timer still starts", async () => {
@@ -443,6 +461,45 @@ describe("App account data", () => {
       advance(65_000);
       click("Finish");
     };
+
+    it("deletes a finished session only after confirming", () => {
+      const { advance } = setup();
+      finishStopwatch(advance);
+      click("New workout");
+      click("History");
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+      click(/^Delete session/);
+      const dialog = screen.getByRole("alertdialog", { name: "Delete this session?" });
+      expect(dialog).toHaveTextContent("This cannot be undone.");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+      click(/^Delete session/);
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+      );
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+      expect(screen.getByText("No finished workouts yet.")).toBeInTheDocument();
+    });
+
+    it("tells the user when a session cannot be deleted, and keeps it listed", async () => {
+      const fake = createFakeHistoryLog("test");
+      const { advance } = setup({
+        history: { ...fake, remove: () => Promise.reject(new Error("denied")) },
+      });
+      finishStopwatch(advance);
+      click("New workout");
+      click("History");
+      click(/^Delete session/);
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+      );
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent("We couldn't delete that session.");
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    });
 
     it("starts empty", () => {
       setup();

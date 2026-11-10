@@ -6,4 +6,6 @@ export interface HistoryLog {
   subscribe: SubscribeToList<HistoryEntry>;
   /** Settles when the server answers, which never happens offline, so callers must not wait for it. */
   add(draft: HistoryDraft): Promise<void>;
+  /** Settles when the server answers; the entry disappears from the list right away. */
+  remove(id: string): Promise<void>;
 }

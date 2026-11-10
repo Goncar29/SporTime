@@ -16,7 +16,7 @@ Engram mirror: unavailable in this session (no memory tools callable); this file
 
 - [x] T1 (S1) Deletion re-confirmation shows the account chooser. Route: inline. Risk: item 1 and item 2. Evidence: RED `{}` vs `{ prompt: "select_account" }` for popup and redirect fallback, then GREEN; typecheck 0; `vp check` 0 errors. Commit: see L5.
 - [x] T2 (S2) Contact email in the privacy notice (both languages). Route: inline. Evidence: RED (no "Contact" heading), then GREEN; App and i18n tests 54 of 54, typecheck 0, `vp check` 0 errors. Commit: feat(account) privacy contact.
-- [ ] T3 (S3) Delete button with a confirmation modal in the history list. Route: inline. Risk: item 1 (deleting stored data, requested).
+- [x] T3 (S3) Delete button with a confirmation modal in History and Saved workouts. Route: inline. Risk: item 1 (deleting stored data, requested; rules already allow owner delete). Evidence: 4 RED, then App and i18n 57 of 57, typecheck 0, `vp check` 0 errors. Emulator e2e `data.spec.ts` updated for the dialog but not run here (no Java). Commit: feat(history) delete with confirmation.
 - [ ] T4 (S4) Server cleanup on account deletion. Route: inline. Risk: item 1 and item 5. Needs the user to enable Blaze; deploy only with the user's OK.
 - [ ] T5 (S5) Fix `vp check` warnings. Route: inline.
 - [ ] T6 (S6) Custom interval names. Route: inline. Needs product decisions first.

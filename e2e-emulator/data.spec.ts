@@ -69,8 +69,8 @@ test("a stalled sign-in check loses nothing and invents nothing", async ({ page,
   await saveWorkout(page, "During stall");
   await expect(savedButton(page, "During stall")).toBeVisible();
   await saveWorkout(page, "Changed my mind");
-  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Delete Changed my mind" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
   await expect(savedButton(page, "Changed my mind")).toHaveCount(0);
   await finishStopwatch(page);
 

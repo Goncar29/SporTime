@@ -47,6 +47,12 @@ export interface Messages {
   noSavedWorkouts: string;
   deleteWorkout(name: string): string;
   confirmDeleteWorkout(name: string): string;
+  confirmDelete: string;
+  cancel: string;
+  cannotBeUndone: string;
+  deleteSession(when: string): string;
+  confirmDeleteSession: string;
+  deleteSessionFailed: string;
   saveFailed: string;
   sessionSaveFailed: string;
   loadWorkoutsFailed: string;

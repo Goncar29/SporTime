@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocFromCache,
   limit,
@@ -51,5 +52,13 @@ export function createFirestoreHistoryLog(
     },
   });
 
-  return { subscribe: outbox.subscribe, add: outbox.add };
+  return {
+    subscribe: outbox.subscribe,
+    add: outbox.add,
+    async remove(id) {
+      outbox.cancel(id);
+      // Also covers a write that was already on its way when it was cancelled.
+      await deleteDoc(doc(history, id));
+    },
+  };
 }

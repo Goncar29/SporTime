@@ -5,6 +5,7 @@ import {
   normalizeWorkoutName,
   type SavedWorkout,
 } from "../domain/savedWorkout";
+import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import styles from "./SavedWorkouts.module.css";
 
 interface SavedWorkoutsProps {
@@ -28,6 +29,7 @@ export function SavedWorkouts({
   const { t } = useI18n();
   const [draftName, setDraftName] = useState("");
   const name = normalizeWorkoutName(draftName);
+  const [pending, setPending] = useState<SavedWorkout | null>(null);
 
   return (
     <section className={styles.section} aria-label={t.savedWorkouts}>
@@ -87,7 +89,7 @@ export function SavedWorkouts({
                 className={styles.remove}
                 aria-label={t.deleteWorkout(workout.name)}
                 onClick={() => {
-                  if (window.confirm(t.confirmDeleteWorkout(workout.name))) onRemove(workout);
+                  setPending(workout);
                 }}
               >
                 ×
@@ -95,6 +97,19 @@ export function SavedWorkouts({
             </li>
           ))}
         </ul>
+      )}
+
+      {pending && (
+        <ConfirmDialog
+          title={t.confirmDeleteWorkout(pending.name)}
+          onConfirm={() => {
+            setPending(null);
+            onRemove(pending);
+          }}
+          onCancel={() => {
+            setPending(null);
+          }}
+        />
       )}
     </section>
   );
