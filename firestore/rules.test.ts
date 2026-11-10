@@ -270,4 +270,34 @@ describe("round names", () => {
   it("are rejected in modes without rounds", async () => {
     await assertFails(save({ ...defaultConfig("amrap"), roundNames: "Burpees" }));
   });
+
+  it("accept the most rounds of the longest accented or emoji names, in both collections", async () => {
+    const rounds = LIMITS.rounds.max;
+    for (const name of [
+      "é".repeat(MAX_ROUND_NAME_LENGTH),
+      "💪".repeat(MAX_ROUND_NAME_LENGTH / 2),
+    ]) {
+      const most = { ...config, rounds, roundNames: lines(rounds, name) };
+      await assertSucceeds(save(most));
+      await assertSucceeds(add(most));
+    }
+  });
+
+  it("are rejected for stopwatch, For Time and AMRAP in both collections", async () => {
+    for (const mode of ["stopwatch", "forTime", "amrap"] as const) {
+      const withNames = { ...defaultConfig(mode), roundNames: "Burpees" };
+      await assertFails(save(withNames));
+      await assertFails(add(withNames));
+    }
+  });
+
+  it("cannot be added to a document already saved", async () => {
+    for (const [path, data] of [
+      [workoutPath("alice"), workout],
+      [entryPath("alice"), entry],
+    ] as const) {
+      await seed(path, data);
+      await assertFails(updateDoc(doc(asUser("alice"), path), { "config.roundNames": "Burpees" }));
+    }
+  });
 });

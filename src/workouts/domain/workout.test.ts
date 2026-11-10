@@ -148,3 +148,73 @@ describe("round names", () => {
     expect(sanitizeConfig("amrap", { roundNames: ["Burpees"] })).toEqual(defaultConfig("amrap"));
   });
 });
+
+describe("parseConfig round names", () => {
+  const tabata = defaultConfig("tabata");
+
+  it("reads them as Firestore stores them, one per line", () => {
+    expect(parseConfig({ ...tabata, roundNames: "Burpees\n\nSquats" })).toEqual({
+      ...tabata,
+      roundNames: ["Burpees", "", "Squats"],
+    });
+  });
+
+  it("reads them as the outbox keeps them, as a list", () => {
+    expect(parseConfig({ ...tabata, roundNames: ["Burpees", "", "Squats"] })).toEqual({
+      ...tabata,
+      roundNames: ["Burpees", "", "Squats"],
+    });
+  });
+
+  it("gives the config without names when the field is missing", () => {
+    const parsed = parseConfig(tabata);
+    expect(parsed).toEqual(tabata);
+    expect(parsed).not.toHaveProperty("roundNames");
+  });
+
+  it("gives the config without names for anything that is not names", () => {
+    for (const roundNames of [7, null, { 0: "Burpees" }, true, [7, {}], "", "\n\n"]) {
+      const parsed = parseConfig({ ...tabata, roundNames });
+      expect(parsed).toEqual(tabata);
+      expect(parsed).not.toHaveProperty("roundNames");
+    }
+  });
+
+  it("cuts names past the last round", () => {
+    const twoRounds = { ...tabata, rounds: 2 };
+    expect(parseConfig({ ...twoRounds, roundNames: "A\nB\nC\nD" })?.roundNames).toEqual(["A", "B"]);
+    expect(parseConfig({ ...twoRounds, roundNames: ["A", "B", "C"] })?.roundNames).toEqual([
+      "A",
+      "B",
+    ]);
+  });
+
+  it("drops them in AMRAP, which has no rounds of work", () => {
+    const amrap = defaultConfig("amrap");
+    expect(parseConfig({ ...amrap, roundNames: "Burpees" })).toEqual(amrap);
+    expect(parseConfig({ ...amrap, roundNames: ["Burpees"] })).toEqual(amrap);
+  });
+
+  it("treats a name with a control character as unnamed", () => {
+    expect(parseConfig({ ...tabata, roundNames: "Push\u0007ups\nSquats" })?.roundNames).toEqual([
+      "",
+      "Squats",
+    ]);
+    expect(parseConfig({ ...tabata, roundNames: ["Push\tups", "Squats"] })?.roundNames).toEqual([
+      "",
+      "Squats",
+    ]);
+  });
+
+  it("round-trips a config through toStoredConfig unchanged", () => {
+    const configs = [
+      tabata,
+      { ...tabata, rounds: 4, roundNames: ["Burpees", "", "Sentadillas 💪", "Ñandú"] },
+      { ...defaultConfig("emom"), roundNames: ["", "Row"] },
+      { ...defaultConfig("intervals"), roundNames: ["é".repeat(24)] },
+    ];
+    for (const config of configs) {
+      expect(parseConfig(toStoredConfig(config))).toEqual(config);
+    }
+  });
+});
