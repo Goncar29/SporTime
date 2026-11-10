@@ -8,7 +8,7 @@ Engram mirror: unavailable in this session (no memory tools callable); this file
 - S2. Privacy notice contact: "carlosngonzalez0@gmail.com".
 - S3. Skipped phases: "dejarlo como un entrenamiento mas pero pongamos en la lista de los entrenamientos un boton de borrar por si el usuario quiera y que aparezca un modal de aviso por si lo quiere hacer realmente"
   Refined in L5: both History and Saved workouts get the modal; Saved workouts replaces its browser confirm.
-- S4. Orphan data after deletion from another tab or device: "Limpieza en servidor" (a Cloud Function that erases the user's data when the account is deleted; needs the Blaze plan and a functions deploy).
+- S4. Orphan data after deletion from another tab or device: first "Limpieza en servidor", then (L7) "prefieron no hacerlo". No server cleanup; the privacy notice keeps warning to close other tabs and devices first.
 - S5. "Corregir las 77 advertencias" of `vp check`.
 - S6. "Nombres de intervalo propios": "Un nombre por ronda" (shown and spoken for the work phase of each round; rests keep their default names); an unnamed round uses "El nombre por defecto".
 
@@ -17,7 +17,7 @@ Engram mirror: unavailable in this session (no memory tools callable); this file
 - [x] T1 (S1) Deletion re-confirmation shows the account chooser. Route: inline. Risk: item 1 and item 2. Evidence: RED `{}` vs `{ prompt: "select_account" }` for popup and redirect fallback, then GREEN; typecheck 0; `vp check` 0 errors. Commit: see L5.
 - [x] T2 (S2) Contact email in the privacy notice (both languages). Route: inline. Evidence: RED (no "Contact" heading), then GREEN; App and i18n tests 54 of 54, typecheck 0, `vp check` 0 errors. Commit: feat(account) privacy contact.
 - [x] T3 (S3) Delete button with a confirmation modal in History and Saved workouts. Route: inline. Risk: item 1 (deleting stored data, requested; rules already allow owner delete). Evidence: 4 RED, then App and i18n 57 of 57, typecheck 0, `vp check` 0 errors. Emulator e2e `data.spec.ts` updated for the dialog but not run here (no Java). Commit: feat(history) delete with confirmation.
-- [ ] T4 (S4) Server cleanup on account deletion. Route: inline. Risk: item 1 and item 5. Needs the user to enable Blaze; deploy only with the user's OK.
+- [-] T4 (S4) Server cleanup on account deletion. Dropped by the user (L7); the existing privacy notice text stays.
 - [ ] T5 (S5) Fix `vp check` warnings. Route: inline.
 - [ ] T6 (S6) Custom interval names. Route: inline. Needs product decisions first.
 
@@ -29,3 +29,4 @@ Engram mirror: unavailable in this session (no memory tools callable); this file
 - L4 (2026-11-10): Environment: global `core.autocrlf=true` checked the files out with CRLF, so `vp check` flagged formatting on every file. Set repo-local `core.autocrlf=false` and `core.eol=lf` and converted the working tree to LF; content diff unchanged. Binary icons briefly touched by the conversion were restored from Git and verified as PNG. On this machine the full suite times out 4 UI tests at 5 s (App, SignedInApp); the same files pass with `--testTimeout=30000` (46 of 46), so they are load timeouts, not regressions.
 - L5 (2026-11-10): Answers: delete with a modal in both "Historial" and "Entrenamientos guardados" (replacing `window.confirm`); interval names "Un nombre por ronda" (the work phase of each round; rests keep their default name); an unnamed round uses "El nombre por defecto". T1 committed.
 - L6 (2026-11-10): Slice boundary: T1 4fa634d, T2 86fb63c, T3 64a7ff2 close the first review slice (~417 authored lines). T3 raised `vp check` warnings from 77 to 80; T5 runs last so it also covers the new ones. T6 delegated to gentle-ai-worker (task mwb16nkr-3-u987). T4 waits on the user enabling Blaze.
+- L7 (2026-11-10): "prefieron no hacerlo" (on enabling Blaze for the server cleanup). T4 dropped; no Cloud Function. Independent verifier on T1-T3 running (task mwb185qi-4-lf7g), required by the item 2 escalation in assess.
