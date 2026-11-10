@@ -119,6 +119,8 @@ export const es: Messages = {
       body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
     },
   ],
+  privacyContactHeading: "Contacto",
+  privacyContactBody: "Para consultas sobre tus datos, o para pedirnos que los borremos, escribe a",
   deleteAccount: "Eliminar cuenta",
   deleteAccountWarning:
     "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas. No se puede deshacer.",

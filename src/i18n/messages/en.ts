@@ -112,6 +112,8 @@ export const en: Messages = {
       body: "Delete account, on the main screen, permanently removes your account, your saved workouts and your finished sessions. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
     },
   ],
+  privacyContactHeading: "Contact",
+  privacyContactBody: "For questions about your data, or to ask us to remove it, write to",
   deleteAccount: "Delete account",
   deleteAccountWarning:
     "This permanently removes your account, your saved workouts and your finished sessions. It cannot be undone.",

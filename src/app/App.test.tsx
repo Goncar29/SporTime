@@ -252,6 +252,16 @@ describe("App account data", () => {
       click("Back");
       expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
     });
+
+    it("names who to contact about the data, with a link that writes to them", () => {
+      setup();
+      click("Privacy");
+      const notice = screen.getByRole("main");
+      expect(within(notice).getByRole("heading", { name: "Contact" })).toBeInTheDocument();
+      expect(
+        within(notice).getByRole("link", { name: "carlosngonzalez0@gmail.com" }),
+      ).toHaveAttribute("href", "mailto:carlosngonzalez0@gmail.com");
+    });
   });
 
   describe("deleting the account", () => {

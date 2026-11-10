@@ -65,6 +65,9 @@ export interface Messages {
   spokenFinish: string;
   privacy: string;
   privacySections: readonly { heading: string; body: string }[];
+  privacyContactHeading: string;
+  /** Shown before the contact email, which is not translated. */
+  privacyContactBody: string;
   deleteAccount: string;
   deleteAccountWarning: string;
   deleteAccountConfirmNote: string;
