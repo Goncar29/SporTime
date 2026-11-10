@@ -6,38 +6,38 @@ export interface Pending<Draft> {
 }
 
 export interface OutboxStore<Draft> {
-  load(): Pending<Draft>[];
-  save(items: Pending<Draft>[]): void;
+  load: () => Pending<Draft>[];
+  save: (items: Pending<Draft>[]) => void;
 }
 
 export interface DurableCollection<T, Draft> {
   subscribe: SubscribeToList<T>;
-  newId(): string;
+  newId: () => string;
   /** Settles when the server answers, which never happens offline. */
-  put(id: string, draft: Draft): Promise<void>;
+  put: (id: string, draft: Draft) => Promise<void>;
   /** Answers from the local cache, including writes still waiting for the server. */
-  has(id: string): Promise<boolean>;
+  has: (id: string) => Promise<boolean>;
 }
 
 interface Options<T, Draft> {
   collection: DurableCollection<T, Draft>;
   store: OutboxStore<Draft>;
-  parse(id: string, draft: unknown): T | null;
-  newestFirst(a: T, b: T): number;
+  parse: (id: string, draft: unknown) => T | null;
+  newestFirst: (a: T, b: T) => number;
   /** Resolves true once the collection can accept writes for this account. */
-  whenReady(): Promise<boolean>;
+  whenReady: () => Promise<boolean>;
 }
 
 export interface Outbox<T, Draft> {
   subscribe: SubscribeToList<T>;
   /** Durable as soon as it returns. Settles when the server answers, so callers must not wait for it. */
-  add(draft: Draft): Promise<void>;
-  cancel(id: string): void;
+  add: (draft: Draft) => Promise<void>;
+  cancel: (id: string) => void;
 }
 
 interface Waiter {
-  resolve(): void;
-  reject(error: unknown): void;
+  resolve: () => void;
+  reject: (error: unknown) => void;
 }
 
 /**

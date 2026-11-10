@@ -13,7 +13,7 @@ interface TimerScreenProps {
   mode: WorkoutMode;
   timeline: Timeline;
   controller: TimerController;
-  onExit(): void;
+  onExit: () => void;
 }
 
 export function TimerScreen({ mode, timeline, controller, onExit }: TimerScreenProps) {
@@ -52,11 +52,11 @@ interface ActiveTimerProps {
   mode: WorkoutMode;
   next: Phase | undefined;
   view: TimerView;
-  onPause(): void;
-  onResume(): void;
-  onSkip(): void;
-  onMark(): void;
-  onExit(): void;
+  onPause: () => void;
+  onResume: () => void;
+  onSkip: () => void;
+  onMark: () => void;
+  onExit: () => void;
 }
 
 function ActiveTimer({
@@ -157,8 +157,8 @@ interface FinishedSummaryProps {
   mode: WorkoutMode;
   timeline: Timeline;
   view: TimerView;
-  onAgain(): void;
-  onExit(): void;
+  onAgain: () => void;
+  onExit: () => void;
 }
 
 function FinishedSummary({ mode, timeline, view, onAgain, onExit }: FinishedSummaryProps) {

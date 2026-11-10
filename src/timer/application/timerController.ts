@@ -17,16 +17,16 @@ export interface TimerView {
 }
 
 export interface TimerController {
-  getView(): TimerView;
-  subscribe(listener: () => void): () => void;
-  start(): void;
-  pause(): void;
-  resume(): void;
-  skip(): void;
-  mark(): void;
-  reset(): void;
-  tick(): void;
-  dispose(): void;
+  getView: () => TimerView;
+  subscribe: (listener: () => void) => () => void;
+  start: () => void;
+  pause: () => void;
+  resume: () => void;
+  skip: () => void;
+  mark: () => void;
+  reset: () => void;
+  tick: () => void;
+  dispose: () => void;
 }
 
 interface Dependencies {

@@ -56,7 +56,7 @@ interface AppProps {
   timer: TimerDependencies;
   workouts: WorkoutLibrary;
   history: HistoryLog;
-  deleteAccount(): Promise<void>;
+  deleteAccount: () => Promise<void>;
   account?: ReactNode;
 }
 

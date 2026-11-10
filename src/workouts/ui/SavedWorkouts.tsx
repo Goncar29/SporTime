@@ -12,10 +12,10 @@ interface SavedWorkoutsProps {
   /** Null until the first answer arrives. */
   workouts: readonly SavedWorkout[] | null;
   errors: readonly string[];
-  onSave(name: string): void;
-  onLoad(workout: SavedWorkout): void;
-  onRemove(workout: SavedWorkout): void;
-  onOpenHistory(): void;
+  onSave: (name: string) => void;
+  onLoad: (workout: SavedWorkout) => void;
+  onRemove: (workout: SavedWorkout) => void;
+  onOpenHistory: () => void;
 }
 
 export function SavedWorkouts({

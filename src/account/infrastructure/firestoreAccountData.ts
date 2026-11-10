@@ -17,7 +17,7 @@ interface Dependencies {
   db: Firestore;
   userId: string;
   /** Drops writes not yet handed to Firestore, so none can recreate data after erasing. */
-  discardPendingWrites(): void;
+  discardPendingWrites: () => void;
 }
 
 async function eraseCollection(

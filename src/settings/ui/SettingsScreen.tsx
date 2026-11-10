@@ -12,8 +12,8 @@ const NEEDS_VOICE: ReadonlySet<keyof SoundSettings> = new Set([
 interface SettingsScreenProps {
   sound: SoundSettings;
   voiceAvailable: boolean;
-  onChangeSound(next: SoundSettings): void;
-  onBack(): void;
+  onChangeSound: (next: SoundSettings) => void;
+  onBack: () => void;
 }
 
 export function SettingsScreen({

@@ -42,7 +42,7 @@ function setup() {
     </I18nProvider>,
   );
   return {
-    switchTo(id: string) {
+    switchTo: (id: string) => {
       act(() => {
         report(person(id));
       });

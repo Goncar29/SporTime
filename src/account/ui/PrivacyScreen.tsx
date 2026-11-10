@@ -5,7 +5,7 @@ import styles from "./AccountScreens.module.css";
 const CONTACT_EMAIL = "carlosngonzalez0@gmail.com";
 
 interface PrivacyScreenProps {
-  onBack(): void;
+  onBack: () => void;
 }
 
 export function PrivacyScreen({ onBack }: PrivacyScreenProps) {

@@ -10,7 +10,7 @@ import styles from "./HistoryScreen.module.css";
 
 interface HistoryScreenProps {
   log: HistoryLog;
-  onBack(): void;
+  onBack: () => void;
 }
 
 export function HistoryScreen({ log, onBack }: HistoryScreenProps) {

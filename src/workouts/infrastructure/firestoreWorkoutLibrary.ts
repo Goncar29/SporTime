@@ -21,7 +21,7 @@ import { toStoredConfig } from "../domain/workout";
 
 interface Durability {
   store: OutboxStore<SavedWorkoutDraft>;
-  whenReady(): Promise<boolean>;
+  whenReady: () => Promise<boolean>;
 }
 
 export function createFirestoreWorkoutLibrary(

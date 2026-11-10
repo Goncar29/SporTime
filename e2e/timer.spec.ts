@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     window.tones = 0;
     window.wakeLocks = 0;
+    // oxlint-disable-next-line typescript/unbound-method -- called below with apply(this), so it keeps the node as this
     const start = OscillatorNode.prototype.start;
     OscillatorNode.prototype.start = function (...args) {
       window.tones += 1;

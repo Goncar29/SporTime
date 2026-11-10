@@ -7,7 +7,7 @@ import type { Messages } from "../messages/types";
 interface I18n {
   language: Language;
   t: Messages;
-  setLanguage(language: Language): void;
+  setLanguage: (language: Language) => void;
 }
 
 const I18nContext = createContext<I18n | null>(null);

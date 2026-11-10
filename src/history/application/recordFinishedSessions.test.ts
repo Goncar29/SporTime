@@ -24,7 +24,7 @@ function setup(add = vi.fn(() => Promise.resolve())) {
     config,
     controller,
     onFailure,
-    advance(ms: number) {
+    advance: (ms: number) => {
       now += ms;
       controller.tick();
     },

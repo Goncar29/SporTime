@@ -32,7 +32,9 @@ export async function accountExists(uid: string): Promise<boolean> {
 }
 
 export const storedNames = async (uid: string) =>
-  (await stored(uid, "workouts")).map(({ fields }) => fields.name?.stringValue).sort();
+  (await stored(uid, "workouts"))
+    .map(({ fields }) => fields.name?.stringValue)
+    .sort((a = "", b = "") => (a < b ? -1 : a > b ? 1 : 0));
 
 /** A new account each time: a late write from one test can never reach another. */
 let accounts = 0;

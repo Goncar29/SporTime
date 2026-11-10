@@ -8,9 +8,9 @@ import styles from "./AuthGate.module.css";
 
 interface Auth {
   user: User;
-  signOut(): void;
+  signOut: () => void;
   /** For a failure that ends the session, whose own screen is gone by the time it arrives. */
-  reportFailure(kind: AuthFailureKind): void;
+  reportFailure: (kind: AuthFailureKind) => void;
 }
 
 const AuthContext = createContext<Auth | null>(null);
@@ -105,7 +105,7 @@ export function AuthGate({ gateway, children }: AuthGateProps) {
 interface SignInScreenProps {
   signingIn: boolean;
   failure: AuthFailureKind | null;
-  onSignIn(): void;
+  onSignIn: () => void;
 }
 
 function SignInScreen({ signingIn, failure, onSignIn }: SignInScreenProps) {

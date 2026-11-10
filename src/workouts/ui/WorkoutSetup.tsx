@@ -17,9 +17,9 @@ import styles from "./WorkoutSetup.module.css";
 
 interface WorkoutSetupProps {
   config: WorkoutConfig;
-  onSelectMode(mode: WorkoutMode): void;
-  onChange(config: WorkoutConfig): void;
-  onStart(): void;
+  onSelectMode: (mode: WorkoutMode) => void;
+  onChange: (config: WorkoutConfig) => void;
+  onStart: () => void;
   library?: ReactNode;
   account?: ReactNode;
 }
@@ -148,7 +148,7 @@ function RoundNames({ rounds, names, onChange }: RoundNamesProps) {
 interface StepperProps {
   field: FieldDefinition;
   value: number;
-  onChange(value: number): void;
+  onChange: (value: number) => void;
 }
 
 function Stepper({ field, value, onChange }: StepperProps) {

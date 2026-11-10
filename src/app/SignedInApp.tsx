@@ -8,12 +8,12 @@ import { App, type TimerDependencies } from "./App";
 export interface UserStores {
   workouts: WorkoutLibrary;
   history: HistoryLog;
-  deleteAccount(): Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 interface SignedInAppProps {
   timer: TimerDependencies;
-  storesFor(userId: string): UserStores;
+  storesFor: (userId: string) => UserStores;
   account?: ReactNode;
 }
 

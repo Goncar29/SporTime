@@ -4,8 +4,8 @@ import { useI18n } from "../../i18n/ui/I18nProvider";
 import styles from "./AccountScreens.module.css";
 
 interface DeleteAccountScreenProps {
-  onDelete(): Promise<void>;
-  onBack(): void;
+  onDelete: () => Promise<void>;
+  onBack: () => void;
 }
 
 const keepIfDataErased = (current: AuthFailureKind | null) =>

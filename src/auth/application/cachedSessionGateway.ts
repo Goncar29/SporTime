@@ -2,9 +2,9 @@ import type { User } from "../domain/user";
 import type { AuthGateway } from "./ports";
 
 export interface SessionSnapshotStore {
-  get(): User | null;
-  set(user: User): void;
-  clear(): void;
+  get: () => User | null;
+  set: (user: User) => void;
+  clear: () => void;
 }
 
 /**

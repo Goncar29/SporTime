@@ -2,8 +2,8 @@ import type { SubscribeToList } from "../application/liveList";
 
 export interface FakeStoredList<T, Draft> {
   subscribe: SubscribeToList<T>;
-  add(draft: Draft): Promise<void>;
-  remove(id: string): Promise<void>;
+  add: (draft: Draft) => Promise<void>;
+  remove: (id: string) => Promise<void>;
 }
 
 /** Tests only: stands in for Firestore, which end-to-end tests cannot reach. Never part of a production build. */

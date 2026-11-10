@@ -20,7 +20,7 @@ const VISIBLE_ENTRIES = 100;
 
 interface Durability {
   store: OutboxStore<HistoryDraft>;
-  whenReady(): Promise<boolean>;
+  whenReady: () => Promise<boolean>;
 }
 
 export function createFirestoreHistoryLog(
