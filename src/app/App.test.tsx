@@ -35,7 +35,7 @@ function setup({
   );
   return {
     timer,
-    advance(ms: number) {
+    advance: (ms: number) => {
       act(() => {
         now += ms;
         vi.advanceTimersByTime(100);
@@ -615,6 +615,74 @@ describe("App account data", () => {
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(screen.queryAllByRole("listitem")).toHaveLength(0);
       expect(screen.getByText("No finished workouts yet.")).toBeInTheDocument();
+    });
+
+    const openDeleteSession = () => {
+      const opener = screen.getByRole("button", { name: /^Delete session/ });
+      // A browser focuses a button it clicks; jsdom does not.
+      opener.focus();
+      fireEvent.click(opener);
+      return opener;
+    };
+
+    it("gives focus back to the delete button when the dialog closes", () => {
+      const { advance } = setup();
+      finishStopwatch(advance);
+      click("New workout");
+      click("History");
+
+      const opener = openDeleteSession();
+      expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+      click("Cancel");
+      expect(opener).toHaveFocus();
+
+      openDeleteSession();
+      fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(opener).toHaveFocus();
+    });
+
+    it("keeps Tab inside the dialog", () => {
+      const { advance } = setup();
+      finishStopwatch(advance);
+      click("New workout");
+      click("History");
+      openDeleteSession();
+      const dialog = screen.getByRole("alertdialog");
+      const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+      const remove = within(dialog).getByRole("button", { name: "Delete" });
+
+      remove.focus();
+      fireEvent.keyDown(remove, { key: "Tab" });
+      expect(cancel).toHaveFocus();
+      fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+      expect(remove).toHaveFocus();
+    });
+
+    it("closes with Escape even when focus has left the dialog", () => {
+      const { advance } = setup();
+      finishStopwatch(advance);
+      click("New workout");
+      click("History");
+      openDeleteSession();
+      (document.activeElement as HTMLElement).blur();
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("closes when the backdrop is clicked, and keeps the session", () => {
+      const { advance } = setup();
+      finishStopwatch(advance);
+      click("New workout");
+      click("History");
+      const opener = openDeleteSession();
+      const backdrop = screen.getByRole("alertdialog").parentElement;
+      if (!backdrop) throw new Error("no backdrop");
+      fireEvent.click(backdrop);
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+      expect(opener).toHaveFocus();
     });
 
     it("tells the user when a session cannot be deleted, and keeps it listed", async () => {

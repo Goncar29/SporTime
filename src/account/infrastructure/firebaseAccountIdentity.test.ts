@@ -46,6 +46,16 @@ describe("confirm", () => {
     expect(providerParameters()).toEqual({ prompt: "select_account" });
   });
 
+  it("also shows it on the plain redirect path of an installed app", async () => {
+    // Installed (standalone) apps re-authenticate with a redirect straight away.
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    await createFirebaseAccountIdentity("u1").confirm();
+    expect(auth.reauthenticateWithPopup).not.toHaveBeenCalled();
+    expect(parametersOf(auth.reauthenticateWithRedirect.mock.calls)).toEqual({
+      prompt: "select_account",
+    });
+  });
+
   it("also shows it when the popup is blocked and it falls back to a redirect", async () => {
     auth.reauthenticateWithPopup.mockRejectedValueOnce({ code: "auth/popup-blocked" });
     await createFirebaseAccountIdentity("u1").confirm();

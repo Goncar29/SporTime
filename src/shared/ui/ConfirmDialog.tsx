@@ -4,20 +4,40 @@ import styles from "./ConfirmDialog.module.css";
 
 interface ConfirmDialogProps {
   title: string;
-  onConfirm(): void;
-  onCancel(): void;
+  onConfirm: () => void;
+  onCancel: () => void;
 }
 
-/** Asks before an irreversible deletion. Focus starts on Cancel, so a stray Enter keeps the data. */
+/**
+ * Asks before an irreversible deletion. Focus starts on Cancel, so a stray Enter keeps the data;
+ * Tab stays inside, and closing gives focus back to whatever opened the dialog.
+ */
 export function ConfirmDialog({ title, onConfirm, onCancel }: ConfirmDialogProps) {
   const { t } = useI18n();
   const titleId = useId();
   const messageId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const opener = document.activeElement;
     cancelRef.current?.focus();
+    return () => {
+      // After a deletion the opener may be gone with its entry; then there is nothing to restore.
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
   }, []);
+
+  useEffect(() => {
+    // On the document, so Escape works even if focus has somehow left the dialog.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onCancel]);
 
   return (
     <div className={styles.backdrop} onClick={onCancel}>
@@ -31,7 +51,17 @@ export function ConfirmDialog({ title, onConfirm, onCancel }: ConfirmDialogProps
           event.stopPropagation();
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onCancel();
+          if (event.key !== "Tab") return;
+          const first = cancelRef.current;
+          const last = confirmRef.current;
+          const active = document.activeElement;
+          if (event.shiftKey && active === first) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first?.focus();
+          }
         }}
       >
         <h2 id={titleId} className={styles.title}>
@@ -44,7 +74,7 @@ export function ConfirmDialog({ title, onConfirm, onCancel }: ConfirmDialogProps
           <button ref={cancelRef} className={styles.cancel} onClick={onCancel}>
             {t.cancel}
           </button>
-          <button className={styles.danger} onClick={onConfirm}>
+          <button ref={confirmRef} className={styles.danger} onClick={onConfirm}>
             {t.confirmDelete}
           </button>
         </div>
