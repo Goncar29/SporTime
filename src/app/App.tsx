@@ -24,6 +24,7 @@ import { buildTimeline, type Timeline } from "../workouts/domain/timeline";
 import {
   MODES,
   defaultConfig,
+  sanitizeConfig,
   type WorkoutConfig,
   type WorkoutMode,
 } from "../workouts/domain/workout";
@@ -75,8 +76,11 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
     setSaveFailure("workout");
   };
 
+  /** The selected settings with the round names trimmed, as they are run and stored. */
+  const currentConfig = () => sanitizeConfig(selectedMode, configs[selectedMode]);
+
   const handleStart = () => {
-    const config = configs[selectedMode];
+    const config = currentConfig();
     const timeline = buildTimeline(config);
     const voice: Announcer = {
       unlock: () => {
@@ -170,7 +174,7 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
             setSaveFailure(null);
             // Not awaited: the server never answers offline, and the write is already queued.
             workouts
-              .save({ name, config: configs[selectedMode], createdAt: timer.clock.now() })
+              .save({ name, config: currentConfig(), createdAt: timer.clock.now() })
               .catch(reportWorkoutFailure);
           }}
           onLoad={({ config }) => {

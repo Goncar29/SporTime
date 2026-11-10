@@ -14,6 +14,7 @@ import { withOutbox, type OutboxStore } from "../../shared/application/outbox";
 import { isInLocalCache } from "../../shared/firebase/localCache";
 import type { HistoryLog } from "../application/ports";
 import { parseHistoryEntry, type HistoryDraft, type HistoryEntry } from "../domain/historyEntry";
+import { toStoredConfig } from "../../workouts/domain/workout";
 
 const VISIBLE_ENTRIES = 100;
 
@@ -46,7 +47,7 @@ export function createFirestoreHistoryLog(
       },
       newId: () => doc(history).id,
       async put(id, draft) {
-        await setDoc(doc(history, id), draft);
+        await setDoc(doc(history, id), { ...draft, config: toStoredConfig(draft.config) });
       },
       has: (id) => isInLocalCache(() => getDocFromCache(doc(history, id))),
     },

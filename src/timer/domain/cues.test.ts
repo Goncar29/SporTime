@@ -172,3 +172,38 @@ describe("latestEvent with sound settings", () => {
     });
   });
 });
+
+describe("latestEvent with round names", () => {
+  const voiceOn: SoundSettings = { ...DEFAULT_SOUND_SETTINGS, voice: true };
+  // prepare 0-5s, work 5-25s "Burpees", rest 25-35s, work 35-55s unnamed
+  const named = buildTimeline({
+    ...defaultConfig("tabata"),
+    prepareSeconds: 5,
+    rounds: 2,
+    roundNames: ["Burpees"],
+  });
+
+  it("says the round's name for its work, and the default name otherwise", () => {
+    expect(latestEvent(named, 4_900, 5_000, voiceOn)?.announcement).toEqual({
+      kind: "phase",
+      phase: "work",
+      name: "Burpees",
+    });
+    expect(latestEvent(named, 24_900, 25_000, voiceOn)?.announcement).toEqual({
+      kind: "phase",
+      phase: "rest",
+    });
+    expect(latestEvent(named, 34_900, 35_000, voiceOn)?.announcement).toEqual({
+      kind: "phase",
+      phase: "work",
+    });
+  });
+
+  it("says no name when the interval name is switched off", () => {
+    expect(latestEvent(named, 4_900, 5_000, { ...voiceOn, intervalName: false })).toEqual({
+      cue: "work",
+      tone: true,
+      announcement: null,
+    });
+  });
+});

@@ -6,9 +6,16 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
-import { afterAll, beforeAll, beforeEach, describe, it } from "vite-plus/test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { MAX_TIMESTAMP_MS } from "../src/shared/domain/timestamp";
-import { MODES, LIMITS, defaultConfig, type NumericField } from "../src/workouts/domain/workout";
+import {
+  MAX_ROUND_NAME_LENGTH,
+  MODES,
+  LIMITS,
+  defaultConfig,
+  toStoredConfig,
+  type NumericField,
+} from "../src/workouts/domain/workout";
 
 let env: RulesTestEnvironment;
 
@@ -200,5 +207,67 @@ describe("workout config", () => {
     await assertFails(save({ ...config, extra: 1 }));
     const { rounds: _rounds, ...withoutRounds } = config;
     await assertFails(save(withoutRounds));
+  });
+});
+
+describe("round names", () => {
+  // Stored as one string, a name per line, so the rules can check every name is text.
+  const named = { ...config, roundNames: "Burpees\n\nSentadillas 💪" };
+  const save = (data: object) => setDoc(freshDoc("workouts"), { ...workout, config: data });
+  const add = (data: object) => setDoc(freshDoc("history"), { ...entry, config: data });
+  const longest = "a".repeat(MAX_ROUND_NAME_LENGTH);
+  const lines = (count: number, name = longest) => Array<string>(count).fill(name).join("\n");
+
+  it("are optional, so configs written before them still pass", async () => {
+    await assertSucceeds(save(config));
+    await assertSucceeds(add(config));
+  });
+
+  it("are accepted in saved workouts and history entries", async () => {
+    await assertSucceeds(save(named));
+    await assertSucceeds(add(named));
+  });
+
+  it("accept what the app stores", async () => {
+    const stored = toStoredConfig({ ...config, roundNames: [" Burpees ", "", "Squats"] });
+    expect(stored.roundNames).toBe("Burpees\n\nSquats");
+    await assertSucceeds(save(stored));
+  });
+
+  it("accept one name per round at the longest length, for the most rounds", async () => {
+    const rounds = LIMITS.rounds.max;
+    await assertSucceeds(save({ ...config, rounds, roundNames: lines(rounds) }));
+  });
+
+  it("reject more names than rounds", async () => {
+    await assertFails(save({ ...config, rounds: 2, roundNames: "a\nb\nc" }));
+    await assertFails(save({ ...config, rounds: 2, roundNames: "\n\nc" }));
+    const rounds = LIMITS.rounds.max;
+    await assertFails(save({ ...config, rounds, roundNames: lines(rounds + 1, "a") }));
+  });
+
+  it("reject a name that is too long or untrimmed, and an empty last line", async () => {
+    for (const roundNames of [
+      "a".repeat(MAX_ROUND_NAME_LENGTH + 1),
+      `Burpees\n${"a".repeat(MAX_ROUND_NAME_LENGTH + 1)}`,
+      " Burpees",
+      "Burpees ",
+      "Burpees\n Squats",
+      "Burpees\n",
+      "",
+    ]) {
+      await assertFails(save({ ...config, roundNames }));
+    }
+  });
+
+  it("reject anything that is not text", async () => {
+    for (const roundNames of [7, null, true, ["Burpees"], [7], { 0: "Burpees" }]) {
+      await assertFails(save({ ...config, roundNames }));
+      await assertFails(add({ ...config, roundNames }));
+    }
+  });
+
+  it("are rejected in modes without rounds", async () => {
+    await assertFails(save({ ...defaultConfig("amrap"), roundNames: "Burpees" }));
   });
 });

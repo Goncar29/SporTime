@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, setDoc, type Firestore } from "firebase/firestore";
+import { doc, getDoc, setDoc, type Firestore } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createFirestoreHistoryLog } from "../src/history/infrastructure/firestoreHistoryLog";
 import { createFirestoreWorkoutLibrary } from "../src/workouts/infrastructure/firestoreWorkoutLibrary";
@@ -76,6 +76,28 @@ describe("Firestore workout library", () => {
     expect(workouts[0]?.config).toEqual(defaultConfig(MODES.at(-1)?.id ?? "stopwatch"));
   });
 
+  it("saves and reads back the round names through the real rules", async () => {
+    const library = libraryFor("alice");
+    const config = { ...defaultConfig("tabata"), roundNames: ["Burpees", "", "Sentadillas"] };
+    await library.save({ name: "Leg day", config, createdAt: 1 });
+    const [saved] = await nextValue(library.subscribe, (items) => items.length === 1);
+    expect(saved?.config).toEqual(config);
+    await env.withSecurityRulesDisabled(async (context) => {
+      const stored = await getDoc(doc(context.firestore(), `users/alice/workouts/${saved?.id}`));
+      expect(stored.get("config.roundNames")).toBe("Burpees\n\nSentadillas");
+    });
+  });
+
+  it("stores a workout without names exactly as before", async () => {
+    const library = libraryFor("alice");
+    await library.save({ name: "Leg day", config: defaultConfig("tabata"), createdAt: 1 });
+    const [saved] = await nextValue(library.subscribe, (items) => items.length === 1);
+    await env.withSecurityRulesDisabled(async (context) => {
+      const stored = await getDoc(doc(context.firestore(), `users/alice/workouts/${saved?.id}`));
+      expect(stored.get("config")).toEqual(defaultConfig("tabata"));
+    });
+  });
+
   it("removes a workout", async () => {
     const library = libraryFor("alice");
     await library.save({ name: "Leg day", config: defaultConfig("emom"), createdAt: 1 });
@@ -127,6 +149,14 @@ describe("Firestore history log", () => {
     const entries = await nextValue(log.subscribe, (items) => items.length === MODES.length);
     expect(entries.map(({ finishedAt }) => finishedAt)).toEqual([5, 4, 3, 2, 1, 0]);
     expect(entries[0]).toMatchObject({ activeMs: 1_000, marks: 0 });
+  });
+
+  it("adds an entry with round names through the real rules and reads them back", async () => {
+    const log = logFor("alice");
+    const config = { ...defaultConfig("intervals"), roundNames: ["", "Squats"] };
+    await log.add({ config, finishedAt: 1, activeMs: 1_000, marks: 0 });
+    const [entry] = await nextValue(log.subscribe, (items) => items.length === 1);
+    expect(entry?.config).toEqual(config);
   });
 
   it("keeps each user's history apart", async () => {

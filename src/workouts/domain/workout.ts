@@ -8,9 +8,14 @@ export interface WorkoutConfig {
   rounds: number;
   sets: number;
   setRestSeconds: number;
+  /**
+   * The name of each round's work, by round; `""` leaves a round with the default name.
+   * Left out when no round has a name, so configs without names keep their old shape.
+   */
+  roundNames?: readonly string[];
 }
 
-export type NumericField = Exclude<keyof WorkoutConfig, "mode">;
+export type NumericField = Exclude<keyof WorkoutConfig, "mode" | "roundNames">;
 
 export type FieldId =
   | "prepare"
@@ -32,7 +37,7 @@ export interface FieldDefinition {
 export interface ModeDefinition {
   id: WorkoutMode;
   fields: readonly FieldDefinition[];
-  defaults: Omit<WorkoutConfig, "mode">;
+  defaults: Omit<WorkoutConfig, "mode" | "roundNames">;
 }
 
 export const LIMITS: Record<NumericField, { min: number; max: number }> = {
@@ -109,6 +114,37 @@ export function defaultConfig(mode: WorkoutMode): WorkoutConfig {
   return { mode, ...modeDefinition(mode).defaults };
 }
 
+/** Measured like a workout name; `firestore/firestore.rules` enforces the same limit. */
+export const MAX_ROUND_NAME_LENGTH = 24;
+
+/** Only modes with rounds of work can name them. */
+export function hasRoundNames(mode: WorkoutMode): boolean {
+  return modeDefinition(mode).fields.some(({ key }) => key === "rounds");
+}
+
+/** A trimmed round name, or `""` when the round keeps the default name. */
+export function normalizeRoundName(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const name = raw.trim();
+  const hasVisibleCharacter = /[^\p{C}\p{Z}]/u.test(name);
+  const valid =
+    hasVisibleCharacter && name.length <= MAX_ROUND_NAME_LENGTH && !/\p{Cc}/u.test(name);
+  return valid ? name : "";
+}
+
+/** Joins round names in stored data, where a name can never hold a control character. */
+const ROUND_NAME_SEPARATOR = "\n";
+
+/** Reads names as the app keeps them (a list) or as Firestore stores them (one per line). */
+function sanitizeRoundNames(raw: unknown, rounds: number): string[] {
+  const list: unknown[] | null =
+    typeof raw === "string" ? raw.split(ROUND_NAME_SEPARATOR) : Array.isArray(raw) ? raw : null;
+  if (!list) return [];
+  const names = list.slice(0, rounds).map(normalizeRoundName);
+  while (names.length > 0 && names.at(-1) === "") names.pop();
+  return names;
+}
+
 export function clampField(key: NumericField, value: number): number {
   const { min, max } = LIMITS[key];
   return Math.min(max, Math.max(min, Math.trunc(value)));
@@ -128,7 +164,26 @@ export function sanitizeConfig(mode: WorkoutMode, raw: unknown): WorkoutConfig {
       config[key] = clampField(key, value);
     }
   }
+  if (hasRoundNames(mode)) {
+    const roundNames = sanitizeRoundNames(
+      (raw as { roundNames?: unknown }).roundNames,
+      config.rounds,
+    );
+    if (roundNames.length > 0) config.roundNames = roundNames;
+  }
   return config;
+}
+
+/** A config as Firestore stores it: round names become one string so the rules can check them. */
+export type StoredConfig = Omit<WorkoutConfig, "roundNames"> & { roundNames?: string };
+
+/**
+ * The config to write to Firestore. Without names it keeps the shape it had before
+ * rounds could be named, so older rules and clients accept it unchanged.
+ */
+export function toStoredConfig(config: WorkoutConfig): StoredConfig {
+  const { roundNames, ...rest } = sanitizeConfig(config.mode, config);
+  return roundNames ? { ...rest, roundNames: roundNames.join(ROUND_NAME_SEPARATOR) } : rest;
 }
 
 /** Reads a stored config, or returns null when its mode is unknown. */

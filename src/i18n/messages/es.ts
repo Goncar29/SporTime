@@ -39,6 +39,10 @@ export const es: Messages = {
   },
   increase: (field) => `Aumentar ${field}`,
   decrease: (field) => `Disminuir ${field}`,
+  roundNames: "Nombres de las rondas",
+  roundNamesHint:
+    "Ponle nombre al trabajo de cada ronda, como Burpees. Una ronda vacía usa el nombre por defecto.",
+  roundNameLabel: (round) => `Ronda ${round}`,
   start: "Iniciar",
   noLimit: "Sin límite",
   paused: "En pausa",

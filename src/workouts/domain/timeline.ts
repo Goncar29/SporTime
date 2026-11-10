@@ -1,4 +1,4 @@
-import type { WorkoutConfig } from "./workout";
+import { normalizeRoundName, type WorkoutConfig } from "./workout";
 
 export type PhaseKind = "prepare" | "work" | "rest" | "setRest";
 
@@ -12,6 +12,8 @@ export interface Phase {
   totalRounds: number;
   set: number;
   totalSets: number;
+  /** The round's own name for its work; absent when the phase keeps its default name. */
+  name?: string;
 }
 
 export interface Timeline {
@@ -43,9 +45,20 @@ export function buildTimeline(config: WorkoutConfig): Timeline {
     set: number,
     totalRounds: number,
     totalSets: number,
-  ) => {
-    phases.push({ kind, startMs: cursor, durationMs, display, round, totalRounds, set, totalSets });
+  ): Phase => {
+    const phase: Phase = {
+      kind,
+      startMs: cursor,
+      durationMs,
+      display,
+      round,
+      totalRounds,
+      set,
+      totalSets,
+    };
+    phases.push(phase);
     cursor += durationMs ?? 0;
+    return phase;
   };
 
   const totalSets = mode === "stopwatch" ? 1 : sets;
@@ -62,7 +75,9 @@ export function buildTimeline(config: WorkoutConfig): Timeline {
   const workDisplay = mode === "forTime" ? "countup" : "countdown";
   for (let set = 1; set <= sets; set += 1) {
     for (let round = 1; round <= rounds; round += 1) {
-      add("work", toMs(config.workSeconds), workDisplay, round, set, rounds, sets);
+      const work = add("work", toMs(config.workSeconds), workDisplay, round, set, rounds, sets);
+      const name = normalizeRoundName(config.roundNames?.[round - 1]);
+      if (name) work.name = name;
       if (round < rounds && config.restSeconds > 0) {
         add("rest", toMs(config.restSeconds), "countdown", round, set, rounds, sets);
       }

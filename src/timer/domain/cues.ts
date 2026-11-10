@@ -4,7 +4,8 @@ import type { SoundSettings } from "./soundSettings";
 export type Cue = "tick" | "work" | "rest" | "finish";
 
 export type Announcement =
-  | { kind: "phase"; phase: PhaseKind }
+  /** `name` is the round's own name, said instead of the phase's default name. */
+  | { kind: "phase"; phase: PhaseKind; name?: string }
   | { kind: "count"; seconds: number }
   | { kind: "tenSecondsLeft" }
   | { kind: "halfway" }
@@ -32,7 +33,9 @@ const spoken = (announcement: Announcement): CueEvent => ({
 function phaseStart(phase: Phase, sound: SoundSettings): CueEvent | null {
   const cue = phase.kind === "work" ? "work" : phase.kind === "prepare" ? null : "rest";
   const announcement: Announcement | null =
-    sound.voice && sound.intervalName ? { kind: "phase", phase: phase.kind } : null;
+    sound.voice && sound.intervalName
+      ? { kind: "phase", phase: phase.kind, ...(phase.name ? { name: phase.name } : {}) }
+      : null;
   if (!cue && !announcement) return null;
   return { cue, tone: cue !== null && sound.intervalSound, announcement };
 }

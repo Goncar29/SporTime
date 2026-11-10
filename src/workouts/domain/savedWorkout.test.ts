@@ -34,6 +34,21 @@ describe("parseSavedWorkout", () => {
     expect(parseSavedWorkout("w1", raw)).toEqual({ id: "w1", ...raw });
   });
 
+  it("reads a workout saved before rounds had names", () => {
+    const parsed = parseSavedWorkout("w1", raw);
+    expect(parsed?.config).toEqual(defaultConfig("emom"));
+    expect(parsed?.config).not.toHaveProperty("roundNames");
+  });
+
+  it("keeps the round names, and turns invalid ones into unnamed rounds", () => {
+    const config = { ...defaultConfig("emom"), roundNames: ["Burpees", "a".repeat(25), "Squats"] };
+    expect(parseSavedWorkout("w1", { ...raw, config })?.config.roundNames).toEqual([
+      "Burpees",
+      "",
+      "Squats",
+    ]);
+  });
+
   it("clamps numbers that are out of range", () => {
     const config = { ...defaultConfig("emom"), rounds: 5_000 };
     expect(parseSavedWorkout("w1", { ...raw, config })?.config.rounds).toBe(99);

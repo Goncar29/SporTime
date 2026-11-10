@@ -19,9 +19,23 @@ service cloud.firestore {
       return intBetween(value, 0, 8640000000000000);
     }
 
+    // Names are optional, so configs written before they existed stay valid. They are stored as
+    // one string, a round per line (toStoredConfig in src/workouts/domain/workout.ts), because rules
+    // cannot loop over a list to check that every item is text. Each line is empty or a trimmed
+    // name of at most 24 characters (MAX_ROUND_NAME_LENGTH); the last line is never empty.
+    function isRoundNames(names, config) {
+      return names is string
+        && names.size() <= 2474
+        && config.mode in ['emom', 'tabata', 'intervals']
+        && names.split('\n').size() <= config.rounds
+        && names.matches('((\\S([^\\n]{0,22}\\S)?)?\\n)*\\S([^\\n]{0,22}\\S)?');
+    }
+
     function isConfig(config) {
       return config is map
-        && hasExactly(config, ['mode', 'prepareSeconds', 'workSeconds', 'restSeconds', 'rounds', 'sets', 'setRestSeconds'])
+        && config.keys().hasAll(['mode', 'prepareSeconds', 'workSeconds', 'restSeconds', 'rounds', 'sets', 'setRestSeconds'])
+        && config.keys().hasOnly(['mode', 'prepareSeconds', 'workSeconds', 'restSeconds', 'rounds', 'sets', 'setRestSeconds', 'roundNames'])
+        && (!('roundNames' in config) || isRoundNames(config.roundNames, config))
         && config.mode in ['stopwatch', 'forTime', 'amrap', 'emom', 'tabata', 'intervals']
         && intBetween(config.prepareSeconds, 0, 300)
         && intBetween(config.workSeconds, 1, 10800)

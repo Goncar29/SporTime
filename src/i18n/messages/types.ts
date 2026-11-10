@@ -15,6 +15,9 @@ export interface Messages {
   phases: Record<PhaseKind, string>;
   increase(field: string): string;
   decrease(field: string): string;
+  roundNames: string;
+  roundNamesHint: string;
+  roundNameLabel(round: number): string;
   start: string;
   noLimit: string;
   paused: string;

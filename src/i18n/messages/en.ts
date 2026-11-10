@@ -33,6 +33,10 @@ export const en: Messages = {
   },
   increase: (field) => `Increase ${field}`,
   decrease: (field) => `Decrease ${field}`,
+  roundNames: "Round names",
+  roundNamesHint:
+    "Name the work of each round, like Burpees. An empty round keeps the default name.",
+  roundNameLabel: (round) => `Round ${round}`,
   start: "Start",
   noLimit: "No limit",
   paused: "Paused",

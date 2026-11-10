@@ -86,6 +86,8 @@
   font-weight: 800;
   line-height: 1;
   text-transform: uppercase;
+  /* A round's own name can be long; wrap it rather than overflow a narrow phone. */
+  overflow-wrap: anywhere;
 }
 
 .counters {

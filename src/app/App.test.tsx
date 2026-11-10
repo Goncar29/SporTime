@@ -166,6 +166,91 @@ describe("App", () => {
     expect(within(summary).getByText("Laps: 1")).toBeInTheDocument();
   });
 
+  describe("round names", () => {
+    const openRoundNames = () => {
+      fireEvent.click(screen.getByText("Round names"));
+    };
+    const nameRound = (round: number, value: string) => {
+      fireEvent.change(screen.getByRole("textbox", { name: `Round ${round}` }), {
+        target: { value },
+      });
+    };
+    const phaseHeading = () => screen.getByRole("heading", { level: 1 }).textContent;
+
+    it("offers one name per round, only in modes with rounds", () => {
+      setup();
+      click(/^Tabata/);
+      openRoundNames();
+      expect(screen.getAllByRole("textbox", { name: /^Round \d+$/ })).toHaveLength(8);
+      expect(screen.getByRole("textbox", { name: "Round 1" })).toHaveAttribute(
+        "placeholder",
+        "Work",
+      );
+      click("Decrease Rounds");
+      expect(screen.getAllByRole("textbox", { name: /^Round \d+$/ })).toHaveLength(7);
+
+      click(/^AMRAP/);
+      expect(screen.queryByText("Round names")).not.toBeInTheDocument();
+      click(/^Stopwatch/);
+      expect(screen.queryByText("Round names")).not.toBeInTheDocument();
+    });
+
+    it("shows and says a named round, and the default names for the rest", () => {
+      const app = setup();
+      const { timer } = app;
+      timer.voice.canSpeak = () => true;
+      click("Settings");
+      fireEvent.click(screen.getByRole("switch", { name: "Voice announcements" }));
+      click("Back");
+      click(/^Tabata/);
+      openRoundNames();
+      nameRound(1, "  Burpees ");
+      click(/^Start/);
+      expect(screen.getByText("Next: Burpees 00:20")).toBeInTheDocument();
+
+      app.advance(10_000);
+      expect(phaseHeading()).toBe("Burpees");
+      expect(screen.getByText("Round 1/8")).toBeInTheDocument();
+      expect(timer.voice.say).toHaveBeenLastCalledWith("Burpees", "en");
+      expect(screen.getByText("Next: Rest 00:10")).toBeInTheDocument();
+
+      app.advance(20_000);
+      expect(phaseHeading()).toBe("Rest");
+      expect(timer.voice.say).toHaveBeenLastCalledWith("Rest", "en");
+      expect(screen.getByText("Next: Work 00:20")).toBeInTheDocument();
+
+      app.advance(10_000);
+      expect(phaseHeading()).toBe("Work");
+      expect(screen.getByText("Round 2/8")).toBeInTheDocument();
+      expect(timer.voice.say).toHaveBeenLastCalledWith("Work", "en");
+    });
+
+    it("keeps the default name of an unnamed workout on screen and in the Next line", () => {
+      const app = setup();
+      click(/^Tabata/);
+      click(/^Start/);
+      expect(screen.getByText("Next: Work 00:20")).toBeInTheDocument();
+      app.advance(10_000);
+      expect(phaseHeading()).toBe("Work");
+    });
+
+    it("records the names in the history of a finished workout", () => {
+      const fake = createFakeHistoryLog("test");
+      const add = vi.fn<HistoryLog["add"]>((draft) => fake.add(draft));
+      const app = setup({ history: { ...fake, add } });
+      click(/^Tabata/);
+      openRoundNames();
+      nameRound(2, "Squats");
+      click(/^Start/);
+      app.advance(240_000);
+      expect(add).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ roundNames: ["", "Squats"] }) as unknown,
+        }),
+      );
+    });
+  });
+
   it("runs to completion, then can start again or go back", () => {
     const { timer, advance } = setup();
     click(/^Tabata/);
@@ -214,6 +299,31 @@ describe("App in Spanish", () => {
     expect(screen.getByText("Prepárate")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pausa" })).toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it("labels the round names in Spanish", () => {
+    render(
+      <I18nProvider store={{ get: () => "es", set: vi.fn() }} browserLanguages={[]}>
+        <App
+          timer={{
+            clock: { now: () => 0 },
+            cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+            voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+            soundStore: { get: () => null, set: vi.fn() },
+            screenAwake: { acquire: vi.fn(), release: vi.fn() },
+          }}
+          workouts={createFakeWorkoutLibrary("spanish")}
+          history={createFakeHistoryLog("spanish")}
+          deleteAccount={() => Promise.resolve()}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Tabata/ }));
+    fireEvent.click(screen.getByText("Nombres de las rondas"));
+    expect(screen.getByRole("textbox", { name: "Ronda 1" })).toHaveAttribute(
+      "placeholder",
+      "Trabajo",
+    );
   });
 });
 
@@ -366,6 +476,29 @@ describe("App account data", () => {
       click(/^Morning EMOM/);
       expect(screen.getByRole("button", { name: /^EMOM/ })).toHaveAttribute("aria-pressed", "true");
       expect(fieldValue("Rounds")).toBe("11");
+    });
+
+    it("saves the round names with the workout and loads them back", () => {
+      setup();
+      click(/^Tabata/);
+      fireEvent.click(screen.getByText("Round names"));
+      fireEvent.change(screen.getByRole("textbox", { name: "Round 1" }), {
+        target: { value: " Burpees " },
+      });
+      typeName("Leg day");
+      click("Save");
+
+      fireEvent.change(screen.getByRole("textbox", { name: "Round 1" }), {
+        target: { value: "" },
+      });
+      click(/^EMOM/);
+      click(/^Leg day/);
+      expect(screen.getByRole("button", { name: /^Tabata/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByRole("textbox", { name: "Round 1" })).toHaveValue("Burpees");
+      expect(screen.getByRole("textbox", { name: "Round 2" })).toHaveValue("");
     });
 
     it("does not save a blank name", () => {

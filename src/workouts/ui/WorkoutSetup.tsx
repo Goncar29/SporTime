@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { LanguageSwitcher } from "../../i18n/ui/LanguageSwitcher";
 import { formatClock } from "../../timer/domain/format";
 import { buildTimeline } from "../domain/timeline";
 import {
+  MAX_ROUND_NAME_LENGTH,
   MODES,
+  hasRoundNames,
   modeDefinition,
   stepField,
   type FieldDefinition,
@@ -71,6 +73,16 @@ export function WorkoutSetup({
         ))}
       </div>
 
+      {hasRoundNames(config.mode) && (
+        <RoundNames
+          rounds={config.rounds}
+          names={config.roundNames ?? []}
+          onChange={(roundNames) => {
+            onChange({ ...config, roundNames });
+          }}
+        />
+      )}
+
       {library}
 
       {account}
@@ -84,6 +96,52 @@ export function WorkoutSetup({
         </button>
       </div>
     </main>
+  );
+}
+
+interface RoundNamesProps {
+  rounds: number;
+  /** As typed; the domain trims them when the workout starts or is saved. */
+  names: readonly string[];
+  onChange: (names: string[]) => void;
+}
+
+function RoundNames({ rounds, names, onChange }: RoundNamesProps) {
+  const { t } = useI18n();
+  const hintId = useId();
+
+  return (
+    <details className={styles.roundNames}>
+      <summary className={styles.roundNamesSummary}>{t.roundNames}</summary>
+      <p id={hintId} className={styles.roundNamesHint}>
+        {t.roundNamesHint}
+      </p>
+      <div className={styles.roundNameFields}>
+        {Array.from({ length: rounds }, (_, index) => (
+          <label key={index} className={styles.roundName}>
+            <span className={styles.roundNameLabel}>{t.roundNameLabel(index + 1)}</span>
+            <input
+              className={styles.roundNameInput}
+              type="text"
+              value={names[index] ?? ""}
+              placeholder={t.phases.work}
+              maxLength={MAX_ROUND_NAME_LENGTH}
+              autoComplete="off"
+              enterKeyHint="next"
+              aria-describedby={hintId}
+              onChange={(event) => {
+                const next = Array.from(
+                  { length: Math.max(names.length, index + 1) },
+                  (_, round) => names[round] ?? "",
+                );
+                next[index] = event.target.value;
+                onChange(next);
+              }}
+            />
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }
 

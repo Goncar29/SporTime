@@ -17,6 +17,7 @@ import {
   type SavedWorkout,
   type SavedWorkoutDraft,
 } from "../domain/savedWorkout";
+import { toStoredConfig } from "../domain/workout";
 
 interface Durability {
   store: OutboxStore<SavedWorkoutDraft>;
@@ -47,7 +48,7 @@ export function createFirestoreWorkoutLibrary(
       },
       newId: () => doc(workouts).id,
       async put(id, draft) {
-        await setDoc(doc(workouts, id), draft);
+        await setDoc(doc(workouts, id), { ...draft, config: toStoredConfig(draft.config) });
       },
       has: (id) => isInLocalCache(() => getDocFromCache(doc(workouts, id))),
     },

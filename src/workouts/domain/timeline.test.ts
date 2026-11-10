@@ -148,3 +148,31 @@ describe("locate", () => {
     });
   });
 });
+
+describe("round names", () => {
+  it("name the work phase of each named round, in every set, and leave rests alone", () => {
+    const timeline = buildTimeline(
+      config({
+        mode: "tabata",
+        rounds: 2,
+        sets: 2,
+        setRestSeconds: 60,
+        roundNames: ["Burpees"],
+      }),
+    );
+    expect(timeline.phases.map((p) => [p.kind, p.round, p.name])).toEqual([
+      ["work", 1, "Burpees"],
+      ["rest", 1, undefined],
+      ["work", 2, undefined],
+      ["setRest", 2, undefined],
+      ["work", 1, "Burpees"],
+      ["rest", 1, undefined],
+      ["work", 2, undefined],
+    ]);
+  });
+
+  it("leave every phase unnamed when no round has a name", () => {
+    const phases = buildTimeline(config({ mode: "tabata", rounds: 2 })).phases;
+    expect(phases.every((phase) => !("name" in phase))).toBe(true);
+  });
+});

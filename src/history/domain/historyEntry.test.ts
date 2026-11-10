@@ -33,6 +33,11 @@ describe("parseHistoryEntry", () => {
     expect(parseHistoryEntry("h1", raw)).toEqual({ id: "h1", ...raw });
   });
 
+  it("keeps the round names of the workout", () => {
+    const named = { ...defaultConfig("tabata"), roundNames: ["Burpees", "Squats"] };
+    expect(parseHistoryEntry("h1", { ...raw, config: named })?.config).toEqual(named);
+  });
+
   it("ignores documents it cannot read", () => {
     expect(parseHistoryEntry("h1", undefined)).toBeNull();
     expect(parseHistoryEntry("h1", { ...raw, finishedAt: "x" })).toBeNull();

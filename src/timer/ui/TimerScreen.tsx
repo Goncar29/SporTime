@@ -3,6 +3,7 @@ import type { Phase, Timeline } from "../../workouts/domain/timeline";
 import { MARK_KINDS, type WorkoutMode } from "../../workouts/domain/workout";
 import type { TimerController, TimerView } from "../application/timerController";
 import { formatClock } from "../domain/format";
+import { phaseLabel } from "./phaseLabel";
 import styles from "./TimerScreen.module.css";
 import { useTimerView } from "./useTimerView";
 
@@ -88,9 +89,10 @@ function ActiveTimer({
     next &&
     t.next(
       next.durationMs
-        ? `${t.phases[next.kind]} ${formatClock(next.durationMs)}`
-        : t.phases[next.kind],
+        ? `${phaseLabel(t, next)} ${formatClock(next.durationMs)}`
+        : phaseLabel(t, next),
     );
+  const label = phaseLabel(t, phase);
 
   return (
     <main className={styles.screen} data-phase={phase.kind} data-paused={paused}>
@@ -103,8 +105,8 @@ function ActiveTimer({
       </div>
 
       <header className={styles.header}>
-        <h1 className={styles.phaseLabel}>{paused ? t.paused : t.phases[phase.kind]}</h1>
-        {paused && <span className={styles.visuallyHidden}>{t.phases[phase.kind]}</span>}
+        <h1 className={styles.phaseLabel}>{paused ? t.paused : label}</h1>
+        {paused && <span className={styles.visuallyHidden}>{label}</span>}
         <p className={styles.counters}>
           {phase.totalRounds > 1 && <span>{t.round(phase.round, phase.totalRounds)}</span>}
           {phase.totalSets > 1 && <span>{t.set(phase.set, phase.totalSets)}</span>}
