@@ -16,7 +16,7 @@ import {
 const googleButton = (page: Page) => page.getByRole("button", { name: "Continue with Google" });
 const deleteLink = (page: Page) => page.getByRole("button", { name: "Delete account" });
 const confirmButton = (page: Page) => page.getByRole("button", { name: "Delete my account" });
-const openDeleteScreen = (page: Page) => deleteLink(page).click();
+const openDeleteDialog = (page: Page) => deleteLink(page).click();
 /** Accepts the dialog, opening it first when a failure or a return already closed it. */
 async function acceptDeletion(page: Page) {
   if (!(await confirmButton(page).isVisible())) await deleteLink(page).click();
@@ -125,7 +125,7 @@ test("deleting removes everything the account held, and nobody else's data", asy
   // Proves the search below can find something: without this it could never fail.
   await expect.poll(() => cacheContains(page, "Synced")).toBe(true);
 
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
 
@@ -164,7 +164,7 @@ test("deleting more than one batch of documents leaves nothing", async ({ page }
   }
   expect((await stored(uid, "workouts")).length).toBeGreaterThan(0);
 
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(googleButton(page)).toBeVisible({ timeout: 120_000 });
   expect(await stored(uid, "workouts")).toEqual([]);
@@ -179,7 +179,7 @@ test("deletion needs a connection and touches nothing without one", async ({ pag
   await saveWorkout(page, "Queued");
   await expect(savedButton(page, "Queued")).toBeVisible();
 
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(page.getByRole("alert")).toContainText("connection", { timeout: 5_000 });
   expect(await storedNames(uid)).toEqual(["Synced"]);
@@ -209,7 +209,7 @@ test("a write still on its way when deletion starts is not left behind", async (
   await expect(savedButton(page, "Still on its way")).toBeVisible();
   // Proves the hold works: without it this test could not fail.
   expect(await storedNames(uid)).toEqual(["First"]);
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
 
   await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
@@ -229,7 +229,7 @@ test("after a reported failure, nothing the user saves later gets deleted", asyn
 
   const hold = holdRequests(context, /\/Write\/channel/);
   await hold.ready;
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(page.getByRole("alert")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByRole("alert")).toContainText("may still exist");
@@ -261,7 +261,7 @@ for (const bobDeletes of [true, false]) {
 
     await signInAs(page, uniqueName("bob"));
     if (bobDeletes) {
-      await openDeleteScreen(page);
+      await openDeleteDialog(page);
       await acceptDeletion(page);
       await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
     } else {
@@ -280,7 +280,7 @@ test("another open tab keeps working after an account is deleted", async ({ page
   await other.goto("/");
   await expect(startButton(other)).toBeVisible();
 
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
   await expect(googleButton(other)).toBeVisible({ timeout: 30_000 });
@@ -310,7 +310,7 @@ test("a removal refused for an old sign-in asks again, then finishes", async ({ 
     }
   });
 
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   const [popup] = await Promise.all([page.waitForEvent("popup"), acceptDeletion(page)]);
   await pickAccount(popup, `${who}@example.com`);
 
@@ -327,7 +327,7 @@ test("a lost answer is never reported as 'your account is still here'", async ({
     await route.abort("connectionreset");
   });
 
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(page.getByRole("alert")).toBeVisible({ timeout: 40_000 });
   expect(await accountExists(uid)).toBe(false);
@@ -338,7 +338,7 @@ test("a lost answer is never reported as 'your account is still here'", async ({
   await saveWorkout(page, "Saved in between");
   await eventually(() => storedNames(uid)).toContain("Saved in between");
 
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(googleButton(page)).toBeVisible({ timeout: 30_000 });
   // The provider's answer for a removed account is the same as for an expired session.
@@ -357,7 +357,7 @@ test("a failed removal never reaching the server does not skip the confirmation 
   const who = uniqueName("alive");
   const uid = await signInAs(await openedPage(page), who);
   await failRemovalBeforeItArrives(page);
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(page.getByRole("alert")).toBeVisible({ timeout: 40_000 });
   expect(await accountExists(uid)).toBe(true);
@@ -366,7 +366,7 @@ test("a failed removal never reaching the server does not skip the confirmation 
   await saveWorkout(page, "Made later");
   await eventually(() => storedNames(uid)).toEqual(["Made later"]);
   await markSignInAsOld(page);
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   const [popup] = await Promise.all([page.waitForEvent("popup"), acceptDeletion(page)]);
   await popup.waitForLoadState();
   expect(await storedNames(uid)).toEqual(["Made later"]);
@@ -380,7 +380,7 @@ for (const answer of ["TOKEN_EXPIRED", "INVALID_ID_TOKEN"]) {
   test(`${answer} after a failed removal never reads as a finished deletion`, async ({ page }) => {
     const uid = await signInAs(await openedPage(page), uniqueName("alive"));
     await failRemovalBeforeItArrives(page);
-    await openDeleteScreen(page);
+    await openDeleteDialog(page);
     await acceptDeletion(page);
     await expect(page.getByRole("alert")).toBeVisible({ timeout: 40_000 });
     await page.unroute(/accounts:delete/);
@@ -416,7 +416,7 @@ test("a retry skips asking the provider only while the sign-in is provably recen
     return route.fallback();
   });
   await failRemovalBeforeItArrives(page);
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(page.getByRole("alert")).toBeVisible({ timeout: 40_000 });
   expect(refreshes).toBe(1);
@@ -453,7 +453,7 @@ test("an unfinished confirmation after erasing says the data is gone and the acc
   await saveWorkout(page, "W");
   await eventually(() => storedNames(uid)).toEqual(["W"]);
   await refuseRemovalAsStale(page);
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
 
   // Cancelled.
   let [popup] = await Promise.all([page.waitForEvent("popup"), acceptDeletion(page)]);
@@ -500,7 +500,7 @@ for (const answer of ["TOKEN_EXPIRED", "INVALID_ID_TOKEN"]) {
     await eventually(() => storedNames(uid)).toEqual(["W"]);
     await page.route(/accounts:delete/, refuse);
 
-    await openDeleteScreen(page);
+    await openDeleteDialog(page);
     await acceptDeletion(page);
 
     await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
@@ -510,7 +510,7 @@ for (const answer of ["TOKEN_EXPIRED", "INVALID_ID_TOKEN"]) {
     await page.unroute(/accounts:delete/);
     await signInAs(page, who);
     await expect(page.getByRole("alert")).toHaveCount(0);
-    await openDeleteScreen(page);
+    await openDeleteDialog(page);
     await acceptDeletion(page);
     await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("alert")).toHaveCount(0);
@@ -524,7 +524,7 @@ for (const answer of ["TOKEN_EXPIRED", "INVALID_ID_TOKEN"]) {
     await eventually(() => storedNames(uid)).toEqual(["W"]);
     await page.route(/securetoken\.googleapis\.com/, refuse);
 
-    await openDeleteScreen(page);
+    await openDeleteDialog(page);
     await acceptDeletion(page);
 
     await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
@@ -545,7 +545,7 @@ test("an old sign-in is confirmed first: cancelling or the wrong account delete 
   await saveWorkout(page, "W");
   await eventually(() => storedNames(uid)).toEqual(["W"]);
   await markSignInAsOld(page);
-  await openDeleteScreen(page);
+  await openDeleteDialog(page);
 
   let [popup] = await Promise.all([page.waitForEvent("popup"), acceptDeletion(page)]);
   await popup.waitForLoadState();

@@ -501,6 +501,21 @@ describe("App account data", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
     });
 
+    it("deletes nothing and stays usable when checking for a pending deletion fails", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const deleteAccount = vi.fn(() => Promise.resolve());
+      setup({
+        deleteAccount,
+        deletionConfirmedByRedirect: () => Promise.reject(new Error("boom")),
+      });
+      await settledCalls();
+      expect(deleteAccount).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Delete account" })).toBeEnabled();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(consoleError).toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+
     it("deletes nothing on load when no redirect confirmed a deletion", async () => {
       const deleteAccount = vi.fn(() => Promise.resolve());
       setup({ deleteAccount, deletionConfirmedByRedirect: () => Promise.resolve(false) });

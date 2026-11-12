@@ -42,7 +42,7 @@ function rememberPendingDeletion(userId: string) {
   try {
     sessionStorage.setItem(PENDING_KEY, JSON.stringify({ userId, at: Date.now() }));
   } catch {
-    // Without storage the user presses the button again on return, as before.
+    // Without storage nothing can resume after the redirect, so the user accepts the dialog again.
   }
 }
 
