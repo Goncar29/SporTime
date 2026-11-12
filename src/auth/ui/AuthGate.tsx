@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { PrivacyScreen } from "../../account/ui/PrivacyScreen";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { LanguageSwitcher } from "../../i18n/ui/LanguageSwitcher";
+import { InstallBanner } from "../../install/ui/InstallBanner";
 import type { AuthGateway } from "../application/ports";
 import { AuthFailure, type AuthFailureKind, type User } from "../domain/user";
 import styles from "./AuthGate.module.css";
@@ -127,6 +128,7 @@ function SignInScreen({ signingIn, failure, onSignIn }: SignInScreenProps) {
       <div className={styles.language}>
         <LanguageSwitcher />
       </div>
+      <InstallBanner />
       <div className={styles.hero}>
         <h1 className={styles.brand}>Sportime</h1>
         <p className={styles.headline}>{t.signInHeadline}</p>
