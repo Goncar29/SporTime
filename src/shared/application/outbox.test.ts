@@ -218,4 +218,23 @@ describe("withOutbox", () => {
     expect(outbox.revise("someone-else", { order: 5 })).toBe(false);
     expect(store.load().map(({ draft }) => draft)).toEqual([{ order: 1 }]);
   });
+
+  it("sends the edited version when the edit lands while the write is being checked", async () => {
+    const fake = fakeCollection();
+    const check = deferred<boolean>();
+    const has = fake.collection.has;
+    let held = true;
+    fake.collection.has = (id) => (held ? ((held = false), check.promise) : has(id));
+    const { outbox, store } = setup({ fake });
+    void outbox.add({ order: 1 });
+    await flushed();
+    const id = store.load()[0]?.id ?? "";
+
+    outbox.revise(id, { order: 5 });
+    check.resolve(false);
+    await flushed();
+
+    expect(fake.collection.put).toHaveBeenCalledWith(id, { order: 5 });
+    expect(fake.stored.get(id)).toEqual({ order: 5 });
+  });
 });

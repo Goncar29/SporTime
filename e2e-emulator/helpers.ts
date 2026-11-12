@@ -25,6 +25,15 @@ export async function stored(uid: string, kind: "workouts" | "history"): Promise
   return body.documents ?? [];
 }
 
+/** Deletes a stored document as another device would, bypassing the rules and the page. */
+export async function deleteStored(documentName: string) {
+  const response = await fetch(`http://127.0.0.1:8080/v1/${documentName}`, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer owner" },
+  });
+  if (!response.ok) throw new Error(`Firestore emulator answered ${response.status}`);
+}
+
 /** Asks the Auth emulator directly, so a page that merely looks signed out cannot pass. */
 export async function accountExists(uid: string): Promise<boolean> {
   const response = await fetch(

@@ -7,6 +7,7 @@ import {
   orderBy,
   query,
   setDoc,
+  updateDoc,
   type Firestore,
 } from "firebase/firestore";
 import { withOutbox, type OutboxStore } from "../../shared/application/outbox";
@@ -58,9 +59,16 @@ export function createFirestoreWorkoutLibrary(
     subscribe: outbox.subscribe,
     save: outbox.add,
     async update({ id, ...draft }) {
-      // A save still waiting for the account must not later overwrite this edit with the old version.
-      outbox.revise(id, draft);
-      await setDoc(doc(workouts, id), { ...draft, config: toStoredConfig(draft.config) });
+      // Revised first, so a save still waiting in the outbox sends this version and never the old one.
+      const heldHere = outbox.revise(id, draft);
+      // Once the outbox has handed it to Firestore, or it was never here, Firestore updates it.
+      if (heldHere && !(await isInLocalCache(() => getDocFromCache(doc(workouts, id))))) return;
+      // An update, unlike setDoc, fails for a workout deleted elsewhere instead of bringing it back.
+      await updateDoc(doc(workouts, id), {
+        name: draft.name,
+        config: toStoredConfig(draft.config),
+        createdAt: draft.createdAt,
+      });
     },
     async remove(id) {
       outbox.cancel(id);

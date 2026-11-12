@@ -80,7 +80,9 @@ export function withOutbox<T extends { id: string }, Draft>({
     }
     if (!(await collection.has(id))) {
       const waiter = waiters.get(id);
-      collection.put(id, draft).then(
+      // Read again after waiting: an edit may have revised it meanwhile.
+      const latest = store.load().find((item) => item.id === id)?.draft ?? draft;
+      collection.put(id, latest).then(
         () => waiter?.resolve(),
         (error: unknown) => {
           if (waiter) waiter.reject(error);
