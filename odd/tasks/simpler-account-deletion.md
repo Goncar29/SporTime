@@ -1,0 +1,18 @@
+Objective: delete the account from a confirmation modal, with the least possible Google step, and land on the sign-in screen.
+Branch: feat/simpler-account-deletion, from main at b706b20. Delivery strategy: ask-on-risk; push, merge and deploy only with the user's OK. Test runner: `npx pnpm@10 test` (vitest), plus `test:emulator` when memory allows.
+
+## Specs
+
+- S1. "si un usuario le da a eliminar que este no pase a un selector de cuenta si no que esta cuenta se elimine con un modal previo pregunatndo de si estas seguro al usuario y cuando le da en acpetar o si que se elimine y despues se recirecciones al inicio con la opcion de continuar con google"
+- S2. Chosen approach, option 1 ("vamos con la opción 1"): the modal first; on accept, a recent sign-in deletes directly; otherwise Firebase still requires a Google re-confirmation, and on return from a redirect the deletion continues by itself, without pressing the button again. Assumption: the forced account chooser (`prompt: "select_account"`, hardening S1) is dropped, since the modal is now the explicit consent; Google may still show its chooser when several accounts are signed in.
+- Known constraint: Firebase refuses `deleteUser` without a recent sign-in (`auth/requires-recent-login`), so the Google step cannot be removed client-side.
+
+## Tasks
+
+- [ ] T1 (S1, S2) Modal replaces the delete screen; redirect return continues the deletion only when Google re-confirmed this same account in that redirect; no forced chooser. Route: inline. Risk: item 1 (irreversible deletion) and item 2 (auth), independent verifier required.
+
+## Log
+
+- L1 (2026-11-12): "creo que deberiamos de ver mejor como eliminar la cuenta, diria que si un usuario le da a eliminar que este no pase a un selector de cuenta si no que esta cuenta se elimine con un modal previo pregunatndo de si estas seguro al usuario y cuando le da en acpetar o si que se elimine y despues se recirecciones al inicio con la opcion de continuar con google"
+- L2 (2026-11-12): "vamos con la opción 1". Verified in `@firebase/auth` 1.13.8 (`RedirectAction.execute`): a redirect result is handed to the first `getRedirectResult` reader only, later reads get null, so the auth gateway must share one read with the deletion resume.
+- L3 (2026-11-12): T1 code. `DeleteAccountControl` replaces `DeleteAccountScreen`: the "Delete account" link opens `ConfirmDialog` (new optional message and labels) with the warning; accepting deletes right away, shows "Deleting…" and errors under the links. Before a redirect re-confirmation, `confirm()` stores `sportime.pendingDeletion` {userId, at} in sessionStorage; on load, `confirmedByRedirect()` consumes it and is true only when it is this account, under 4 minutes old, and the page's redirect result is `operationType: "reauthenticate"` for this uid (read once, shared with `completePendingSignIn`). Forced `prompt: "select_account"` removed from re-confirmation only (sign-in keeps it). Copy: the note now says the deletion finishes by itself. RED observed: 9 identity and 6 App tests. Checks: unit 281 of 281, typecheck 0, lint 0 warnings. Emulator e2e adapted to the dialog (`acceptDeletion`), the redirect test now expects automatic deletion, plus a new test: back from Google without choosing deletes nothing, also after a reload. `test:emulator` OOMs when building inside the emulators; workaround: build `dist-emulator` first, then serve it with a scratch Playwright config.
