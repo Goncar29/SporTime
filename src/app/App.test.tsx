@@ -54,6 +54,8 @@ function setup({
 }
 
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole("button", { name }));
+/** A refusal as Firestore reports it, with its code. */
+const refusal = (code: string) => Object.assign(new Error(`Firestore refused: ${code}`), { code });
 const clock = () => screen.getByRole("timer").textContent;
 
 describe("App", () => {
@@ -915,6 +917,80 @@ describe("App account data", () => {
     });
   });
 
+  describe("failure messages for saved workouts", () => {
+    const withWorkouts = (overrides: Partial<WorkoutLibrary>) => {
+      const fake = createFakeWorkoutLibrary("test");
+      return { ...fake, ...overrides };
+    };
+
+    it.each([
+      ["not-found", "That workout no longer exists: it was deleted on another device."],
+      [
+        "permission-denied",
+        "The server refused the change. Update the app; if it keeps happening, write to us.",
+      ],
+      ["unauthenticated", "Your session expired. Sign in again."],
+      ["unavailable", "Can't reach the server. Try again in a while."],
+      ["deadline-exceeded", "Can't reach the server. Try again in a while."],
+      ["resource-exhausted", "Too many attempts in a row. Wait a moment."],
+      ["internal", "We couldn't save that to your account. Please try again."],
+    ])("an edit refused with %s says so, and logs the code", async (code, message) => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      setup({ workouts: withWorkouts({ update: () => Promise.reject(refusal(code)) }) });
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      click("Save changes");
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent(message);
+      expect(consoleError).toHaveBeenCalledWith("Updating a saved workout failed:", code);
+      consoleError.mockRestore();
+    });
+
+    it("logs which operation failed when saving", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      setup({
+        workouts: withWorkouts({
+          save: () => Promise.reject(refusal("permission-denied")),
+        }),
+      });
+      typeName("Leg day");
+      click("Save");
+      await settledCalls();
+      expect(consoleError).toHaveBeenCalledWith("Saving a workout failed:", "permission-denied");
+      expect(screen.getByRole("alert")).toHaveTextContent("The server refused the change.");
+      consoleError.mockRestore();
+    });
+
+    it("says why saved workouts could not be read, and logs the code", () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      setup({
+        workouts: withWorkouts({
+          subscribe(_onData, onError) {
+            onError(refusal("unavailable"));
+            return () => undefined;
+          },
+        }),
+      });
+      click("Saved");
+      expect(screen.getByRole("alert")).toHaveTextContent("Can't reach the server.");
+      expect(consoleError).toHaveBeenCalledWith("Loading saved workouts failed:", "unavailable");
+      consoleError.mockRestore();
+    });
+
+    it("keeps the general message, and logs that there was no code, for an unexplained failure", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      setup({ workouts: withWorkouts({ save: () => Promise.reject(new Error("boom")) }) });
+      typeName("Leg day");
+      click("Save");
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent("We couldn't save that to your account.");
+      expect(consoleError).toHaveBeenCalledWith("Saving a workout failed:", "no code");
+      consoleError.mockRestore();
+    });
+  });
+
   describe("history", () => {
     const finishStopwatch = (advance: (ms: number) => void) => {
       click(/^Stopwatch/);
@@ -1095,6 +1171,63 @@ describe("App account data", () => {
       click("New workout");
       expect(screen.getByRole("alert")).toHaveTextContent("last session");
       expect(screen.getByRole("alert")).not.toHaveTextContent("try again");
+    });
+
+    it("says why a finished session was refused, and logs the code", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const fake = createFakeHistoryLog("test");
+      const { advance } = setup({
+        history: { ...fake, add: () => Promise.reject(refusal("unauthenticated")) },
+      });
+      finishStopwatch(advance);
+      await settledCalls();
+      click("New workout");
+      expect(screen.getByRole("alert")).toHaveTextContent("Your session expired. Sign in again.");
+      expect(consoleError).toHaveBeenCalledWith(
+        "Saving a finished session failed:",
+        "unauthenticated",
+      );
+      consoleError.mockRestore();
+    });
+
+    it("says why a session could not be deleted, and logs the code", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const fake = createFakeHistoryLog("test");
+      const { advance } = setup({
+        history: { ...fake, remove: () => Promise.reject(refusal("unavailable")) },
+      });
+      finishStopwatch(advance);
+      click("New workout");
+      click("History");
+      click(/^Delete session/);
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+      );
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent("Can't reach the server.");
+      expect(consoleError).toHaveBeenCalledWith(
+        "Deleting a finished session failed:",
+        "unavailable",
+      );
+      consoleError.mockRestore();
+    });
+
+    it("says why the history could not be read, and logs the code", () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const fake = createFakeHistoryLog("test");
+      setup({
+        history: {
+          ...fake,
+          subscribe(_onData, onError) {
+            onError(refusal("permission-denied"));
+            return () => undefined;
+          },
+        },
+      });
+      click("History");
+      expect(screen.getByRole("alert")).toHaveTextContent("The server refused");
+      expect(consoleError).toHaveBeenCalledWith("Loading the history failed:", "permission-denied");
+      consoleError.mockRestore();
     });
 
     it("tells the user when the history cannot be read", () => {

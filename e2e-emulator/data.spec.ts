@@ -180,9 +180,18 @@ test("an edit never brings back a workout deleted on another device", async ({ p
   await deleteStored(saved.name);
   await page.getByRole("textbox", { name: "Workout name" }).fill("Leg day, harder");
   await page.getByRole("button", { name: "Save changes" }).click();
+  const logged: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") logged.push(message.text());
+  });
   await context.setOffline(false);
 
-  await expect(page.getByRole("alert")).toContainText("couldn't save", { timeout: 60_000 });
+  // The real SDK reports the server's refusal with Firestore's own code, not an HTTP status.
+  await expect(page.getByRole("alert")).toContainText(
+    "That workout no longer exists: it was deleted on another device.",
+    { timeout: 60_000 },
+  );
+  expect(logged).toContain("Updating a saved workout failed: not-found");
   await page.waitForTimeout(3_000);
   expect(await storedNames(uid)).toEqual([]);
 });

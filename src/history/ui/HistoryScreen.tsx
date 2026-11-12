@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useI18n } from "../../i18n/ui/I18nProvider";
+import type { StoreFailureKind } from "../../shared/domain/storeFailure";
+import { reportStoreFailure, storeFailureMessage } from "../../shared/ui/storeFailure";
 import { useLiveList } from "../../shared/ui/useLiveList";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { formatClock } from "../../timer/domain/format";
@@ -16,16 +18,16 @@ interface HistoryScreenProps {
 
 export function HistoryScreen({ log, onBack }: HistoryScreenProps) {
   const { t, language } = useI18n();
-  const { items, failed } = useLiveList(log.subscribe);
+  const { items, failed, failure } = useLiveList(log.subscribe, "Loading the history");
   const dates = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" });
   const [pending, setPending] = useState<HistoryEntry | null>(null);
-  const [removeFailed, setRemoveFailed] = useState(false);
+  const [removeFailure, setRemoveFailure] = useState<StoreFailureKind | null>(null);
 
   const remove = (entry: HistoryEntry) => {
     setPending(null);
-    setRemoveFailed(false);
-    log.remove(entry.id).catch(() => {
-      setRemoveFailed(true);
+    setRemoveFailure(null);
+    log.remove(entry.id).catch((error: unknown) => {
+      setRemoveFailure(reportStoreFailure("Deleting a finished session", error));
     });
   };
 
@@ -42,13 +44,13 @@ export function HistoryScreen({ log, onBack }: HistoryScreenProps) {
 
       {failed && (
         <p className={styles.error} role="alert">
-          {t.loadHistoryFailed}
+          {storeFailureMessage(t, failure ?? "unknown", t.loadHistoryFailed)}
         </p>
       )}
 
-      {removeFailed && (
+      {removeFailure && (
         <p className={styles.error} role="alert">
-          {t.deleteSessionFailed}
+          {storeFailureMessage(t, removeFailure, t.deleteSessionFailed)}
         </p>
       )}
 
