@@ -59,12 +59,15 @@ export function createBrowserInstall(env: BrowserEnvironment = window): InstallC
     async install() {
       const current = offer;
       if (!current) return "unavailable";
-      // Chrome allows one prompt per offer.
+      // Chrome allows one prompt per offer, so it is used up even if the dialog never shows.
       offer = null;
-      await current.prompt();
-      const { outcome } = await current.userChoice;
-      changed();
-      return outcome;
+      try {
+        await current.prompt();
+        const { outcome } = await current.userChoice;
+        return outcome;
+      } finally {
+        changed();
+      }
     },
   };
 }

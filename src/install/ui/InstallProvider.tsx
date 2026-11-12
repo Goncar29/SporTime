@@ -38,7 +38,12 @@ export function InstallProvider({
     state,
     offered: shouldOfferInstall(state, dismissedAt, now()),
     async install() {
-      await controller.install();
+      try {
+        await controller.install();
+      } catch (error) {
+        // The offer is gone either way; the browser offers again on a later visit.
+        console.error("The install dialog could not open:", error);
+      }
     },
     dismiss() {
       const at = now();

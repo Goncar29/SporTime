@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openTab } from "./helpers";
 
 const notice = (page: Page) => page.getByRole("region", { name: "Install Sportime" });
 
@@ -18,7 +19,7 @@ async function offerInstall(page: Page) {
   });
 }
 
-test("offers installing on entry, opens the browser's dialog, and stays on Profile", async ({
+test("offers installing on entry, and the offer goes once the dialog is answered", async ({
   page,
 }) => {
   await page.goto("/");
@@ -28,6 +29,7 @@ test("offers installing on entry, opens the browser's dialog, and stays on Profi
 
   await notice(page).getByRole("button", { name: "Install" }).click();
   expect(await page.evaluate(() => (window as unknown as { prompted?: number }).prompted)).toBe(1);
+  await expect(notice(page)).toHaveCount(0);
 });
 
 test("'Not now' keeps it away after a reload, and Profile still offers it", async ({ page }) => {
@@ -42,10 +44,7 @@ test("'Not now' keeps it away after a reload, and Profile still offers it", asyn
   await offerInstall(page);
   await expect(notice(page)).toHaveCount(0);
 
-  await page
-    .getByRole("navigation", { name: "Sections" })
-    .getByRole("button", { name: "Profile" })
-    .click();
+  await openTab(page, "Profile");
   await page.getByRole("button", { name: "Install app" }).click();
   expect(await page.evaluate(() => (window as unknown as { prompted?: number }).prompted)).toBe(1);
 });

@@ -59,6 +59,33 @@ describe("createBrowserInstall", () => {
     expect(install.state()).toBe("unavailable");
   });
 
+  it("tells listeners when the dialog was answered, so the offer disappears", async () => {
+    const env = environment();
+    const install = createBrowserInstall(env);
+    env.dispatchEvent(installEvent("dismissed"));
+    const listener = vi.fn();
+    install.subscribe(listener);
+
+    await install.install();
+
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("drops a used offer and says so even when the browser refuses to show the dialog", async () => {
+    const env = environment();
+    const install = createBrowserInstall(env);
+    const event = installEvent("accepted");
+    event.prompt.mockRejectedValueOnce(new Error("NotAllowedError"));
+    env.dispatchEvent(event);
+    const listener = vi.fn();
+    install.subscribe(listener);
+
+    await expect(install.install()).rejects.toThrow("NotAllowedError");
+
+    expect(install.state()).toBe("unavailable");
+    expect(listener).toHaveBeenCalled();
+  });
+
   it("knows the app is installed once the browser says so", () => {
     const env = environment();
     const install = createBrowserInstall(env);

@@ -83,7 +83,7 @@ interface SavedWorkoutsProps {
   onRemove: (workout: SavedWorkout) => void;
 }
 
-/** The Saved tab: every saved workout, to load into the timer or delete. */
+/** The Saved tab: every saved workout, to load into the timer, edit or delete. */
 export function SavedWorkouts({ workouts, errors, onLoad, onEdit, onRemove }: SavedWorkoutsProps) {
   const { t } = useI18n();
   const [pending, setPending] = useState<SavedWorkout | null>(null);

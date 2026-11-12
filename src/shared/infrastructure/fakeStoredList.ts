@@ -34,7 +34,12 @@ export function createFakeStoredList<Draft, T extends Draft & { id: string }>(
       return Promise.resolve();
     },
     update(item) {
-      write(read().map((current) => (current.id === item.id ? item : current)));
+      const items = read();
+      // Like Firestore's updateDoc, never recreates what was deleted.
+      if (!items.some((current) => current.id === item.id)) {
+        return Promise.reject(new Error(`No document to update: ${item.id}`));
+      }
+      write(items.map((current) => (current.id === item.id ? item : current)));
       return Promise.resolve();
     },
     remove(id) {
