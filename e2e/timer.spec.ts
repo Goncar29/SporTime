@@ -91,7 +91,10 @@ test.describe("in Spanish", () => {
     await expect(page.getByRole("button", { name: /^Iniciar/ })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
 
+    // The language lives on Profile, behind the bottom tab bar.
+    await page.getByRole("button", { name: "Perfil" }).click();
     await page.getByRole("button", { name: "English" }).click();
+    await page.getByRole("button", { name: "Timer" }).click();
     await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
