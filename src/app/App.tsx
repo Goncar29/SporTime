@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { DeleteAccountControl } from "../account/ui/DeleteAccountControl";
+import { ProfileScreen } from "../account/ui/ProfileScreen";
 import { useAccountDeletion } from "../account/ui/useAccountDeletion";
 import { PrivacyScreen } from "../account/ui/PrivacyScreen";
 import { SettingsScreen } from "../settings/ui/SettingsScreen";
@@ -29,9 +29,10 @@ import {
   type WorkoutConfig,
   type WorkoutMode,
 } from "../workouts/domain/workout";
-import { SavedWorkouts } from "../workouts/ui/SavedWorkouts";
+import { SaveWorkoutForm, SavedWorkouts } from "../workouts/ui/SavedWorkouts";
 import { WorkoutSetup } from "../workouts/ui/WorkoutSetup";
 import styles from "./App.module.css";
+import { TabBar, type Tab } from "./TabBar";
 
 export interface TimerDependencies {
   clock: Clock;
@@ -62,7 +63,11 @@ interface AppProps {
   account?: ReactNode;
 }
 
-type Screen = "setup" | "history" | "settings" | "privacy";
+/** Settings and Privacy open from Profile, so its tab stays marked while they are shown. */
+type Screen = Tab | "settings" | "privacy";
+
+const tabOf = (screen: Screen): Tab =>
+  screen === "settings" || screen === "privacy" ? "profile" : screen;
 
 export function App({
   timer,
@@ -77,12 +82,16 @@ export function App({
   const [configs, setConfigs] = useState(initialConfigs);
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("tabata");
   const [active, setActive] = useState<ActiveWorkout | null>(null);
-  const [screen, setScreen] = useState<Screen>("setup");
+  const [screen, setScreen] = useState<Screen>("timer");
   const [saveFailure, setSaveFailure] = useState<"workout" | "session" | null>(null);
   const library = useLiveList(workouts.subscribe);
   const deletion = useAccountDeletion({
     onDelete: deleteAccount,
     confirmedByRedirect: deletionConfirmedByRedirect,
+    // A deletion resumed after a redirect reports its progress and failures on Profile.
+    onResume: () => {
+      setScreen("profile");
+    },
   });
 
   const reportWorkoutFailure = () => {
@@ -142,88 +151,93 @@ export function App({
     );
   }
 
-  const backToSetup = () => {
-    setScreen("setup");
-  };
-
-  if (screen === "history") return <HistoryScreen log={history} onBack={backToSetup} />;
-  if (screen === "settings") {
-    return (
-      <SettingsScreen
-        sound={sound}
-        voiceAvailable={timer.voice.canSpeak(language)}
-        onChangeSound={(next) => {
-          setSound(next);
-          timer.soundStore.set(next);
-        }}
-        onBack={backToSetup}
-      />
-    );
-  }
-  if (screen === "privacy") return <PrivacyScreen onBack={backToSetup} />;
-
   const errors = [
     ...(saveFailure === "workout" ? [t.saveFailed] : []),
     ...(saveFailure === "session" ? [t.sessionSaveFailed] : []),
     ...(library.failed ? [t.loadWorkoutsFailed] : []),
   ];
 
+  const openProfile = () => {
+    setScreen("profile");
+  };
+
+  const content = (() => {
+    switch (screen) {
+      case "saved":
+        return (
+          <SavedWorkouts
+            workouts={library.failed ? (library.items ?? []) : library.items}
+            errors={errors}
+            onLoad={({ config }) => {
+              setConfigs((current) => ({ ...current, [config.mode]: config }));
+              setSelectedMode(config.mode);
+              setScreen("timer");
+            }}
+            onRemove={({ id }) => {
+              setSaveFailure(null);
+              workouts.remove(id).catch(reportWorkoutFailure);
+            }}
+          />
+        );
+      case "history":
+        return <HistoryScreen log={history} />;
+      case "profile":
+        return (
+          <ProfileScreen
+            account={account}
+            deletion={deletion}
+            onOpenSettings={() => {
+              setScreen("settings");
+            }}
+            onOpenPrivacy={() => {
+              setScreen("privacy");
+            }}
+          />
+        );
+      case "settings":
+        return (
+          <SettingsScreen
+            sound={sound}
+            voiceAvailable={timer.voice.canSpeak(language)}
+            onChangeSound={(next) => {
+              setSound(next);
+              timer.soundStore.set(next);
+            }}
+            onBack={openProfile}
+          />
+        );
+      case "privacy":
+        return <PrivacyScreen onBack={openProfile} />;
+      case "timer":
+        return (
+          <WorkoutSetup
+            config={configs[selectedMode]}
+            onSelectMode={setSelectedMode}
+            onChange={(config) => {
+              setConfigs((current) => ({ ...current, [config.mode]: config }));
+            }}
+            onStart={handleStart}
+            saveForm={
+              <SaveWorkoutForm
+                errors={errors}
+                onSave={(name) => {
+                  setSaveFailure(null);
+                  // Not awaited: the server never answers offline, and the write is already queued.
+                  workouts
+                    .save({ name, config: currentConfig(), createdAt: timer.clock.now() })
+                    .catch(reportWorkoutFailure);
+                }}
+              />
+            }
+          />
+        );
+    }
+  })();
+
   return (
-    <WorkoutSetup
-      config={configs[selectedMode]}
-      onSelectMode={setSelectedMode}
-      onChange={(config) => {
-        setConfigs((current) => ({ ...current, [config.mode]: config }));
-      }}
-      onStart={handleStart}
-      library={
-        <SavedWorkouts
-          workouts={library.failed ? (library.items ?? []) : library.items}
-          errors={errors}
-          onSave={(name) => {
-            setSaveFailure(null);
-            // Not awaited: the server never answers offline, and the write is already queued.
-            workouts
-              .save({ name, config: currentConfig(), createdAt: timer.clock.now() })
-              .catch(reportWorkoutFailure);
-          }}
-          onLoad={({ config }) => {
-            setConfigs((current) => ({ ...current, [config.mode]: config }));
-            setSelectedMode(config.mode);
-          }}
-          onRemove={({ id }) => {
-            setSaveFailure(null);
-            workouts.remove(id).catch(reportWorkoutFailure);
-          }}
-          onOpenHistory={() => {
-            setScreen("history");
-          }}
-        />
-      }
-      account={
-        <>
-          {account}
-          <nav className={styles.links}>
-            <button
-              className={styles.link}
-              onClick={() => {
-                setScreen("settings");
-              }}
-            >
-              {t.settings}
-            </button>
-            <button
-              className={styles.link}
-              onClick={() => {
-                setScreen("privacy");
-              }}
-            >
-              {t.privacy}
-            </button>
-            <DeleteAccountControl className={styles.link} deletion={deletion} />
-          </nav>
-        </>
-      }
-    />
+    <div className={styles.withTabs}>
+      {content}
+      <TabBar current={tabOf(screen)} onSelect={setScreen} />
+    </div>
   );
 }

@@ -1,24 +1,4 @@
-.links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 16px;
-}
-
-.link {
-  min-height: 44px;
-  padding: 0 8px;
-  border: 0;
-  color: var(--muted);
-  background: transparent;
-  font: inherit;
-  font-size: 1.125rem;
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.link:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+/* Room for the fixed tab bar below every tab's content. */
+.withTabs {
+  padding-bottom: var(--tabbar-height);
 }

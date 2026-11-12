@@ -6,6 +6,7 @@
   --muted: #9aa3af;
   --ink: #0b0d10;
   --accent: #c6ff2e;
+  --tabbar-height: calc(64px + env(safe-area-inset-bottom));
   color-scheme: dark;
 }
 

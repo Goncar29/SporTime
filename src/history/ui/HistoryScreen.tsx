@@ -10,7 +10,8 @@ import styles from "./HistoryScreen.module.css";
 
 interface HistoryScreenProps {
   log: HistoryLog;
-  onBack: () => void;
+  /** Absent when History is a tab of its own. */
+  onBack?: () => void;
 }
 
 export function HistoryScreen({ log, onBack }: HistoryScreenProps) {
@@ -32,9 +33,11 @@ export function HistoryScreen({ log, onBack }: HistoryScreenProps) {
     <main className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.title}>{t.history}</h1>
-        <button className={styles.back} onClick={onBack}>
-          {t.back}
-        </button>
+        {onBack && (
+          <button className={styles.back} onClick={onBack}>
+            {t.back}
+          </button>
+        )}
       </header>
 
       {failed && (

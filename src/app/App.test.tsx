@@ -207,9 +207,10 @@ describe("App", () => {
       const app = setup();
       const { timer } = app;
       timer.voice.canSpeak = () => true;
+      click("Profile");
       click("Settings");
       fireEvent.click(screen.getByRole("switch", { name: "Voice announcements" }));
-      click("Back");
+      click("Timer");
       click(/^Tabata/);
       openRoundNames();
       nameRound(1, "  Burpees ");
@@ -337,6 +338,96 @@ describe("App in Spanish", () => {
   });
 });
 
+describe("tab navigation", () => {
+  const tab = (name: string) => screen.getByRole("button", { name });
+  const heading = (name: string) => screen.getByRole("heading", { level: 1, name });
+
+  it("opens on the Timer tab, with the tab bar outside the running workout only", () => {
+    setup();
+    const tabs = screen.getByRole("navigation", { name: "Sections" });
+    expect(
+      within(tabs)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Timer", "Saved", "History", "Profile"]);
+    expect(tab("Timer")).toHaveAttribute("aria-current", "page");
+
+    click(/^Start/);
+    expect(screen.queryByRole("navigation", { name: "Sections" })).not.toBeInTheDocument();
+  });
+
+  it("moves between tabs and marks the current one", () => {
+    setup();
+    click("History");
+    expect(heading("History")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
+    expect(tab("History")).toHaveAttribute("aria-current", "page");
+    expect(tab("Timer")).not.toHaveAttribute("aria-current");
+
+    click("Saved");
+    expect(heading("Saved workouts")).toBeInTheDocument();
+
+    click("Timer");
+    expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
+  });
+
+  it("keeps the account, language and account options on the Profile tab", () => {
+    setup();
+    expect(screen.queryByRole("group", { name: "Language" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete account" })).not.toBeInTheDocument();
+
+    click("Profile");
+    expect(heading("Profile")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Language" })).toBeInTheDocument();
+    for (const name of ["Settings", "Privacy", "Delete account"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("opens Settings and Privacy from Profile and returns there", () => {
+    setup();
+    click("Profile");
+    click("Settings");
+    expect(heading("Settings")).toBeInTheDocument();
+    expect(tab("Profile")).toHaveAttribute("aria-current", "page");
+    click("Back");
+    expect(heading("Profile")).toBeInTheDocument();
+
+    click("Privacy");
+    expect(heading("Privacy")).toBeInTheDocument();
+    click("Back");
+    expect(heading("Profile")).toBeInTheDocument();
+  });
+
+  it("saves on the Timer tab and loads from the Saved tab back into the Timer", () => {
+    setup();
+    click(/^EMOM/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Workout name" }), {
+      target: { value: "Morning" },
+    });
+    click("Save");
+    click(/^Tabata/);
+
+    click("Saved");
+    expect(screen.queryByRole("textbox", { name: "Workout name" })).not.toBeInTheDocument();
+    click(/^Morning/);
+    expect(tab("Timer")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: /^EMOM/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows modes as short chips and describes only the selected one", () => {
+    setup();
+    expect(screen.getByRole("button", { name: "Tabata" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Short, all-out efforts with brief rests.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("As many rounds as possible in a fixed time."),
+    ).not.toBeInTheDocument();
+
+    click("AMRAP");
+    expect(screen.getByText("As many rounds as possible in a fixed time.")).toBeInTheDocument();
+  });
+});
+
 describe("App account data", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -357,6 +448,7 @@ describe("App account data", () => {
   describe("privacy notice", () => {
     it("says what is kept, where, and how to remove it", () => {
       setup();
+      click("Profile");
       click("Privacy");
       const notice = screen.getByRole("main");
       for (const text of [
@@ -370,11 +462,12 @@ describe("App account data", () => {
         expect(notice).toHaveTextContent(text);
       }
       click("Back");
-      expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: "Profile" })).toBeInTheDocument();
     });
 
     it("names who to contact about the data, with a link that writes to them", () => {
       setup();
+      click("Profile");
       click("Privacy");
       const notice = screen.getByRole("main");
       expect(within(notice).getByRole("heading", { name: "Contact" })).toBeInTheDocument();
@@ -386,6 +479,7 @@ describe("App account data", () => {
 
   describe("deleting the account", () => {
     const accept = () => {
+      if (!screen.queryByRole("heading", { level: 1, name: "Profile" })) click("Profile");
       click("Delete account");
       click("Delete my account");
     };
@@ -393,6 +487,7 @@ describe("App account data", () => {
     it("asks in a dialog what will be lost and deletes nothing until accepted", () => {
       const deleteAccount = vi.fn(() => Promise.resolve());
       setup({ deleteAccount });
+      click("Profile");
       click("Delete account");
       const dialog = screen.getByRole("alertdialog", { name: "Delete account" });
       expect(dialog).toHaveTextContent(/cannot be undone/);
@@ -401,7 +496,7 @@ describe("App account data", () => {
 
       click("Keep my account");
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: "Profile" })).toBeInTheDocument();
       expect(deleteAccount).not.toHaveBeenCalled();
     });
 
@@ -477,7 +572,7 @@ describe("App account data", () => {
         fail(new AuthFailure("dataErased"));
       });
       await settledCalls();
-      click("Back");
+      click("Profile");
       expect(screen.getByRole("alert")).toHaveTextContent(/already erased/);
     });
 
@@ -497,7 +592,8 @@ describe("App account data", () => {
       });
       await settledCalls();
       expect(deleteAccount).toHaveBeenCalledOnce();
-      click("Back");
+      // A resumed deletion brings the user to Profile, where its progress and failures show.
+      expect(screen.getByRole("heading", { level: 1, name: "Profile" })).toBeInTheDocument();
       expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
     });
 
@@ -510,6 +606,7 @@ describe("App account data", () => {
       });
       await settledCalls();
       expect(deleteAccount).not.toHaveBeenCalled();
+      click("Profile");
       expect(screen.getByRole("button", { name: "Delete account" })).toBeEnabled();
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
       expect(consoleError).toHaveBeenCalled();
@@ -529,6 +626,7 @@ describe("App account data", () => {
 
     it("shows no empty message for saved workouts", () => {
       setup({ workouts: { ...createFakeWorkoutLibrary("test"), subscribe: silent } });
+      click("Saved");
       expect(screen.queryByText(/Save your settings here/)).not.toBeInTheDocument();
       expect(screen.getByText("Loading…")).toBeInTheDocument();
     });
@@ -551,6 +649,7 @@ describe("App account data", () => {
       expect(nameInput()).toHaveValue("");
 
       click(/^Tabata/);
+      click("Saved");
       click(/^Morning EMOM/);
       expect(screen.getByRole("button", { name: /^EMOM/ })).toHaveAttribute("aria-pressed", "true");
       expect(fieldValue("Rounds")).toBe("11");
@@ -570,6 +669,7 @@ describe("App account data", () => {
         target: { value: "" },
       });
       click(/^EMOM/);
+      click("Saved");
       click(/^Leg day/);
       expect(screen.getByRole("button", { name: /^Tabata/ })).toHaveAttribute(
         "aria-pressed",
@@ -592,6 +692,7 @@ describe("App account data", () => {
       click("Save");
       const confirm = vi.spyOn(window, "confirm");
 
+      click("Saved");
       click("Delete Leg day");
       const dialog = screen.getByRole("alertdialog", { name: 'Delete "Leg day"?' });
       expect(dialog).toHaveTextContent("This cannot be undone.");
@@ -613,6 +714,7 @@ describe("App account data", () => {
       setup();
       typeName("Leg day");
       click("Save");
+      click("Saved");
       click("Delete Leg day");
       expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
       fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
@@ -660,8 +762,9 @@ describe("App account data", () => {
       });
       typeName("Leg day");
       click("Save");
-      expect(screen.getByRole("button", { name: /^Leg day/ })).toBeInTheDocument();
       expect(nameInput()).toHaveValue("");
+      click("Saved");
+      expect(screen.getByRole("button", { name: /^Leg day/ })).toBeInTheDocument();
     });
   });
 
@@ -827,10 +930,10 @@ describe("App account data", () => {
       expect(screen.getAllByRole("listitem")).toHaveLength(2);
     });
 
-    it("returns to the setup screen", () => {
+    it("returns to the timer from the tab bar", () => {
       setup();
       click("History");
-      click("Back");
+      click("Timer");
       expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
     });
 
@@ -866,6 +969,7 @@ describe("App account data", () => {
 
 describe("sound settings", () => {
   const openSettings = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByRole("heading", { name: "Sound settings" })).toBeVisible();
   };
@@ -916,7 +1020,7 @@ describe("sound settings", () => {
     timer.voice.canSpeak = () => true;
     openSettings();
     fireEvent.click(option("Voice announcements"));
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Timer" }));
     fireEvent.click(screen.getByRole("button", { name: /^Start/ }));
     expect(timer.voice.say).toHaveBeenLastCalledWith("Get ready", "en");
   });
