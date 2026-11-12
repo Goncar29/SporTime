@@ -116,7 +116,13 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
       const provider = new GoogleAuthProvider();
       const viaRedirect = async () => {
         rememberPendingDeletion(userId);
-        await reauthenticateWithRedirect(user, provider);
+        try {
+          await reauthenticateWithRedirect(user, provider);
+        } catch (error) {
+          // The page never left, so nothing will come back to finish it.
+          takePendingDeletion();
+          throw error;
+        }
       };
       try {
         if (currentSignInMethod() === "redirect") {

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { DeleteAccountControl } from "../account/ui/DeleteAccountControl";
+import { useAccountDeletion } from "../account/ui/useAccountDeletion";
 import { PrivacyScreen } from "../account/ui/PrivacyScreen";
 import { SettingsScreen } from "../settings/ui/SettingsScreen";
 import type { HistoryLog } from "../history/application/ports";
@@ -79,6 +80,10 @@ export function App({
   const [screen, setScreen] = useState<Screen>("setup");
   const [saveFailure, setSaveFailure] = useState<"workout" | "session" | null>(null);
   const library = useLiveList(workouts.subscribe);
+  const deletion = useAccountDeletion({
+    onDelete: deleteAccount,
+    confirmedByRedirect: deletionConfirmedByRedirect,
+  });
 
   const reportWorkoutFailure = () => {
     setSaveFailure("workout");
@@ -215,11 +220,7 @@ export function App({
             >
               {t.privacy}
             </button>
-            <DeleteAccountControl
-              className={styles.link}
-              onDelete={deleteAccount}
-              confirmedByRedirect={deletionConfirmedByRedirect}
-            />
+            <DeleteAccountControl className={styles.link} deletion={deletion} />
           </nav>
         </>
       }

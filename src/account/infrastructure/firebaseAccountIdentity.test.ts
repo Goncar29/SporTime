@@ -79,6 +79,20 @@ describe("confirm", () => {
   });
 });
 
+describe("confirm, when the redirect cannot start", () => {
+  it("forgets the deletion it was about to remember", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    sessionStorage.clear();
+    auth.reauthenticateWithRedirect.mockRejectedValueOnce({
+      code: "auth/network-request-failed",
+    });
+    await expect(createFirebaseAccountIdentity("u1").confirm()).rejects.toMatchObject({
+      kind: "network",
+    });
+    expect(sessionStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+});
+
 describe("confirmedByRedirect", () => {
   const pending = (userId: string, at = Date.now()) => {
     sessionStorage.setItem(PENDING_KEY, JSON.stringify({ userId, at }));

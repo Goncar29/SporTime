@@ -464,6 +464,43 @@ describe("App account data", () => {
       expect(screen.getByText("Deleting…")).toHaveAttribute("role", "status");
     });
 
+    it("keeps a failure that arrives while another screen is open", async () => {
+      let fail: (error: unknown) => void = () => undefined;
+      const deleteAccount = () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        });
+      setup({ deleteAccount });
+      accept();
+      click("History");
+      act(() => {
+        fail(new AuthFailure("dataErased"));
+      });
+      await settledCalls();
+      click("Back");
+      expect(screen.getByRole("alert")).toHaveTextContent(/already erased/);
+    });
+
+    it("keeps a resumed deletion and its failure when the user moved on first", async () => {
+      let confirm: (confirmed: boolean) => void = () => undefined;
+      const deleteAccount = vi.fn(() => Promise.reject(new AuthFailure("network")));
+      setup({
+        deleteAccount,
+        deletionConfirmedByRedirect: () =>
+          new Promise<boolean>((resolve) => {
+            confirm = resolve;
+          }),
+      });
+      click("History");
+      act(() => {
+        confirm(true);
+      });
+      await settledCalls();
+      expect(deleteAccount).toHaveBeenCalledOnce();
+      click("Back");
+      expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
+    });
+
     it("deletes nothing on load when no redirect confirmed a deletion", async () => {
       const deleteAccount = vi.fn(() => Promise.resolve());
       setup({ deleteAccount, deletionConfirmedByRedirect: () => Promise.resolve(false) });
