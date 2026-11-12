@@ -132,6 +132,11 @@ describe("confirmedByRedirect", () => {
     await expect(createFirebaseAccountIdentity("u1").confirmedByRedirect()).resolves.toBe(false);
   });
 
+  it("is false for a request dated in the future, which no real request can be", async () => {
+    pending("u1", Date.now() + 60 * 1_000);
+    await expect(createFirebaseAccountIdentity("u1").confirmedByRedirect()).resolves.toBe(false);
+  });
+
   it("is false for a request older than the window Firebase allows", async () => {
     pending("u1", Date.now() - 5 * 60 * 1_000);
     await expect(createFirebaseAccountIdentity("u1").confirmedByRedirect()).resolves.toBe(false);
