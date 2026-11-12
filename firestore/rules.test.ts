@@ -86,15 +86,6 @@ describe("ownership", () => {
         await assertFails(deleteDoc(doc(db, path("alice"))));
       });
 
-      it("keeps a saved document immutable", async () => {
-        await seed(path("alice"), data);
-        const changed = { ...data, config: defaultConfig("amrap") };
-        await assertFails(
-          updateDoc(doc(asUser("alice"), path("alice")), { config: changed.config }),
-        );
-        await assertFails(setDoc(doc(asUser("alice"), path("alice")), changed));
-      });
-
       it("accepts the same document again, as the SDK resends after a lost answer", async () => {
         await seed(path("alice"), data);
         await assertSucceeds(setDoc(doc(asUser("alice"), path("alice")), data));
@@ -102,6 +93,15 @@ describe("ownership", () => {
       });
     });
   }
+
+  it("keeps a history entry immutable", async () => {
+    await seed(entryPath("alice"), entry);
+    const changed = { ...entry, config: defaultConfig("amrap") };
+    await assertFails(
+      updateDoc(doc(asUser("alice"), entryPath("alice")), { config: changed.config }),
+    );
+    await assertFails(setDoc(doc(asUser("alice"), entryPath("alice")), changed));
+  });
 
   it("rejects anything outside the two collections", async () => {
     const db = asUser("alice");
@@ -291,13 +291,61 @@ describe("round names", () => {
     }
   });
 
-  it("cannot be added to a document already saved", async () => {
-    for (const [path, data] of [
-      [workoutPath("alice"), workout],
-      [entryPath("alice"), entry],
-    ] as const) {
-      await seed(path, data);
-      await assertFails(updateDoc(doc(asUser("alice"), path), { "config.roundNames": "Burpees" }));
-    }
+  it("cannot be added to a history entry already saved", async () => {
+    await seed(entryPath("alice"), entry);
+    await assertFails(
+      updateDoc(doc(asUser("alice"), entryPath("alice")), { "config.roundNames": "Burpees" }),
+    );
+  });
+
+  it("can be added to a saved workout by editing it", async () => {
+    await seed(workoutPath("alice"), workout);
+    await assertSucceeds(
+      updateDoc(doc(asUser("alice"), workoutPath("alice")), { "config.roundNames": "Burpees" }),
+    );
+  });
+});
+
+describe("editing a saved workout", () => {
+  const path = workoutPath("alice");
+  const edited = {
+    name: "Leg day, harder",
+    config: toStoredConfig({ ...defaultConfig("emom"), rounds: 12, roundNames: ["Squats"] }),
+    createdAt: workout.createdAt,
+  };
+
+  beforeEach(async () => {
+    await seed(path, workout);
+  });
+
+  it("lets the owner change the name, the type and every setting", async () => {
+    await assertSucceeds(setDoc(doc(asUser("alice"), path), edited));
+    await env.withSecurityRulesDisabled(async (context) => {
+      expect((await getDoc(doc(context.firestore(), path))).data()).toEqual(edited);
+    });
+  });
+
+  it("lets the owner change one field at a time", async () => {
+    await assertSucceeds(updateDoc(doc(asUser("alice"), path), { name: "Renamed" }));
+  });
+
+  it("keeps its creation time, which sets its place in the list", async () => {
+    await assertFails(setDoc(doc(asUser("alice"), path), { ...edited, createdAt: Date.now() }));
+    await assertFails(updateDoc(doc(asUser("alice"), path), { createdAt: 1 }));
+  });
+
+  it("checks the result like a new workout", async () => {
+    const db = asUser("alice");
+    await assertFails(updateDoc(doc(db, path), { name: "   " }));
+    await assertFails(updateDoc(doc(db, path), { name: "x".repeat(41) }));
+    await assertFails(updateDoc(doc(db, path), { "config.rounds": 100 }));
+    await assertFails(updateDoc(doc(db, path), { "config.mode": "yoga" }));
+    await assertFails(updateDoc(doc(db, path), { extra: true }));
+  });
+
+  it("is refused to anyone else", async () => {
+    await assertFails(setDoc(doc(asUser("mallory"), path), edited));
+    await assertFails(updateDoc(doc(asUser("mallory"), path), { name: "Mine now" }));
+    await assertFails(setDoc(doc(asGuest(), path), edited));
   });
 });
