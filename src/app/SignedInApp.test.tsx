@@ -63,13 +63,19 @@ describe("SignedInApp", () => {
       target: { value: "Alice EMOM" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const openSaved = () => {
+      fireEvent.click(screen.getByRole("button", { name: "Saved" }));
+    };
+    openSaved();
     expect(screen.getByRole("button", { name: /^Alice EMOM/ })).toBeInTheDocument();
 
     switchTo("bob");
-    expect(screen.queryByRole("button", { name: /^Alice EMOM/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Tabata/ })).toHaveAttribute("aria-pressed", "true");
+    openSaved();
+    expect(screen.queryByRole("button", { name: /^Alice EMOM/ })).not.toBeInTheDocument();
 
     switchTo("alice");
+    openSaved();
     expect(screen.getByRole("button", { name: /^Alice EMOM/ })).toBeInTheDocument();
   });
 });

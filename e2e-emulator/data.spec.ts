@@ -3,6 +3,7 @@ import {
   clearEmulatorData,
   eventually,
   finishStopwatch,
+  openTab,
   restoreNetwork,
   saveWorkout,
   savedButton,
@@ -26,6 +27,7 @@ test("saved workouts and finished sessions reach the server and come back", asyn
   await eventually(async () => (await stored(uid, "history")).length).toBe(1);
 
   await page.reload();
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Leg day")).toBeVisible();
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(1);
@@ -39,11 +41,14 @@ test("writes made offline survive a reload and sync once", async ({ page, contex
 
   await context.setOffline(true);
   await saveWorkout(page, "Offline");
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Offline")).toBeVisible();
   await finishStopwatch(page);
 
   await page.reload();
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Offline")).toBeVisible();
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Online")).toBeVisible();
   expect(await storedNames(uid)).toEqual(["Online"]);
 
@@ -63,24 +68,31 @@ test("a stalled sign-in check loses nothing and invents nothing", async ({ page,
   await stallNetwork(context);
   await page.reload();
   await expect(startButton(page)).toBeVisible();
+  await openTab(page, "Saved");
   await expect(page.getByText("Loading…")).toBeVisible();
   await expect(page.getByText(/Save your settings here/)).toHaveCount(0);
 
   await saveWorkout(page, "During stall");
+  await openTab(page, "Saved");
   await expect(savedButton(page, "During stall")).toBeVisible();
   await saveWorkout(page, "Changed my mind");
+  await openTab(page, "Saved");
   await page.getByRole("button", { name: "Delete Changed my mind" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Changed my mind")).toHaveCount(0);
   await finishStopwatch(page);
 
   await page.reload();
+  await openTab(page, "Saved");
   await expect(savedButton(page, "During stall")).toBeVisible();
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Changed my mind")).toHaveCount(0);
 
   await restoreNetwork(context);
   await eventually(() => storedNames(uid)).toEqual(["During stall", "Existing"]);
   await eventually(async () => (await stored(uid, "history")).length).toBe(1);
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Existing")).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
@@ -113,13 +125,16 @@ test("each account only ever sees its own data", async ({ page }) => {
   await finishStopwatch(page);
   await eventually(() => storedNames(alice)).toEqual(["Alice only"]);
 
+  await openTab(page, "Profile");
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.evaluate((who) => window.signInForTest(who), uniqueName("bob"));
   await expect(startButton(page)).toBeVisible();
   const bob = await page.evaluate(() => window.currentUidForTest());
   expect(bob).not.toBe(alice);
 
+  await openTab(page, "Saved");
   await expect(page.getByText(/Save your settings here/)).toBeVisible();
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Alice only")).toHaveCount(0);
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByText("No finished workouts yet.")).toBeVisible();

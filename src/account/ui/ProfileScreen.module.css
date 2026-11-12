@@ -1,0 +1,88 @@
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.rowLabel {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 0 12px 0 16px;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.item + .item {
+  border-top: 1px solid var(--line);
+}
+
+.item:active {
+  background: var(--line);
+}
+
+.item:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.chevron {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+
+/* Set apart at the bottom, away from the everyday options. */
+.danger {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.deleteAccount {
+  min-height: 52px;
+  border: 2px solid #ff8a75;
+  border-radius: 14px;
+  color: #ff8a75;
+  background: transparent;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.deleteAccount:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.deleteAccount:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}

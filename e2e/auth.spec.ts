@@ -1,4 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+/** Opens a section from the bottom tab bar. */
+const openTab = (page: Page, name: string) =>
+  page
+    .getByRole("navigation", { name: /^(Sections|Secciones)$/ })
+    .getByRole("button", { name })
+    .click();
 
 test("signing in unlocks the app, and it stays signed in after a reload", async ({ page }) => {
   await page.addInitScript(() => {
@@ -16,6 +23,7 @@ test("signing in unlocks the app, and it stays signed in after a reload", async 
   await page.reload();
   await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
 
+  await openTab(page, "Profile");
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
 });
@@ -51,14 +59,17 @@ test("saved workouts and finished sessions survive a reload with no network", as
   await page.getByRole("button", { name: /^EMOM/ }).click();
   await page.getByRole("textbox", { name: "Workout name" }).fill("Morning EMOM");
   await page.getByRole("button", { name: "Save", exact: true }).click();
+  await openTab(page, "Saved");
   await expect(page.getByRole("button", { name: /^Morning EMOM/ })).toBeVisible();
 
+  await openTab(page, "Timer");
   await page.getByRole("button", { name: /^Stopwatch/ }).click();
   await page.getByRole("button", { name: /^Start/ }).click();
   await page.getByRole("button", { name: "Finish" }).click();
   await page.getByRole("button", { name: "New workout" }).click();
 
   await page.reload();
+  await openTab(page, "Saved");
   await expect(page.getByRole("button", { name: /^Morning EMOM/ })).toBeVisible();
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(1);

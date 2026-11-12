@@ -1,0 +1,85 @@
+.bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: var(--tabbar-height);
+  padding: 0 max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom)
+    max(8px, env(safe-area-inset-left));
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 120ms ease-out;
+}
+
+/* A short accent bar above the current tab, echoing the selected mode's fill. */
+.tab::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  width: 28px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+  transform: translateX(-50%) scaleX(0);
+  transition: transform 160ms ease-out;
+}
+
+.tab[aria-current="page"] {
+  color: var(--accent);
+}
+
+.tab[aria-current="page"]::before {
+  transform: translateX(-50%) scaleX(1);
+}
+
+.tab:active .icon {
+  transform: scale(0.9);
+}
+
+.tab:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 12px;
+}
+
+.icon {
+  width: 26px;
+  height: 26px;
+  transition: transform 110ms ease-out;
+}
+
+.label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .tab::before,
+  .icon {
+    transition: none;
+  }
+}

@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
+/** Opens a section from the bottom tab bar. */
+const openTab = (page: Page, name: string) =>
+  page
+    .getByRole("navigation", { name: /^(Sections|Secciones)$/ })
+    .getByRole("button", { name })
+    .click();
+
 declare global {
   interface Window {
     phrases: { text: string; lang: string }[];
@@ -55,14 +62,16 @@ test("with the voice off a workout says nothing and keeps its tones", async ({ p
 test("the chosen announcements are spoken, and the choice survives a reload", async ({ page }) => {
   await page.clock.install();
   await page.goto("/");
+  await openTab(page, "Profile");
   await page.getByRole("button", { name: "Settings" }).click();
   await option(page, "Voice announcements").check();
   await option(page, "Interval sound").uncheck();
   await page.reload();
+  await openTab(page, "Profile");
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(option(page, "Voice announcements")).toBeChecked();
   await expect(option(page, "Interval sound")).not.toBeChecked();
-  await page.getByRole("button", { name: "Back" }).click();
+  await openTab(page, "Timer");
 
   await page.getByRole("button", { name: /^Tabata/ }).click();
   await page.getByRole("button", { name: /^Start/ }).click();
@@ -91,10 +100,12 @@ test("the chosen announcements are spoken, and the choice survives a reload", as
 test("the voice speaks the app's language", async ({ page }) => {
   await page.clock.install();
   await page.goto("/");
+  await openTab(page, "Profile");
   await page.getByRole("button", { name: "Settings" }).click();
   await option(page, "Voice announcements").check();
   await page.getByRole("button", { name: "Back" }).click();
   await page.getByRole("button", { name: "Español" }).click();
+  await openTab(page, "Timer");
   await page.getByRole("button", { name: /^Iniciar/ }).click();
   expect(await page.evaluate(() => window.phrases)).toEqual([{ text: "Prepárate", lang: "es" }]);
 });

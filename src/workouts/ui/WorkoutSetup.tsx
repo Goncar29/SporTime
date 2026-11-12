@@ -1,6 +1,5 @@
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useI18n } from "../../i18n/ui/I18nProvider";
-import { LanguageSwitcher } from "../../i18n/ui/LanguageSwitcher";
 import { formatClock } from "../../timer/domain/format";
 import { buildTimeline } from "../domain/timeline";
 import {
@@ -20,8 +19,8 @@ interface WorkoutSetupProps {
   onSelectMode: (mode: WorkoutMode) => void;
   onChange: (config: WorkoutConfig) => void;
   onStart: () => void;
-  library?: ReactNode;
-  account?: ReactNode;
+  /** Saves the settings on screen. */
+  saveForm?: ReactNode;
 }
 
 export function WorkoutSetup({
@@ -29,35 +28,48 @@ export function WorkoutSetup({
   onSelectMode,
   onChange,
   onStart,
-  library,
-  account,
+  saveForm,
 }: WorkoutSetupProps) {
   const { t } = useI18n();
   const { totalMs } = buildTimeline(config);
   const definition = modeDefinition(config.mode);
+  const modesRef = useRef<HTMLDivElement>(null);
+
+  // On a phone the chips scroll sideways, and the selected one may start out of view.
+  useEffect(() => {
+    const row = modesRef.current;
+    const selected = row?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!row || !selected) return;
+    const start = selected.offsetLeft - row.offsetLeft;
+    const end = start + selected.offsetWidth;
+    if (start < row.scrollLeft || end > row.scrollLeft + row.clientWidth) {
+      row.scrollLeft = start - (row.clientWidth - selected.offsetWidth) / 2;
+    }
+  }, [config.mode]);
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.brand}>Sportime</h1>
         <p className={styles.tagline}>{t.tagline}</p>
-        <LanguageSwitcher />
       </header>
 
-      <div className={styles.modes}>
-        {MODES.map((mode) => (
-          <button
-            key={mode.id}
-            className={styles.mode}
-            aria-pressed={mode.id === config.mode}
-            onClick={() => {
-              onSelectMode(mode.id);
-            }}
-          >
-            <span className={styles.modeLabel}>{t.modes[mode.id].label}</span>
-            <span className={styles.modeDescription}>{t.modes[mode.id].description}</span>
-          </button>
-        ))}
+      <div className={styles.modePicker}>
+        <div className={styles.modes} ref={modesRef}>
+          {MODES.map((mode) => (
+            <button
+              key={mode.id}
+              className={styles.mode}
+              aria-pressed={mode.id === config.mode}
+              onClick={() => {
+                onSelectMode(mode.id);
+              }}
+            >
+              {t.modes[mode.id].label}
+            </button>
+          ))}
+        </div>
+        <p className={styles.modeDescription}>{t.modes[config.mode].description}</p>
       </div>
 
       <div className={styles.fields}>
@@ -83,9 +95,7 @@ export function WorkoutSetup({
         />
       )}
 
-      {library}
-
-      {account}
+      {saveForm}
 
       <div className={styles.startBar}>
         <button className={styles.start} onClick={onStart}>

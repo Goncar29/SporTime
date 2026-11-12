@@ -5,6 +5,8 @@ interface AccountDeletionOptions {
   onDelete: () => Promise<void>;
   /** True when this page came back from Google re-confirming a deletion the user accepted. */
   confirmedByRedirect: () => Promise<boolean>;
+  /** Called when a deletion resumes by itself after a redirect, before it runs. */
+  onResume?: () => void;
 }
 
 export interface AccountDeletion {
@@ -23,6 +25,7 @@ const keepIfDataErased = (current: AuthFailureKind | null) =>
 export function useAccountDeletion({
   onDelete,
   confirmedByRedirect,
+  onResume,
 }: AccountDeletionOptions): AccountDeletion {
   const [deleting, setDeleting] = useState(false);
   const [failure, setFailure] = useState<AuthFailureKind | null>(null);
@@ -49,7 +52,9 @@ export function useAccountDeletion({
   useEffect(() => {
     confirmedByRedirect()
       .then((confirmed) => {
-        if (confirmed) start();
+        if (!confirmed) return;
+        onResume?.();
+        start();
       })
       .catch((error: unknown) => {
         console.error("Checking for a pending deletion failed:", error);

@@ -59,12 +59,21 @@ export const startButton = (page: Page) => page.getByRole("button", { name: /^St
 export const savedButton = (page: Page, name: string) =>
   page.getByRole("button", { name: new RegExp(`^${name}`) });
 
+/** Opens a section from the bottom tab bar. */
+export const openTab = (page: Page, name: "Timer" | "Saved" | "History" | "Profile") =>
+  page
+    .getByRole("navigation", { name: /^(Sections|Secciones)$/ })
+    .getByRole("button", { name })
+    .click();
+
 export async function saveWorkout(page: Page, name: string) {
+  await openTab(page, "Timer");
   await page.getByRole("textbox", { name: "Workout name" }).fill(name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 }
 
 export async function finishStopwatch(page: Page) {
+  await openTab(page, "Timer");
   await page.getByRole("button", { name: /^Stopwatch/ }).click();
   await startButton(page).click();
   await page.getByRole("button", { name: "Finish" }).click();

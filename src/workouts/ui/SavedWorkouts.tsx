@@ -8,44 +8,24 @@ import {
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import styles from "./SavedWorkouts.module.css";
 
-interface SavedWorkoutsProps {
-  /** Null until the first answer arrives. */
-  workouts: readonly SavedWorkout[] | null;
+interface SaveWorkoutFormProps {
   errors: readonly string[];
   onSave: (name: string) => void;
-  onLoad: (workout: SavedWorkout) => void;
-  onRemove: (workout: SavedWorkout) => void;
-  onOpenHistory: () => void;
 }
 
-export function SavedWorkouts({
-  workouts,
-  errors,
-  onSave,
-  onLoad,
-  onRemove,
-  onOpenHistory,
-}: SavedWorkoutsProps) {
+/** Saves the settings on screen under a name; it sits next to the settings it saves. */
+export function SaveWorkoutForm({ errors, onSave }: SaveWorkoutFormProps) {
   const { t } = useI18n();
   const [draftName, setDraftName] = useState("");
   const name = normalizeWorkoutName(draftName);
-  const [pending, setPending] = useState<SavedWorkout | null>(null);
 
   return (
-    <section className={styles.section} aria-label={t.savedWorkouts}>
-      <div className={styles.heading}>
-        <h2 className={styles.title}>{t.savedWorkouts}</h2>
-        <button className={styles.link} onClick={onOpenHistory}>
-          {t.history}
-        </button>
-      </div>
-
+    <section className={styles.section} aria-label={t.saveWorkout}>
       {errors.map((error) => (
         <p key={error} className={styles.error} role="alert">
           {error}
         </p>
       ))}
-
       <form
         className={styles.form}
         onSubmit={(event) => {
@@ -69,6 +49,34 @@ export function SavedWorkouts({
           {t.saveWorkout}
         </button>
       </form>
+    </section>
+  );
+}
+
+interface SavedWorkoutsProps {
+  /** Null until the first answer arrives. */
+  workouts: readonly SavedWorkout[] | null;
+  errors: readonly string[];
+  onLoad: (workout: SavedWorkout) => void;
+  onRemove: (workout: SavedWorkout) => void;
+}
+
+/** The Saved tab: every saved workout, to load into the timer or delete. */
+export function SavedWorkouts({ workouts, errors, onLoad, onRemove }: SavedWorkoutsProps) {
+  const { t } = useI18n();
+  const [pending, setPending] = useState<SavedWorkout | null>(null);
+
+  return (
+    <main className={styles.page}>
+      <header>
+        <h1 className={styles.pageTitle}>{t.savedWorkouts}</h1>
+      </header>
+
+      {errors.map((error) => (
+        <p key={error} className={styles.error} role="alert">
+          {error}
+        </p>
+      ))}
 
       {workouts === null && <p className={styles.empty}>{t.loading}</p>}
       {workouts?.length === 0 && <p className={styles.empty}>{t.noSavedWorkouts}</p>}
@@ -111,6 +119,6 @@ export function SavedWorkouts({
           }}
         />
       )}
-    </section>
+    </main>
   );
 }

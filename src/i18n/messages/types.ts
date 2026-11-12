@@ -60,6 +60,11 @@ export interface Messages {
   sessionSaveFailed: string;
   loadWorkoutsFailed: string;
   history: string;
+  /** The bottom tab bar and its tabs. */
+  sections: string;
+  tabTimer: string;
+  tabSaved: string;
+  profile: string;
   historyEmpty: string;
   loadHistoryFailed: string;
   back: string;

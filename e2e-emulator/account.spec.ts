@@ -4,6 +4,7 @@ import {
   clearEmulatorData,
   eventually,
   finishStopwatch,
+  openTab,
   saveWorkout,
   savedButton,
   signIn,
@@ -16,10 +17,13 @@ import {
 const googleButton = (page: Page) => page.getByRole("button", { name: "Continue with Google" });
 const deleteLink = (page: Page) => page.getByRole("button", { name: "Delete account" });
 const confirmButton = (page: Page) => page.getByRole("button", { name: "Delete my account" });
-const openDeleteDialog = (page: Page) => deleteLink(page).click();
+const openDeleteDialog = async (page: Page) => {
+  await openTab(page, "Profile");
+  await deleteLink(page).click();
+};
 /** Accepts the dialog, opening it first when a failure or a return already closed it. */
 async function acceptDeletion(page: Page) {
-  if (!(await confirmButton(page).isVisible())) await deleteLink(page).click();
+  if (!(await confirmButton(page).isVisible())) await openDeleteDialog(page);
   await confirmButton(page).click();
 }
 
@@ -32,6 +36,7 @@ async function signInAs(page: Page, name: string): Promise<string> {
 }
 
 const signOut = async (page: Page) => {
+  await openTab(page, "Profile");
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(googleButton(page)).toBeVisible();
 };
@@ -177,6 +182,7 @@ test("deletion needs a connection and touches nothing without one", async ({ pag
   await eventually(() => storedNames(uid)).toEqual(["Synced"]);
   await context.setOffline(true);
   await saveWorkout(page, "Queued");
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Queued")).toBeVisible();
 
   await openDeleteDialog(page);
@@ -206,6 +212,7 @@ test("a write still on its way when deletion starts is not left behind", async (
     await route.fallback();
   });
   await saveWorkout(page, "Still on its way");
+  await openTab(page, "Saved");
   await expect(savedButton(page, "Still on its way")).toBeVisible();
   // Proves the hold works: without it this test could not fail.
   expect(await storedNames(uid)).toEqual(["First"]);
@@ -254,6 +261,7 @@ for (const bobDeletes of [true, false]) {
     const alice = await signInAs(await openedPage(page), aliceName);
     await context.setOffline(true);
     await saveWorkout(page, "Alice offline");
+    await openTab(page, "Saved");
     await expect(savedButton(page, "Alice offline")).toBeVisible();
     await page.waitForTimeout(1_500);
     await signOut(page);
@@ -270,6 +278,7 @@ for (const bobDeletes of [true, false]) {
 
     await signInAs(page, aliceName);
     await eventually(() => storedNames(alice)).toEqual(["Alice offline"]);
+    await openTab(page, "Saved");
     await expect(savedButton(page, "Alice offline")).toBeVisible();
   });
 }
@@ -613,5 +622,6 @@ test("coming back from Google without choosing deletes nothing, then or later", 
   await page.waitForTimeout(3_000);
   expect(await accountExists(uid)).toBe(true);
   expect(await storedNames(uid)).toEqual(["W"]);
+  await openTab(page, "Profile");
   await expect(deleteLink(page)).toBeEnabled();
 });
