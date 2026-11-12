@@ -33,6 +33,11 @@ export interface Outbox<T, Draft> {
   /** Durable as soon as it returns. Settles when the server answers, so callers must not wait for it. */
   add: (draft: Draft) => Promise<void>;
   cancel: (id: string) => void;
+  /**
+   * Replaces the draft of a write still held here, so an edit made before it reached the
+   * collection is the version sent. False when this outbox does not hold that write.
+   */
+  revise: (id: string, draft: Draft) => boolean;
 }
 
 interface Waiter {
@@ -75,7 +80,9 @@ export function withOutbox<T extends { id: string }, Draft>({
     }
     if (!(await collection.has(id))) {
       const waiter = waiters.get(id);
-      collection.put(id, draft).then(
+      // Read again after waiting: an edit may have revised it meanwhile.
+      const latest = store.load().find((item) => item.id === id)?.draft ?? draft;
+      collection.put(id, latest).then(
         () => waiter?.resolve(),
         (error: unknown) => {
           if (waiter) waiter.reject(error);
@@ -147,6 +154,12 @@ export function withOutbox<T extends { id: string }, Draft>({
     cancel(id) {
       waiters.get(id)?.resolve();
       drop(id);
+    },
+    revise(id, draft) {
+      const items = store.load();
+      if (!items.some((item) => item.id === id)) return false;
+      replace(items.map((item) => (item.id === id ? { id, draft } : item)));
+      return true;
     },
   };
 }

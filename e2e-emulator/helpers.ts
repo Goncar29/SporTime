@@ -3,8 +3,17 @@ import { expect, type BrowserContext, type Page } from "@playwright/test";
 const DOCUMENTS = "127.0.0.1:8080/v1/projects/demo-sportime/databases/(default)/documents";
 const EMULATOR_CALLS = /127\.0\.0\.1:(8080|9099)/;
 
+/** Firestore's REST encoding of a value; only the kinds these tests read. */
+interface StoredValue {
+  stringValue?: string;
+  integerValue?: string;
+  mapValue?: { fields?: Record<string, StoredValue> };
+}
+
 interface StoredDocument {
-  fields: Record<string, { stringValue?: string }>;
+  /** The full path, which ends with the document's id. */
+  name: string;
+  fields: Record<string, StoredValue>;
 }
 
 /** Reads what the server really holds, bypassing the rules and the page. */
@@ -14,6 +23,15 @@ export async function stored(uid: string, kind: "workouts" | "history"): Promise
   });
   const body = (await response.json()) as { documents?: StoredDocument[] };
   return body.documents ?? [];
+}
+
+/** Deletes a stored document as another device would, bypassing the rules and the page. */
+export async function deleteStored(documentName: string) {
+  const response = await fetch(`http://127.0.0.1:8080/v1/${documentName}`, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer owner" },
+  });
+  if (!response.ok) throw new Error(`Firestore emulator answered ${response.status}`);
 }
 
 /** Asks the Auth emulator directly, so a page that merely looks signed out cannot pass. */

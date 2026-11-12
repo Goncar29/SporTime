@@ -21,6 +21,8 @@ interface WorkoutSetupProps {
   onStart: () => void;
   /** Saves the settings on screen. */
   saveForm?: ReactNode;
+  /** Shown under the title, such as which saved workout is being edited. */
+  notice?: ReactNode;
 }
 
 export function WorkoutSetup({
@@ -29,6 +31,7 @@ export function WorkoutSetup({
   onChange,
   onStart,
   saveForm,
+  notice,
 }: WorkoutSetupProps) {
   const { t } = useI18n();
   const { totalMs } = buildTimeline(config);
@@ -53,6 +56,8 @@ export function WorkoutSetup({
         <h1 className={styles.brand}>Sportime</h1>
         <p className={styles.tagline}>{t.tagline}</p>
       </header>
+
+      {notice}
 
       <div className={styles.modePicker}>
         <div className={styles.modes} ref={modesRef}>

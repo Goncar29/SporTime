@@ -71,7 +71,11 @@ service cloud.firestore {
     match /users/{uid}/workouts/{workoutId} {
       allow read, delete: if isOwner(uid);
       allow create: if isOwner(uid) && isWorkout(request.resource.data);
-      allow update: if isOwner(uid) && isUnchanged();
+      // Editing checks the result like a new workout and keeps createdAt, its place in the list.
+      allow update: if isOwner(uid)
+        && (isUnchanged()
+          || (isWorkout(request.resource.data)
+            && request.resource.data.createdAt == resource.data.createdAt));
     }
 
     match /users/{uid}/history/{entryId} {
