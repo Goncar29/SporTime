@@ -68,6 +68,13 @@ export interface Messages {
   tabTimer: string;
   tabSaved: string;
   profile: string;
+  /** Installing the app on the device. */
+  installTitle: string;
+  installOffer: string;
+  installIosSteps: string;
+  install: string;
+  notNow: string;
+  installApp: string;
   historyEmpty: string;
   loadHistoryFailed: string;
   back: string;

@@ -4,6 +4,7 @@ import type { HistoryLog } from "../history/application/ports";
 import { AuthFailure } from "../auth/domain/user";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
+import { InstallProvider } from "../install/ui/InstallProvider";
 import type { WorkoutLibrary } from "../workouts/application/ports";
 import { createFakeWorkoutLibrary } from "../workouts/infrastructure/fakeWorkoutLibrary";
 import { App } from "./App";
@@ -425,6 +426,59 @@ describe("tab navigation", () => {
 
     click("AMRAP");
     expect(screen.getByText("As many rounds as possible in a fixed time.")).toBeInTheDocument();
+  });
+});
+
+describe("installing the app", () => {
+  function setupInstallable() {
+    const install = vi.fn(() => Promise.resolve("accepted" as const));
+    const controller = {
+      state: () => "prompt" as const,
+      subscribe: () => () => undefined,
+      install,
+    };
+    const timer = {
+      clock: { now: () => 0 },
+      cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+      voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+      soundStore: { get: () => null, set: vi.fn() },
+      screenAwake: { acquire: vi.fn(), release: vi.fn() },
+    };
+    render(
+      <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["en-US"]}>
+        <InstallProvider controller={controller} dismissals={{ get: () => null, set: vi.fn() }}>
+          <App
+            timer={timer}
+            workouts={createFakeWorkoutLibrary("test")}
+            history={createFakeHistoryLog("test")}
+            deleteAccount={() => Promise.resolve()}
+            deletionConfirmedByRedirect={() => Promise.resolve(false)}
+          />
+        </InstallProvider>
+      </I18nProvider>,
+    );
+    return { install };
+  }
+  const notice = () => screen.queryByRole("region", { name: "Install Sportime" });
+
+  it("offers it at the top of the Timer tab, not on the other tabs", () => {
+    setupInstallable();
+    expect(notice()).toBeInTheDocument();
+    click("History");
+    expect(notice()).not.toBeInTheDocument();
+  });
+
+  it("keeps an Install app option on Profile", () => {
+    const { install } = setupInstallable();
+    click("Profile");
+    click("Install app");
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it("never covers a running workout", () => {
+    setupInstallable();
+    click(/^Start/);
+    expect(notice()).not.toBeInTheDocument();
   });
 });
 

@@ -1,11 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-
-/** Opens a section from the bottom tab bar. */
-const openTab = (page: Page, name: string) =>
-  page
-    .getByRole("navigation", { name: /^(Sections|Secciones)$/ })
-    .getByRole("button", { name })
-    .click();
+import { expect, test } from "@playwright/test";
+import { openTab } from "./helpers";
 
 test("signing in unlocks the app, and it stays signed in after a reload", async ({ page }) => {
   await page.addInitScript(() => {

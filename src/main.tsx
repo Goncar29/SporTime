@@ -11,6 +11,11 @@ import { AuthGate } from "./auth/ui/AuthGate";
 import type { HistoryDraft } from "./history/domain/historyEntry";
 import { localStorageLanguageStore } from "./i18n/infrastructure/localStorageLanguageStore";
 import { I18nProvider } from "./i18n/ui/I18nProvider";
+import {
+  createBrowserInstall,
+  localStorageInstallDismissals,
+} from "./install/infrastructure/browserInstall";
+import { InstallProvider } from "./install/ui/InstallProvider";
 import type { SavedWorkoutDraft } from "./workouts/domain/savedWorkout";
 import { localStorageSoundSettingsStore } from "./timer/infrastructure/localStorageSoundSettingsStore";
 import {
@@ -22,6 +27,9 @@ import {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element not found");
+
+// Before any await below: the browser may offer the install while the rest still loads.
+const install = createBrowserInstall();
 
 const timer = {
   clock: systemClock,
@@ -130,9 +138,11 @@ const storesFor = await createStoresFactory(authGateway);
 createRoot(root).render(
   <StrictMode>
     <I18nProvider store={localStorageLanguageStore} browserLanguages={navigator.languages}>
-      <AuthGate gateway={authGateway}>
-        <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />
-      </AuthGate>
+      <InstallProvider controller={install} dismissals={localStorageInstallDismissals}>
+        <AuthGate gateway={authGateway}>
+          <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />
+        </AuthGate>
+      </InstallProvider>
     </I18nProvider>
   </StrictMode>,
 );

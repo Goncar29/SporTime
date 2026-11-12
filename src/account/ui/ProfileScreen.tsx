@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { LanguageSwitcher } from "../../i18n/ui/LanguageSwitcher";
+import { InstallOption } from "../../install/ui/InstallBanner";
 import styles from "./AccountScreens.module.css";
 import { DeleteAccountControl } from "./DeleteAccountControl";
 import profile from "./ProfileScreen.module.css";
@@ -45,6 +46,7 @@ export function ProfileScreen({
           {t.privacy}
           <Chevron />
         </button>
+        <InstallOption className={profile.item} />
       </div>
 
       <div className={profile.danger}>

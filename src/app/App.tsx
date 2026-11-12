@@ -30,6 +30,7 @@ import {
   type WorkoutConfig,
   type WorkoutMode,
 } from "../workouts/domain/workout";
+import { InstallBanner } from "../install/ui/InstallBanner";
 import { EditingNotice, SaveWorkoutForm, SavedWorkouts } from "../workouts/ui/SavedWorkouts";
 import { WorkoutSetup } from "../workouts/ui/WorkoutSetup";
 import styles from "./App.module.css";
@@ -254,14 +255,17 @@ export function App({
               />
             }
             notice={
-              editingWorkout && (
-                <EditingNotice
-                  workout={editingWorkout}
-                  onCancel={() => {
-                    setEditing(null);
-                  }}
-                />
-              )
+              <>
+                <InstallBanner />
+                {editingWorkout && (
+                  <EditingNotice
+                    workout={editingWorkout}
+                    onCancel={() => {
+                      setEditing(null);
+                    }}
+                  />
+                )}
+              </>
             }
           />
         );

@@ -1,0 +1,96 @@
+.banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 12px;
+  align-items: center;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 14px;
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent) 14%, var(--surface)),
+    var(--surface) 70%
+  );
+  animation: arrive 260ms ease-out;
+}
+
+.icon {
+  width: 30px;
+  height: 30px;
+  color: var(--accent);
+}
+
+.text {
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.steps,
+.optionSteps {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.optionSteps {
+  margin: 0;
+  padding: 0 16px 14px;
+}
+
+.actions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.install,
+.later {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.install {
+  border: 0;
+  color: var(--ink);
+  background: var(--accent);
+}
+
+.later {
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: transparent;
+}
+
+.install:focus-visible,
+.later:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner {
+    animation: none;
+  }
+}
