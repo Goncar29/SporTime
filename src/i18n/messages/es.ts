@@ -135,7 +135,7 @@ export const es: Messages = {
   deleteAccountWarning:
     "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas. No se puede deshacer.",
   deleteAccountConfirmNote:
-    "Google puede pedirte que confirmes que eres tú. Si eso te devuelve a la app, vuelve aquí y presiona el botón otra vez.",
+    "Google puede pedirte que confirmes que eres tú; después la eliminación termina sola.",
   confirmDeleteAccount: "Eliminar mi cuenta",
   deletingAccount: "Eliminando…",
   keepAccount: "Conservar mi cuenta",

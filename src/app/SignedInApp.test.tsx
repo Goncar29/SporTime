@@ -33,6 +33,7 @@ function setup() {
     workouts: createFakeWorkoutLibrary(userId),
     history: createFakeHistoryLog(userId),
     deleteAccount: () => Promise.resolve(),
+    deletionConfirmedByRedirect: () => Promise.resolve(false),
   });
   render(
     <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["en-US"]}>

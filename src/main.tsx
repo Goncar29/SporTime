@@ -59,6 +59,7 @@ async function createStoresFactory(
       workouts: createFakeWorkoutLibrary(userId),
       history: createFakeHistoryLog(userId),
       deleteAccount: () => authGateway.signOut(),
+      deletionConfirmedByRedirect: () => Promise.resolve(false),
     });
   }
   const [
@@ -110,6 +111,7 @@ async function createStoresFactory(
             discardPendingWrites,
           }),
         }),
+      deletionConfirmedByRedirect: () => identity.confirmedByRedirect(),
     };
     stores.set(userId, created);
     return created;

@@ -3,6 +3,11 @@ export interface AccountIdentity {
   isRecentlyConfirmed(): Promise<boolean>;
   /** Asks the user to prove who they are. A redirect may navigate away before settling. */
   confirm(): Promise<void>;
+  /**
+   * True once per accepted deletion, when the page loaded from a redirect in which the
+   * provider re-confirmed this same account; the deletion should then continue by itself.
+   */
+  confirmedByRedirect(): Promise<boolean>;
   remove(): Promise<void>;
 }
 

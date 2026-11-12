@@ -4,6 +4,10 @@ import styles from "./ConfirmDialog.module.css";
 
 interface ConfirmDialogProps {
   title: string;
+  /** Defaults to saying it cannot be undone. */
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -12,7 +16,14 @@ interface ConfirmDialogProps {
  * Asks before an irreversible deletion. Focus starts on Cancel, so a stray Enter keeps the data;
  * Tab stays inside, and closing gives focus back to whatever opened the dialog.
  */
-export function ConfirmDialog({ title, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
   const { t } = useI18n();
   const titleId = useId();
   const messageId = useId();
@@ -68,14 +79,14 @@ export function ConfirmDialog({ title, onConfirm, onCancel }: ConfirmDialogProps
           {title}
         </h2>
         <p id={messageId} className={styles.message}>
-          {t.cannotBeUndone}
+          {message ?? t.cannotBeUndone}
         </p>
         <div className={styles.actions}>
           <button ref={cancelRef} className={styles.cancel} onClick={onCancel}>
-            {t.cancel}
+            {cancelLabel ?? t.cancel}
           </button>
           <button ref={confirmRef} className={styles.danger} onClick={onConfirm}>
-            {t.confirmDelete}
+            {confirmLabel ?? t.confirmDelete}
           </button>
         </div>
       </div>
