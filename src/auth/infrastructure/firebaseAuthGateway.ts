@@ -6,6 +6,7 @@ import {
   signInWithPopup,
   signInWithRedirect,
   signOut,
+  type UserCredential,
 } from "firebase/auth";
 import { firebaseApp } from "../../shared/firebase/firebaseApp";
 import type { AuthGateway } from "../application/ports";
@@ -67,6 +68,25 @@ export function currentSignInMethod() {
   });
 }
 
+let redirectOutcome: Promise<UserCredential | null> | undefined;
+
+/** Firebase hands a redirect's result to its first reader only, so every reader shares that one read. */
+function readRedirectResult(): Promise<UserCredential | null> {
+  redirectOutcome ??= getRedirectResult(getAuth(firebaseApp()));
+  return redirectOutcome;
+}
+
+/** The account Google re-confirmed in the redirect that loaded this page, if any. */
+export async function redirectReauthenticatedUserId(): Promise<string | null> {
+  try {
+    const result = await readRedirectResult();
+    return result?.operationType === "reauthenticate" ? result.user.uid : null;
+  } catch {
+    // A failed redirect proves nothing; the sign-in screen reports it.
+    return null;
+  }
+}
+
 export function createFirebaseAuthGateway(): AuthGateway {
   const auth = getAuth(firebaseApp());
 
@@ -99,7 +119,7 @@ export function createFirebaseAuthGateway(): AuthGateway {
     },
     async completePendingSignIn() {
       try {
-        await getRedirectResult(auth);
+        await readRedirectResult();
       } catch (error) {
         throw toFailure(error);
       }

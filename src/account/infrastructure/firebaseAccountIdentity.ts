@@ -10,6 +10,7 @@ import { AuthFailure } from "../../auth/domain/user";
 import {
   currentSignInMethod,
   errorCode,
+  redirectReauthenticatedUserId,
   toFailure,
 } from "../../auth/infrastructure/firebaseAuthGateway";
 import { firebaseApp } from "../../shared/firebase/firebaseApp";
@@ -32,6 +33,39 @@ export function meansSessionEnded(code: string | undefined): boolean {
     code === "auth/invalid-user-token" ||
     code === "auth/invalid-refresh-token"
   );
+}
+
+/** A deletion the user accepted before leaving for Google; the page that comes back finishes it. */
+const PENDING_KEY = "sportime.pendingDeletion";
+
+function rememberPendingDeletion(userId: string) {
+  try {
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ userId, at: Date.now() }));
+  } catch {
+    // Without storage the user presses the button again on return, as before.
+  }
+}
+
+/** Reads and forgets it, so one acceptance can never delete twice. */
+function takePendingDeletion(): { userId: string; at: number } | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_KEY);
+    sessionStorage.removeItem(PENDING_KEY);
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "userId" in parsed &&
+      "at" in parsed &&
+      typeof parsed.userId === "string" &&
+      typeof parsed.at === "number"
+    ) {
+      return { userId: parsed.userId, at: parsed.at };
+    }
+  } catch {
+    // Unreadable or unavailable: nothing was asked, as far as this page can prove.
+  }
+  return null;
 }
 
 export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
@@ -78,23 +112,41 @@ export function createFirebaseAccountIdentity(userId: string): AccountIdentity {
     },
     async confirm() {
       const user = await signedInUser();
+      // No forced chooser: the user already accepted in the app's own dialog.
       const provider = new GoogleAuthProvider();
-      // Without it, Google silently re-confirms a single signed-in account and deletion runs unchosen.
-      provider.setCustomParameters({ prompt: "select_account" });
+      const viaRedirect = async () => {
+        rememberPendingDeletion(userId);
+        try {
+          await reauthenticateWithRedirect(user, provider);
+        } catch (error) {
+          // The page never left, so nothing will come back to finish it.
+          takePendingDeletion();
+          throw error;
+        }
+      };
       try {
         if (currentSignInMethod() === "redirect") {
-          await reauthenticateWithRedirect(user, provider);
+          await viaRedirect();
         } else {
           await reauthenticateWithPopup(user, provider);
         }
       } catch (error) {
         if (errorCode(error) !== "auth/popup-blocked") throw toFailure(error);
         try {
-          await reauthenticateWithRedirect(user, provider);
+          await viaRedirect();
         } catch (redirectError) {
           throw toFailure(redirectError);
         }
       }
+    },
+    async confirmedByRedirect() {
+      const pending = takePendingDeletion();
+      if (pending?.userId !== userId) return false;
+      // Wall-clock age only ever narrows this; Firebase itself still checks the sign-in.
+      const age = Date.now() - pending.at;
+      if (!(age >= 0 && age < RECENT_MS)) return false;
+      // Coming back with the back button carries no result, so it never deletes.
+      return (await redirectReauthenticatedUserId()) === userId;
     },
     async remove() {
       const user = await signedInUser();

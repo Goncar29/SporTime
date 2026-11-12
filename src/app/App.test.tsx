@@ -12,12 +12,14 @@ interface Stores {
   workouts?: WorkoutLibrary;
   history?: HistoryLog;
   deleteAccount?: () => Promise<void>;
+  deletionConfirmedByRedirect?: () => Promise<boolean>;
 }
 
 function setup({
   workouts = createFakeWorkoutLibrary("test"),
   history = createFakeHistoryLog("test"),
   deleteAccount = () => Promise.resolve(),
+  deletionConfirmedByRedirect = () => Promise.resolve(false),
 }: Stores = {}) {
   let now = 0;
   const timer = {
@@ -30,7 +32,13 @@ function setup({
   const store = { get: () => null, set: vi.fn() };
   render(
     <I18nProvider store={store} browserLanguages={["en-US"]}>
-      <App timer={timer} workouts={workouts} history={history} deleteAccount={deleteAccount} />
+      <App
+        timer={timer}
+        workouts={workouts}
+        history={history}
+        deleteAccount={deleteAccount}
+        deletionConfirmedByRedirect={deletionConfirmedByRedirect}
+      />
     </I18nProvider>,
   );
   return {
@@ -286,6 +294,7 @@ describe("App in Spanish", () => {
           workouts={createFakeWorkoutLibrary("spanish")}
           history={createFakeHistoryLog("spanish")}
           deleteAccount={() => Promise.resolve()}
+          deletionConfirmedByRedirect={() => Promise.resolve(false)}
         />
       </I18nProvider>,
     );
@@ -315,6 +324,7 @@ describe("App in Spanish", () => {
           workouts={createFakeWorkoutLibrary("spanish")}
           history={createFakeHistoryLog("spanish")}
           deleteAccount={() => Promise.resolve()}
+          deletionConfirmedByRedirect={() => Promise.resolve(false)}
         />
       </I18nProvider>,
     );
@@ -375,30 +385,34 @@ describe("App account data", () => {
   });
 
   describe("deleting the account", () => {
-    const openScreen = () => {
+    const accept = () => {
       click("Delete account");
+      click("Delete my account");
     };
 
-    it("says what will be lost and deletes nothing until confirmed", () => {
+    it("asks in a dialog what will be lost and deletes nothing until accepted", () => {
       const deleteAccount = vi.fn(() => Promise.resolve());
       setup({ deleteAccount });
-      openScreen();
-      expect(screen.getByRole("main")).toHaveTextContent(/cannot be undone/);
-      expect(screen.getByRole("main")).toHaveTextContent(/saved workouts/);
+      click("Delete account");
+      const dialog = screen.getByRole("alertdialog", { name: "Delete account" });
+      expect(dialog).toHaveTextContent(/cannot be undone/);
+      expect(dialog).toHaveTextContent(/saved workouts/);
       expect(deleteAccount).not.toHaveBeenCalled();
 
       click("Keep my account");
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^Start/ })).toBeInTheDocument();
       expect(deleteAccount).not.toHaveBeenCalled();
     });
 
-    it("deletes once, however many times the button is pressed", () => {
+    it("deletes as soon as it is accepted, and only once", () => {
       const deleteAccount = vi.fn(() => new Promise<void>(() => undefined));
       setup({ deleteAccount });
-      openScreen();
-      click("Delete my account");
-      expect(screen.getByRole("button", { name: "Deleting…" })).toBeDisabled();
-      fireEvent.click(screen.getByRole("button", { name: "Deleting…" }));
+      accept();
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getByText("Deleting…")).toHaveAttribute("role", "status");
+      expect(screen.getByRole("button", { name: "Delete account" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
       expect(deleteAccount).toHaveBeenCalledOnce();
     });
 
@@ -408,41 +422,90 @@ describe("App account data", () => {
         .mockRejectedValueOnce(new AuthFailure("network"))
         .mockResolvedValue(undefined);
       setup({ deleteAccount });
-      openScreen();
-      click("Delete my account");
+      accept();
       await settledCalls();
       expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
-      click("Delete my account");
+      accept();
       expect(deleteAccount).toHaveBeenCalledTimes(2);
     });
 
     it("warns that part of the data may be gone when the failure is not understood", async () => {
       const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
       setup({ deleteAccount: () => Promise.reject(new Error("boom")) });
-      openScreen();
-      click("Delete my account");
+      accept();
       await settledCalls();
       expect(screen.getByRole("alert")).toHaveTextContent(/may already be gone/);
       consoleError.mockRestore();
     });
 
-    it("stays quiet when the user cancels the confirmation", async () => {
+    it("stays quiet when the user cancels Google's confirmation", async () => {
       setup({ deleteAccount: () => Promise.reject(new AuthFailure("cancelled")) });
-      openScreen();
-      click("Delete my account");
+      accept();
       await settledCalls();
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Delete my account" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Delete account" })).toBeEnabled();
     });
 
     it("recovers the button when the browser restores the page after a redirect", () => {
       setup({ deleteAccount: () => new Promise<void>(() => undefined) });
-      openScreen();
-      click("Delete my account");
+      accept();
       act(() => {
         window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
       });
-      expect(screen.getByRole("button", { name: "Delete my account" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Delete account" })).toBeEnabled();
+      expect(screen.queryByText("Deleting…")).not.toBeInTheDocument();
+    });
+
+    it("finishes by itself when Google re-confirmed the account through a redirect", async () => {
+      const deleteAccount = vi.fn(() => new Promise<void>(() => undefined));
+      setup({ deleteAccount, deletionConfirmedByRedirect: () => Promise.resolve(true) });
+      await settledCalls();
+      expect(deleteAccount).toHaveBeenCalledOnce();
+      expect(screen.getByText("Deleting…")).toHaveAttribute("role", "status");
+    });
+
+    it("keeps a failure that arrives while another screen is open", async () => {
+      let fail: (error: unknown) => void = () => undefined;
+      const deleteAccount = () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        });
+      setup({ deleteAccount });
+      accept();
+      click("History");
+      act(() => {
+        fail(new AuthFailure("dataErased"));
+      });
+      await settledCalls();
+      click("Back");
+      expect(screen.getByRole("alert")).toHaveTextContent(/already erased/);
+    });
+
+    it("keeps a resumed deletion and its failure when the user moved on first", async () => {
+      let confirm: (confirmed: boolean) => void = () => undefined;
+      const deleteAccount = vi.fn(() => Promise.reject(new AuthFailure("network")));
+      setup({
+        deleteAccount,
+        deletionConfirmedByRedirect: () =>
+          new Promise<boolean>((resolve) => {
+            confirm = resolve;
+          }),
+      });
+      click("History");
+      act(() => {
+        confirm(true);
+      });
+      await settledCalls();
+      expect(deleteAccount).toHaveBeenCalledOnce();
+      click("Back");
+      expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
+    });
+
+    it("deletes nothing on load when no redirect confirmed a deletion", async () => {
+      const deleteAccount = vi.fn(() => Promise.resolve());
+      setup({ deleteAccount, deletionConfirmedByRedirect: () => Promise.resolve(false) });
+      await settledCalls();
+      expect(deleteAccount).not.toHaveBeenCalled();
     });
   });
 

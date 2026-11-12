@@ -9,6 +9,7 @@ export interface UserStores {
   workouts: WorkoutLibrary;
   history: HistoryLog;
   deleteAccount: () => Promise<void>;
+  deletionConfirmedByRedirect: () => Promise<boolean>;
 }
 
 interface SignedInAppProps {

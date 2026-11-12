@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { DeleteAccountScreen } from "../account/ui/DeleteAccountScreen";
+import { DeleteAccountControl } from "../account/ui/DeleteAccountControl";
+import { useAccountDeletion } from "../account/ui/useAccountDeletion";
 import { PrivacyScreen } from "../account/ui/PrivacyScreen";
 import { SettingsScreen } from "../settings/ui/SettingsScreen";
 import type { HistoryLog } from "../history/application/ports";
@@ -57,12 +58,20 @@ interface AppProps {
   workouts: WorkoutLibrary;
   history: HistoryLog;
   deleteAccount: () => Promise<void>;
+  deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
 }
 
-type Screen = "setup" | "history" | "settings" | "privacy" | "deleteAccount";
+type Screen = "setup" | "history" | "settings" | "privacy";
 
-export function App({ timer, workouts, history, deleteAccount, account }: AppProps) {
+export function App({
+  timer,
+  workouts,
+  history,
+  deleteAccount,
+  deletionConfirmedByRedirect,
+  account,
+}: AppProps) {
   const { t, language } = useI18n();
   const [sound, setSound] = useState(() => parseSoundSettings(timer.soundStore.get()));
   const [configs, setConfigs] = useState(initialConfigs);
@@ -71,6 +80,10 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
   const [screen, setScreen] = useState<Screen>("setup");
   const [saveFailure, setSaveFailure] = useState<"workout" | "session" | null>(null);
   const library = useLiveList(workouts.subscribe);
+  const deletion = useAccountDeletion({
+    onDelete: deleteAccount,
+    confirmedByRedirect: deletionConfirmedByRedirect,
+  });
 
   const reportWorkoutFailure = () => {
     setSaveFailure("workout");
@@ -148,9 +161,6 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
     );
   }
   if (screen === "privacy") return <PrivacyScreen onBack={backToSetup} />;
-  if (screen === "deleteAccount") {
-    return <DeleteAccountScreen onDelete={deleteAccount} onBack={backToSetup} />;
-  }
 
   const errors = [
     ...(saveFailure === "workout" ? [t.saveFailed] : []),
@@ -210,14 +220,7 @@ export function App({ timer, workouts, history, deleteAccount, account }: AppPro
             >
               {t.privacy}
             </button>
-            <button
-              className={styles.link}
-              onClick={() => {
-                setScreen("deleteAccount");
-              }}
-            >
-              {t.deleteAccount}
-            </button>
+            <DeleteAccountControl className={styles.link} deletion={deletion} />
           </nav>
         </>
       }

@@ -13,6 +13,7 @@ function setup({ recent = true } = {}) {
     isRecentlyConfirmed: vi.fn(() => Promise.resolve(recent)),
     confirm: step("confirm"),
     remove: step("remove"),
+    confirmedByRedirect: vi.fn(() => Promise.resolve(false)),
   };
   const data = { erase: step("erase") };
   return { identity, data, calls };

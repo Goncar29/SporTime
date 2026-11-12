@@ -22,7 +22,7 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 - [x] T2b (S9) English and Spanish with a language switcher. Route: inline. Evidence: 88 unit tests and 10 Chrome end-to-end tests pass, checked by exit code.
 - [x] T3 (S6) Google login behind `AuthGateway`. Route: inline. Evidence: independent verifier recheck on 3e8b39e; the user completed a real Google login on 2026-11-02.
 - [x] T4 (S7, S8) Saved workouts, history, Firestore rules. Route: inline. Evidence: verifier recheck on ac439c2; rules released from 9e48743; the user completed a real save, session, reload and console check on 2026-11-02.
-- [ ] T5 (S3, S8) Offline, privacy notice, account deletion, deploy. Route: inline. Deploy needs the user's OK.
+- [x] T5 (S3, S8) Offline, privacy notice, account deletion, deploy. Route: inline. Deploy needs the user's OK. Closed 2026-11-12 (L40).
 
 ## Log
 
@@ -64,3 +64,5 @@ Node 24 (`.nvmrc`), pnpm, React + TypeScript, hexagonal architecture.
 - L36 (2026-11-05): "integra todo, haz push y deploy". `feat/sound-settings` merged into `main`, pushed at 38b6052 and Hosting deployed to `sportime-4dc6e.web.app`, after adding the live handler to the OAuth client's redirect URIs. Next: the user signs in on the live site on phone and desktop; T5 closes on that.
 - L37 (2026-11-05): Right after the deploy the live URL answered 404 "Site Not Found" for a short time; about a minute later it answered 200 with the deployed build. It was the site's first release, so propagation fits, though the cause was not confirmed. Close of session at the user's request: "no olvides guardar todo el progreso en engram y cerramos sesion por hoy". T5 still closes on the user signing in on the live site.
 - L38 (2026-11-10): Live check with ego lite on the desktop: Google sign-in on `sportime-4dc6e.web.app` works. The same check found that account deletion completed without the user choosing an account (re-authentication had no `prompt: "select_account"`); fixed, verified and released in `odd/tasks/hardening-and-interval-names.md` (T1, deployed from 79ad227). T5 still closes on the phone sign-in on the live site and on the live check of the account chooser before deletion, both pending with the user.
+- L39 (2026-11-12): Phone sign-in on the live site verified by the user; the account chooser before deletion stays open and cancelling keeps the account (see hardening L18). T5 closes once the confirm path of the deletion passes live.
+- L40 (2026-11-12): Deletion confirm path passed live on the phone (hardening L19). T5 closed; all sportime-v1 tasks done.

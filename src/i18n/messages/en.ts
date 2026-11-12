@@ -128,7 +128,7 @@ export const en: Messages = {
   deleteAccountWarning:
     "This permanently removes your account, your saved workouts and your finished sessions. It cannot be undone.",
   deleteAccountConfirmNote:
-    "Google may ask you to confirm it's you. If that brings you back to the app, come here and press the button again.",
+    "Google may ask you to confirm it's you; the deletion then finishes by itself.",
   confirmDeleteAccount: "Delete my account",
   deletingAccount: "Deleting…",
   keepAccount: "Keep my account",
