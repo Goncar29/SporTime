@@ -21,6 +21,7 @@ import { parseSoundSettings } from "../timer/domain/soundSettings";
 import { TimerScreen } from "../timer/ui/TimerScreen";
 import { spokenPhrase } from "../timer/ui/spokenPhrase";
 import type { WorkoutLibrary } from "../workouts/application/ports";
+import type { SavedWorkout } from "../workouts/domain/savedWorkout";
 import { buildTimeline, type Timeline } from "../workouts/domain/timeline";
 import {
   MODES,
@@ -29,7 +30,7 @@ import {
   type WorkoutConfig,
   type WorkoutMode,
 } from "../workouts/domain/workout";
-import { SaveWorkoutForm, SavedWorkouts } from "../workouts/ui/SavedWorkouts";
+import { EditingNotice, SaveWorkoutForm, SavedWorkouts } from "../workouts/ui/SavedWorkouts";
 import { WorkoutSetup } from "../workouts/ui/WorkoutSetup";
 import styles from "./App.module.css";
 import { TabBar, type Tab } from "./TabBar";
@@ -85,6 +86,12 @@ export function App({
   const [screen, setScreen] = useState<Screen>("timer");
   const [saveFailure, setSaveFailure] = useState<"workout" | "session" | null>(null);
   const library = useLiveList(workouts.subscribe);
+  const [editing, setEditing] = useState<SavedWorkout | null>(null);
+  // Deleted meanwhile, here or on another device: there is nothing left to save changes to.
+  const editingWorkout =
+    editing && (library.items === null || library.items.some(({ id }) => id === editing.id))
+      ? editing
+      : null;
   const deletion = useAccountDeletion({
     onDelete: deleteAccount,
     confirmedByRedirect: deletionConfirmedByRedirect,
@@ -171,6 +178,14 @@ export function App({
             onLoad={({ config }) => {
               setConfigs((current) => ({ ...current, [config.mode]: config }));
               setSelectedMode(config.mode);
+              setEditing(null);
+              setScreen("timer");
+            }}
+            onEdit={(workout) => {
+              const { config } = workout;
+              setConfigs((current) => ({ ...current, [config.mode]: config }));
+              setSelectedMode(config.mode);
+              setEditing(workout);
               setScreen("timer");
             }}
             onRemove={({ id }) => {
@@ -219,15 +234,34 @@ export function App({
             onStart={handleStart}
             saveForm={
               <SaveWorkoutForm
+                key={editingWorkout?.id ?? "new"}
                 errors={errors}
+                editing={editingWorkout}
                 onSave={(name) => {
                   setSaveFailure(null);
                   // Not awaited: the server never answers offline, and the write is already queued.
+                  if (editingWorkout) {
+                    workouts
+                      .update({ ...editingWorkout, name, config: currentConfig() })
+                      .catch(reportWorkoutFailure);
+                    setEditing(null);
+                    return;
+                  }
                   workouts
                     .save({ name, config: currentConfig(), createdAt: timer.clock.now() })
                     .catch(reportWorkoutFailure);
                 }}
               />
+            }
+            notice={
+              editingWorkout && (
+                <EditingNotice
+                  workout={editingWorkout}
+                  onCancel={() => {
+                    setEditing(null);
+                  }}
+                />
+              )
             }
           />
         );

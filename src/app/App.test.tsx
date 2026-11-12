@@ -768,6 +768,99 @@ describe("App account data", () => {
     });
   });
 
+  describe("editing a saved workout", () => {
+    const savedNames = () =>
+      within(screen.getByRole("list")).getAllByRole("button", { name: /^(?!Delete|Edit)/ });
+
+    it("loads it into the Timer, saves every change over it, and stops editing", () => {
+      setup();
+      click(/^Tabata/);
+      typeName("Leg day");
+      click("Save");
+
+      click("Saved");
+      click("Edit Leg day");
+      expect(screen.getByRole("button", { name: "Timer" })).toHaveAttribute("aria-current", "page");
+      expect(screen.getByText("Editing “Leg day”")).toBeInTheDocument();
+      expect(nameInput()).toHaveValue("Leg day");
+
+      click(/^EMOM/);
+      click("Increase Rounds");
+      typeName("Leg day, harder");
+      click("Save changes");
+
+      expect(screen.queryByText(/^Editing/)).not.toBeInTheDocument();
+      expect(nameInput()).toHaveValue("");
+      click("Saved");
+      expect(savedNames().map((button) => button.textContent)).toEqual(["Leg day, harderEMOM"]);
+      click(/^Leg day, harder/);
+      expect(fieldValue("Rounds")).toBe("11");
+    });
+
+    it("keeps the workout's place in the list", () => {
+      const { advance } = setup();
+      typeName("Older");
+      click("Save");
+      advance(1_000);
+      typeName("Newer");
+      click("Save");
+
+      click("Saved");
+      click("Edit Older");
+      typeName("Older, edited");
+      click("Save changes");
+
+      click("Saved");
+      expect(savedNames().map((button) => button.textContent)).toEqual([
+        "NewerTabata",
+        "Older, editedTabata",
+      ]);
+    });
+
+    it("changes nothing when editing is cancelled", () => {
+      setup();
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      typeName("Something else");
+      click("Cancel");
+
+      expect(screen.queryByText(/^Editing/)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      click("Saved");
+      expect(savedNames().map((button) => button.textContent)).toEqual(["Leg dayTabata"]);
+    });
+
+    it("stops editing when the workout is deleted meanwhile", () => {
+      setup();
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      click("Saved");
+      click("Delete Leg day");
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+      );
+      click("Timer");
+      expect(screen.queryByText(/^Editing/)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    });
+
+    it("tells the user when an edit is refused", async () => {
+      const fake = createFakeWorkoutLibrary("test");
+      setup({ workouts: { ...fake, update: () => Promise.reject(new Error("denied")) } });
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      click("Save changes");
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent("couldn't save");
+    });
+  });
+
   describe("history", () => {
     const finishStopwatch = (advance: (ms: number) => void) => {
       click(/^Stopwatch/);

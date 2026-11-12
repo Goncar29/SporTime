@@ -49,6 +49,9 @@ export interface Messages {
   saveWorkout: string;
   noSavedWorkouts: string;
   deleteWorkout(name: string): string;
+  editWorkout(name: string): string;
+  editingWorkout(name: string): string;
+  saveChanges: string;
   confirmDeleteWorkout(name: string): string;
   confirmDelete: string;
   cancel: string;

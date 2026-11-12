@@ -7,5 +7,5 @@ export function createFakeWorkoutLibrary(userId: string): WorkoutLibrary {
     `sportime.fakeWorkouts.${userId}`,
     (a, b) => b.createdAt - a.createdAt,
   );
-  return { subscribe: list.subscribe, save: list.add, remove: list.remove };
+  return { subscribe: list.subscribe, save: list.add, update: list.update, remove: list.remove };
 }

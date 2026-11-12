@@ -3,8 +3,17 @@ import { expect, type BrowserContext, type Page } from "@playwright/test";
 const DOCUMENTS = "127.0.0.1:8080/v1/projects/demo-sportime/databases/(default)/documents";
 const EMULATOR_CALLS = /127\.0\.0\.1:(8080|9099)/;
 
+/** Firestore's REST encoding of a value; only the kinds these tests read. */
+interface StoredValue {
+  stringValue?: string;
+  integerValue?: string;
+  mapValue?: { fields?: Record<string, StoredValue> };
+}
+
 interface StoredDocument {
-  fields: Record<string, { stringValue?: string }>;
+  /** The full path, which ends with the document's id. */
+  name: string;
+  fields: Record<string, StoredValue>;
 }
 
 /** Reads what the server really holds, bypassing the rules and the page. */

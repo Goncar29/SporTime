@@ -194,4 +194,28 @@ describe("withOutbox", () => {
     expect(onData).toHaveBeenLastCalledWith([]);
     expect(fake.collection.put).not.toHaveBeenCalled();
   });
+
+  it("sends the edited version of a write still waiting for the account", async () => {
+    const ready = deferred<boolean>();
+    const { outbox, store, fake } = setup({ whenReady: () => ready.promise });
+    const onData = vi.fn();
+    outbox.subscribe(onData, vi.fn());
+    void outbox.add({ order: 1 });
+    const id = store.load()[0]?.id ?? "";
+
+    expect(outbox.revise(id, { order: 5 })).toBe(true);
+    expect(onData).toHaveBeenLastCalledWith([{ id, order: 5 }]);
+
+    ready.resolve(true);
+    await flushed();
+    expect(fake.stored.get(id)).toEqual({ order: 5 });
+    expect(fake.collection.put).toHaveBeenCalledOnce();
+  });
+
+  it("leaves alone a write it does not hold", () => {
+    const { outbox, store } = setup({ whenReady: () => new Promise(() => undefined) });
+    void outbox.add({ order: 1 });
+    expect(outbox.revise("someone-else", { order: 5 })).toBe(false);
+    expect(store.load().map(({ draft }) => draft)).toEqual([{ order: 1 }]);
+  });
 });

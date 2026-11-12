@@ -8,15 +8,36 @@ import {
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import styles from "./SavedWorkouts.module.css";
 
+interface EditingNoticeProps {
+  workout: SavedWorkout;
+  onCancel: () => void;
+}
+
+/** Says which saved workout the settings on screen will be saved over, at the top where it is seen. */
+export function EditingNotice({ workout, onCancel }: EditingNoticeProps) {
+  const { t } = useI18n();
+  return (
+    <div className={styles.editing}>
+      <p className={styles.editingLabel}>{t.editingWorkout(workout.name)}</p>
+      <button type="button" className={styles.cancelEdit} onClick={onCancel}>
+        {t.cancel}
+      </button>
+    </div>
+  );
+}
+
 interface SaveWorkoutFormProps {
   errors: readonly string[];
+  /** The saved workout whose changes this form saves, or null to save a new one. */
+  editing?: SavedWorkout | null;
   onSave: (name: string) => void;
 }
 
 /** Saves the settings on screen under a name; it sits next to the settings it saves. */
-export function SaveWorkoutForm({ errors, onSave }: SaveWorkoutFormProps) {
+export function SaveWorkoutForm({ errors, editing = null, onSave }: SaveWorkoutFormProps) {
   const { t } = useI18n();
-  const [draftName, setDraftName] = useState("");
+  // Callers key this form by the workout being edited, so the name starts over with it.
+  const [draftName, setDraftName] = useState(editing?.name ?? "");
   const name = normalizeWorkoutName(draftName);
 
   return (
@@ -46,7 +67,7 @@ export function SaveWorkoutForm({ errors, onSave }: SaveWorkoutFormProps) {
           }}
         />
         <button className={styles.save} disabled={name === null}>
-          {t.saveWorkout}
+          {editing ? t.saveChanges : t.saveWorkout}
         </button>
       </form>
     </section>
@@ -58,11 +79,12 @@ interface SavedWorkoutsProps {
   workouts: readonly SavedWorkout[] | null;
   errors: readonly string[];
   onLoad: (workout: SavedWorkout) => void;
+  onEdit: (workout: SavedWorkout) => void;
   onRemove: (workout: SavedWorkout) => void;
 }
 
 /** The Saved tab: every saved workout, to load into the timer or delete. */
-export function SavedWorkouts({ workouts, errors, onLoad, onRemove }: SavedWorkoutsProps) {
+export function SavedWorkouts({ workouts, errors, onLoad, onEdit, onRemove }: SavedWorkoutsProps) {
   const { t } = useI18n();
   const [pending, setPending] = useState<SavedWorkout | null>(null);
 
@@ -92,6 +114,26 @@ export function SavedWorkouts({ workouts, errors, onLoad, onRemove }: SavedWorko
               >
                 <span className={styles.name}>{workout.name}</span>
                 <span className={styles.mode}>{t.modes[workout.config.mode].label}</span>
+              </button>
+              <button
+                className={styles.edit}
+                aria-label={t.editWorkout(workout.name)}
+                onClick={() => {
+                  onEdit(workout);
+                }}
+              >
+                <svg
+                  className={styles.editIcon}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />
+                </svg>
               </button>
               <button
                 className={styles.remove}

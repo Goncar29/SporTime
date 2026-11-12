@@ -140,3 +140,27 @@ test("each account only ever sees its own data", async ({ page }) => {
   await expect(page.getByText("No finished workouts yet.")).toBeVisible();
   expect(await storedNames(alice)).toEqual(["Alice only"]);
 });
+
+test("an edit reaches the server over the same workout and keeps its place", async ({ page }) => {
+  const uid = await signIn(page, "alice");
+  await saveWorkout(page, "Leg day");
+  await eventually(() => storedNames(uid)).toEqual(["Leg day"]);
+  const [before] = await stored(uid, "workouts");
+
+  await openTab(page, "Saved");
+  await page.getByRole("button", { name: "Edit Leg day" }).click();
+  await page.getByRole("button", { name: /^EMOM/ }).click();
+  await page.getByRole("textbox", { name: "Workout name" }).fill("Leg day, harder");
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await eventually(() => storedNames(uid)).toEqual(["Leg day, harder"]);
+  const [after] = await stored(uid, "workouts");
+  expect(after?.name).toBe(before?.name);
+  expect(after?.fields.createdAt).toEqual(before?.fields.createdAt);
+  expect(after?.fields.config?.mapValue?.fields?.mode?.stringValue).toBe("emom");
+
+  await page.reload();
+  await openTab(page, "Saved");
+  await expect(savedButton(page, "Leg day, harder")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

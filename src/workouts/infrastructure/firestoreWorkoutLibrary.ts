@@ -57,6 +57,11 @@ export function createFirestoreWorkoutLibrary(
   return {
     subscribe: outbox.subscribe,
     save: outbox.add,
+    async update({ id, ...draft }) {
+      // A save still waiting for the account must not later overwrite this edit with the old version.
+      outbox.revise(id, draft);
+      await setDoc(doc(workouts, id), { ...draft, config: toStoredConfig(draft.config) });
+    },
     async remove(id) {
       outbox.cancel(id);
       // Also covers a write that was already on its way when it was cancelled.

@@ -3,6 +3,7 @@ import type { SubscribeToList } from "../application/liveList";
 export interface FakeStoredList<T, Draft> {
   subscribe: SubscribeToList<T>;
   add: (draft: Draft) => Promise<void>;
+  update: (item: T) => Promise<void>;
   remove: (id: string) => Promise<void>;
 }
 
@@ -30,6 +31,10 @@ export function createFakeStoredList<Draft, T extends Draft & { id: string }>(
     add(draft) {
       const id = `${Date.now()}-${Math.random()}`;
       write([...read(), { ...draft, id } as T]);
+      return Promise.resolve();
+    },
+    update(item) {
+      write(read().map((current) => (current.id === item.id ? item : current)));
       return Promise.resolve();
     },
     remove(id) {
