@@ -9,7 +9,7 @@ interface Dependencies {
   config: WorkoutConfig;
   log: Pick<HistoryLog, "add">;
   clock: Clock;
-  onFailure: () => void;
+  onFailure: (error: unknown) => void;
 }
 
 /** Only finished sessions reach the history: leaving a workout early records nothing. */

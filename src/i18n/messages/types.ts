@@ -62,6 +62,12 @@ export interface Messages {
   saveFailed: string;
   sessionSaveFailed: string;
   loadWorkoutsFailed: string;
+  /** Why the account's data store refused a save, delete or load. */
+  failureNotFound: string;
+  failureDenied: string;
+  failureSessionEnded: string;
+  failureOffline: string;
+  failureBusy: string;
   history: string;
   /** The bottom tab bar and its tabs. */
   sections: string;

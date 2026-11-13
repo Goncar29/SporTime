@@ -81,6 +81,12 @@ export const en: Messages = {
   saveFailed: "We couldn't save that to your account. Please try again.",
   sessionSaveFailed: "We couldn't save your last session to your account.",
   loadWorkoutsFailed: "We couldn't load your saved workouts.",
+  failureNotFound: "That workout no longer exists: it was deleted on another device.",
+  failureDenied:
+    "The server refused the change. Update the app; if it keeps happening, write to us.",
+  failureSessionEnded: "Your session expired. Sign in again.",
+  failureOffline: "Can't reach the server. Try again in a while.",
+  failureBusy: "Too many attempts in a row. Wait a moment.",
   history: "History",
   sections: "Sections",
   tabTimer: "Timer",

@@ -7,6 +7,8 @@ import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
 import { useI18n } from "../i18n/ui/I18nProvider";
+import type { StoreFailureKind } from "../shared/domain/storeFailure";
+import { reportStoreFailure, storeFailureMessage } from "../shared/ui/storeFailure";
 import { useLiveList } from "../shared/ui/useLiveList";
 import type {
   Announcer,
@@ -85,8 +87,11 @@ export function App({
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>("tabata");
   const [active, setActive] = useState<ActiveWorkout | null>(null);
   const [screen, setScreen] = useState<Screen>("timer");
-  const [saveFailure, setSaveFailure] = useState<"workout" | "session" | null>(null);
-  const library = useLiveList(workouts.subscribe);
+  const [saveFailure, setSaveFailure] = useState<{
+    what: "workout" | "session";
+    kind: StoreFailureKind;
+  } | null>(null);
+  const library = useLiveList(workouts.subscribe, "Loading saved workouts");
   const [editing, setEditing] = useState<SavedWorkout | null>(null);
   // Deleted meanwhile, here or on another device: there is nothing left to save changes to.
   const editingWorkout =
@@ -102,8 +107,9 @@ export function App({
     },
   });
 
-  const reportWorkoutFailure = () => {
-    setSaveFailure("workout");
+  /** Returns the handler for one operation, so the developer's log names what failed. */
+  const reportWorkoutFailure = (operation: string) => (error: unknown) => {
+    setSaveFailure({ what: "workout", kind: reportStoreFailure(operation, error) });
   };
 
   /** The selected settings with the round names trimmed, as they are run and stored. */
@@ -134,8 +140,11 @@ export function App({
       config,
       log: history,
       clock: timer.clock,
-      onFailure() {
-        setSaveFailure("session");
+      onFailure(error) {
+        setSaveFailure({
+          what: "session",
+          kind: reportStoreFailure("Saving a finished session", error),
+        });
       },
     });
     // Started inside the click handler because browsers only unlock audio during a user gesture.
@@ -160,9 +169,18 @@ export function App({
   }
 
   const errors = [
-    ...(saveFailure === "workout" ? [t.saveFailed] : []),
-    ...(saveFailure === "session" ? [t.sessionSaveFailed] : []),
-    ...(library.failed ? [t.loadWorkoutsFailed] : []),
+    ...(saveFailure
+      ? [
+          storeFailureMessage(
+            t,
+            saveFailure.kind,
+            saveFailure.what === "workout" ? t.saveFailed : t.sessionSaveFailed,
+          ),
+        ]
+      : []),
+    ...(library.failed
+      ? [storeFailureMessage(t, library.failure ?? "unknown", t.loadWorkoutsFailed)]
+      : []),
   ];
 
   const openProfile = () => {
@@ -191,7 +209,7 @@ export function App({
             }}
             onRemove={({ id }) => {
               setSaveFailure(null);
-              workouts.remove(id).catch(reportWorkoutFailure);
+              workouts.remove(id).catch(reportWorkoutFailure("Deleting a saved workout"));
             }}
           />
         );
@@ -244,13 +262,13 @@ export function App({
                   if (editingWorkout) {
                     workouts
                       .update({ ...editingWorkout, name, config: currentConfig() })
-                      .catch(reportWorkoutFailure);
+                      .catch(reportWorkoutFailure("Updating a saved workout"));
                     setEditing(null);
                     return;
                   }
                   workouts
                     .save({ name, config: currentConfig(), createdAt: timer.clock.now() })
-                    .catch(reportWorkoutFailure);
+                    .catch(reportWorkoutFailure("Saving a workout"));
                 }}
               />
             }

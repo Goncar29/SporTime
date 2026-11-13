@@ -7,6 +7,9 @@ import { createFirestoreWorkoutLibrary } from "./firestoreWorkoutLibrary";
 const firestore = vi.hoisted(() => ({
   /** Paths whose document this device's cache holds. */
   cached: new Set<string>(),
+  /** Paths whose document the server holds. */
+  onServer: new Set<string>(),
+  serverReachable: true,
   updateDoc: vi.fn(() => Promise.resolve()),
   setDoc: vi.fn(() => Promise.resolve()),
 }));
@@ -16,6 +19,10 @@ vi.mock("firebase/firestore", () => ({
   doc: (parent: { path: string }, id = "new-id") => ({ path: `${parent.path}/${id}` }),
   getDocFromCache: (ref: { path: string }) =>
     Promise.resolve({ exists: () => firestore.cached.has(ref.path) }),
+  getDocFromServer: (ref: { path: string }) =>
+    firestore.serverReachable
+      ? Promise.resolve({ exists: () => firestore.onServer.has(ref.path) })
+      : Promise.reject(Object.assign(new Error("offline"), { code: "unavailable" })),
   onSnapshot: () => () => undefined,
   orderBy: () => ({}),
   query: () => ({}),
@@ -49,7 +56,10 @@ function setup({ pending = false, ready = true } = {}) {
 describe("update", () => {
   beforeEach(() => {
     firestore.cached.clear();
-    firestore.updateDoc.mockClear();
+    firestore.onServer.clear();
+    firestore.serverReachable = true;
+    firestore.updateDoc.mockReset();
+    firestore.updateDoc.mockResolvedValue(undefined);
     firestore.setDoc.mockClear();
   });
 
@@ -84,5 +94,32 @@ describe("update", () => {
     const { library } = setup();
     await library.update(edited);
     expect(firestore.updateDoc).toHaveBeenCalledOnce();
+  });
+
+  describe("when the server refuses it", () => {
+    const denied = () => Object.assign(new Error("refused"), { code: "permission-denied" });
+
+    it("reports a workout deleted elsewhere as not found, since the rules refuse before checking", async () => {
+      firestore.cached.add(PATH);
+      firestore.updateDoc.mockRejectedValue(denied());
+      const { library } = setup();
+      await expect(library.update(edited)).rejects.toMatchObject({ code: "not-found" });
+    });
+
+    it("keeps the refusal when the workout is still there", async () => {
+      firestore.cached.add(PATH);
+      firestore.onServer.add(PATH);
+      firestore.updateDoc.mockRejectedValue(denied());
+      const { library } = setup();
+      await expect(library.update(edited)).rejects.toMatchObject({ code: "permission-denied" });
+    });
+
+    it("keeps the refusal when the server cannot be asked", async () => {
+      firestore.cached.add(PATH);
+      firestore.serverReachable = false;
+      firestore.updateDoc.mockRejectedValue(denied());
+      const { library } = setup();
+      await expect(library.update(edited)).rejects.toMatchObject({ code: "permission-denied" });
+    });
   });
 });
