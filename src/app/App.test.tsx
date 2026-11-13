@@ -5,6 +5,8 @@ import { AuthFailure } from "../auth/domain/user";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { InstallProvider } from "../install/ui/InstallProvider";
+import { createAppUpdater, type AppUpdater } from "../update/application/appUpdater";
+import { UpdateProvider } from "../update/ui/UpdateProvider";
 import type { WorkoutLibrary } from "../workouts/application/ports";
 import { createFakeWorkoutLibrary } from "../workouts/infrastructure/fakeWorkoutLibrary";
 import { App } from "./App";
@@ -14,6 +16,7 @@ interface Stores {
   history?: HistoryLog;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
+  updater?: AppUpdater;
 }
 
 function setup({
@@ -21,6 +24,7 @@ function setup({
   history = createFakeHistoryLog("test"),
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
+  updater = createAppUpdater(() => undefined),
 }: Stores = {}) {
   let now = 0;
   const timer = {
@@ -33,13 +37,15 @@ function setup({
   const store = { get: () => null, set: vi.fn() };
   render(
     <I18nProvider store={store} browserLanguages={["en-US"]}>
-      <App
-        timer={timer}
-        workouts={workouts}
-        history={history}
-        deleteAccount={deleteAccount}
-        deletionConfirmedByRedirect={deletionConfirmedByRedirect}
-      />
+      <UpdateProvider updater={updater}>
+        <App
+          timer={timer}
+          workouts={workouts}
+          history={history}
+          deleteAccount={deleteAccount}
+          deletionConfirmedByRedirect={deletionConfirmedByRedirect}
+        />
+      </UpdateProvider>
     </I18nProvider>,
   );
   return {
@@ -132,6 +138,33 @@ describe("App", () => {
     advance(20_000);
     expect(screen.getByText("Rest")).toBeInTheDocument();
     expect(clock()).toBe("00:10");
+  });
+
+  it("holds a new version of the app back until the workout is exited", () => {
+    const apply = vi.fn();
+    const updater = createAppUpdater(apply);
+    setup({ updater });
+    click(/^Tabata/);
+    click(/^Start/);
+
+    act(() => {
+      updater.ready();
+    });
+    expect(apply).not.toHaveBeenCalled();
+
+    click("Pause");
+    click("Exit");
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies a new version of the app right away outside a workout", () => {
+    const apply = vi.fn();
+    const updater = createAppUpdater(apply);
+    setup({ updater });
+    act(() => {
+      updater.ready();
+    });
+    expect(apply).toHaveBeenCalledTimes(1);
   });
 
   it("pausing freezes the time and is the only way to exit", () => {

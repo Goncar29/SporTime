@@ -15,8 +15,12 @@ export default defineConfig({
   plugins: lazyPlugins(() => [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // The app decides when a new version takes over, so it never reloads during a workout.
+      registerType: "prompt",
       workbox: {
+        // The first worker serves the open page at once, so it works offline from the first visit.
+        // Later versions still wait for the app to apply them.
+        clientsClaim: true,
         // Fonts are not precached by default, and the design relies on them offline.
         globPatterns: ["**/*.{js,css,html,woff2,png,svg}"],
         // Firebase Hosting serves its sign-in handler here; the app shell must not answer it.

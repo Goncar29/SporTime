@@ -35,6 +35,7 @@ import {
 import { InstallBanner } from "../install/ui/InstallBanner";
 import { EditingNotice, SaveWorkoutForm, SavedWorkouts } from "../workouts/ui/SavedWorkouts";
 import { WorkoutSetup } from "../workouts/ui/WorkoutSetup";
+import { useHoldUpdates } from "../update/ui/UpdateProvider";
 import styles from "./App.module.css";
 import { TabBar, type Tab } from "./TabBar";
 
@@ -106,6 +107,8 @@ export function App({
   useEffect(() => {
     editingNow.current = editing;
   }, [editing]);
+  // A new version of the app reloads the page, which would stop a running workout.
+  useHoldUpdates(active !== null);
   const deletion = useAccountDeletion({
     onDelete: deleteAccount,
     confirmedByRedirect: deletionConfirmedByRedirect,
