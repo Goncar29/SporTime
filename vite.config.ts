@@ -13,20 +13,23 @@ const preloadFonts = {
   transformIndexHtml: {
     order: "post" as const,
     handler(_html: string, { bundle }: { bundle?: Record<string, BundledFile> }) {
-      return Object.values(bundle ?? {})
-        .map(({ fileName }) => fileName)
-        .filter((fileName) => /barlow-condensed-latin-.+\.woff2$/.test(fileName))
-        .map((fileName) => ({
-          tag: "link",
-          attrs: {
-            rel: "preload",
-            as: "font",
-            type: "font/woff2",
-            href: `/${fileName}`,
-            crossorigin: "",
-          },
-          injectTo: "head" as const,
-        }));
+      return (
+        Object.values(bundle ?? {})
+          .map(({ fileName }) => fileName)
+          // Every bundled font is one the screens use: only its latin subsets are imported.
+          .filter((fileName) => fileName.endsWith(".woff2"))
+          .map((fileName) => ({
+            tag: "link",
+            attrs: {
+              rel: "preload",
+              as: "font",
+              type: "font/woff2",
+              href: `/${fileName}`,
+              crossorigin: "",
+            },
+            injectTo: "head" as const,
+          }))
+      );
     },
   },
 };

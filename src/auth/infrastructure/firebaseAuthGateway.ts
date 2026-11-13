@@ -6,6 +6,7 @@ import {
   signInWithPopup,
   signInWithRedirect,
   signOut,
+  type Auth,
   type UserCredential,
 } from "firebase/auth";
 import { firebaseApp } from "../../shared/firebase/firebaseApp";
@@ -61,16 +62,41 @@ export function toFailure(error: unknown): AuthFailure {
   return new AuthFailure(kind);
 }
 
-/** Firebase marks a redirect sign-in on its way back under this prefix in session storage. */
-const PENDING_REDIRECT_PREFIX = "firebase:pendingRedirect:";
+/** Set by the app just before it leaves for a redirect sign-in, and cleared once its result is read. */
+const REDIRECT_SIGN_IN_KEY = "sportime.redirectSignIn";
+/** Firebase's own mark, a private detail kept as a second signal (it also covers re-confirmations). */
+const FIREBASE_PENDING_REDIRECT_PREFIX = "firebase:pendingRedirect:";
+
+function markRedirectSignIn(pending: boolean) {
+  try {
+    if (pending) sessionStorage.setItem(REDIRECT_SIGN_IN_KEY, "true");
+    else sessionStorage.removeItem(REDIRECT_SIGN_IN_KEY);
+  } catch {
+    // Without storage Firebase cannot redirect either.
+  }
+}
 
 /** True when this page load is coming back from a redirect sign-in that Firebase still has to finish. */
 export function firebaseRedirectPending(): boolean {
   try {
-    return Object.keys(sessionStorage).some((key) => key.startsWith(PENDING_REDIRECT_PREFIX));
+    return (
+      sessionStorage.getItem(REDIRECT_SIGN_IN_KEY) !== null ||
+      Object.keys(sessionStorage).some((key) => key.startsWith(FIREBASE_PENDING_REDIRECT_PREFIX))
+    );
   } catch {
-    // Without storage Firebase cannot redirect either.
     return false;
+  }
+}
+
+/** Leaves for Google's page; the mark tells the next page load to wait for the result. */
+async function signInViaRedirect(auth: Auth, provider: GoogleAuthProvider) {
+  markRedirectSignIn(true);
+  try {
+    await signInWithRedirect(auth, provider);
+  } catch (error) {
+    // Still on this page, so nothing will come back.
+    markRedirectSignIn(false);
+    throw error;
   }
 }
 
@@ -114,14 +140,14 @@ export function createFirebaseAuthGateway(): AuthGateway {
       provider.setCustomParameters({ prompt: "select_account" });
       try {
         if (currentSignInMethod() === "redirect") {
-          await signInWithRedirect(auth, provider);
+          await signInViaRedirect(auth, provider);
         } else {
           await signInWithPopup(auth, provider);
         }
       } catch (error) {
         if (errorCode(error) !== "auth/popup-blocked") throw toFailure(error);
         try {
-          await signInWithRedirect(auth, provider);
+          await signInViaRedirect(auth, provider);
         } catch (redirectError) {
           throw toFailure(redirectError);
         }
@@ -135,6 +161,8 @@ export function createFirebaseAuthGateway(): AuthGateway {
         await readRedirectResult();
       } catch (error) {
         throw toFailure(error);
+      } finally {
+        markRedirectSignIn(false);
       }
     },
   };
