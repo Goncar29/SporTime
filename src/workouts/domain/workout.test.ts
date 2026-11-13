@@ -3,6 +3,7 @@ import {
   MAX_ROUND_NAME_LENGTH,
   MODES,
   defaultConfig,
+  sameConfig,
   hasRoundNames,
   normalizeRoundName,
   parseConfig,
@@ -216,5 +217,26 @@ describe("parseConfig round names", () => {
     for (const config of configs) {
       expect(parseConfig(toStoredConfig(config))).toEqual(config);
     }
+  });
+});
+
+describe("sameConfig", () => {
+  const tabata = defaultConfig("tabata");
+
+  it("is true for the same settings, whatever order their fields were written in", () => {
+    const reordered = Object.fromEntries(Object.entries(tabata).reverse()) as typeof tabata;
+    expect(sameConfig(tabata, reordered)).toBe(true);
+  });
+
+  it("is false when a setting differs", () => {
+    expect(sameConfig(tabata, { ...tabata, rounds: tabata.rounds + 1 })).toBe(false);
+    expect(sameConfig(tabata, { ...tabata, mode: "emom" })).toBe(false);
+  });
+
+  it("compares round names in order, and none as different from some", () => {
+    const named = { ...tabata, roundNames: ["Squats", "Push-ups"] };
+    expect(sameConfig(named, { ...tabata, roundNames: ["Squats", "Push-ups"] })).toBe(true);
+    expect(sameConfig(named, { ...tabata, roundNames: ["Push-ups", "Squats"] })).toBe(false);
+    expect(sameConfig(named, tabata)).toBe(false);
   });
 });

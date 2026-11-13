@@ -28,6 +28,7 @@ import { buildTimeline, type Timeline } from "../workouts/domain/timeline";
 import {
   MODES,
   defaultConfig,
+  sameConfig,
   sanitizeConfig,
   type WorkoutConfig,
   type WorkoutMode,
@@ -103,11 +104,14 @@ export function App({
   const [recoveredName, setRecoveredName] = useState<string | null>(null);
   const [formVersion, setFormVersion] = useState(0);
   // Read when a refusal arrives, possibly long after the save if it was queued offline.
-  const timerNow = useRef({ editing, settings: "" });
+  const timerNow = useRef<{ editing: SavedWorkout | null; settings: WorkoutConfig | null }>({
+    editing,
+    settings: null,
+  });
   useEffect(() => {
     timerNow.current = {
       editing,
-      settings: JSON.stringify(sanitizeConfig(selectedMode, configs[selectedMode])),
+      settings: sanitizeConfig(selectedMode, configs[selectedMode]),
     };
   }, [editing, selectedMode, configs]);
   // A new version of the app reloads the page, which would stop a running workout.
@@ -132,7 +136,7 @@ export function App({
    */
   const restoreRefusedEdit = (workout: SavedWorkout, name: string, config: WorkoutConfig) => {
     const now = timerNow.current;
-    if (now.editing !== null || now.settings !== JSON.stringify(config)) return;
+    if (now.editing !== null || now.settings === null || !sameConfig(now.settings, config)) return;
     setConfigs((current) => ({ ...current, [config.mode]: config }));
     setSelectedMode(config.mode);
     setEditing(workout);

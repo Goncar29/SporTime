@@ -174,6 +174,12 @@ export function sanitizeConfig(mode: WorkoutMode, raw: unknown): WorkoutConfig {
   return config;
 }
 
+/** True when two configs hold the same settings, whatever order their fields were written in. */
+export function sameConfig(a: WorkoutConfig, b: WorkoutConfig): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof WorkoutConfig>;
+  return [...keys].every((key) => JSON.stringify(a[key]) === JSON.stringify(b[key]));
+}
+
 /** A config as Firestore stores it: round names become one string so the rules can check them. */
 export type StoredConfig = Omit<WorkoutConfig, "roundNames"> & { roundNames?: string };
 
