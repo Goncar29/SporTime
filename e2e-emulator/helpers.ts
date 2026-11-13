@@ -1,4 +1,7 @@
 import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { openTab } from "../e2e/helpers";
+
+export { openTab };
 
 const DOCUMENTS = "127.0.0.1:8080/v1/projects/demo-sportime/databases/(default)/documents";
 const EMULATOR_CALLS = /127\.0\.0\.1:(8080|9099)/;
@@ -76,13 +79,6 @@ export const eventually = <T>(read: () => Promise<T>) => expect.poll(read, { tim
 export const startButton = (page: Page) => page.getByRole("button", { name: /^Start/ });
 export const savedButton = (page: Page, name: string) =>
   page.getByRole("button", { name: new RegExp(`^${name}`) });
-
-/** Opens a section from the bottom tab bar. */
-export const openTab = (page: Page, name: "Timer" | "Saved" | "History" | "Profile") =>
-  page
-    .getByRole("navigation", { name: /^(Sections|Secciones)$/ })
-    .getByRole("button", { name })
-    .click();
 
 export async function saveWorkout(page: Page, name: string) {
   await openTab(page, "Timer");

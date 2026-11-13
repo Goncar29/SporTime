@@ -144,6 +144,16 @@ export function App({
     setFormVersion((version) => version + 1);
   };
 
+  /** Opens the Timer on a saved workout's settings, to run them or to edit that workout. */
+  const showOnTimer = (workout: SavedWorkout, { asEdit }: { asEdit: boolean }) => {
+    const { config } = workout;
+    setConfigs((current) => ({ ...current, [config.mode]: config }));
+    setSelectedMode(config.mode);
+    setEditing(asEdit ? workout : null);
+    setRecoveredName(null);
+    setScreen("timer");
+  };
+
   /** The selected settings with the round names trimmed, as they are run and stored. */
   const currentConfig = () => sanitizeConfig(selectedMode, configs[selectedMode]);
 
@@ -226,20 +236,11 @@ export function App({
           <SavedWorkouts
             workouts={library.failed ? (library.items ?? []) : library.items}
             errors={errors}
-            onLoad={({ config }) => {
-              setConfigs((current) => ({ ...current, [config.mode]: config }));
-              setSelectedMode(config.mode);
-              setEditing(null);
-              setRecoveredName(null);
-              setScreen("timer");
+            onLoad={(workout) => {
+              showOnTimer(workout, { asEdit: false });
             }}
             onEdit={(workout) => {
-              const { config } = workout;
-              setConfigs((current) => ({ ...current, [config.mode]: config }));
-              setSelectedMode(config.mode);
-              setEditing(workout);
-              setRecoveredName(null);
-              setScreen("timer");
+              showOnTimer(workout, { asEdit: true });
             }}
             onRemove={({ id }) => {
               setSaveFailure(null);

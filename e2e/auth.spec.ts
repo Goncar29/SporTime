@@ -65,7 +65,7 @@ test("saved workouts and finished sessions survive a reload with no network", as
   await page.reload();
   await openTab(page, "Saved");
   await expect(page.getByRole("button", { name: /^Morning EMOM/ })).toBeVisible();
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await openTab(page, "History");
   await expect(page.getByRole("listitem")).toHaveCount(1);
   await expect(page.getByRole("listitem")).toContainText("Stopwatch");
 });

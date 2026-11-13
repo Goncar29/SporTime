@@ -24,24 +24,6 @@
   text-transform: uppercase;
 }
 
-.back {
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--text);
-  background: transparent;
-  font: inherit;
-  font-size: 1.125rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.back:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .error {
   margin: 0;
   padding: 10px 14px;
