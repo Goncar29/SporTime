@@ -12,11 +12,9 @@ import styles from "./HistoryScreen.module.css";
 
 interface HistoryScreenProps {
   log: HistoryLog;
-  /** Absent when History is a tab of its own. */
-  onBack?: () => void;
 }
 
-export function HistoryScreen({ log, onBack }: HistoryScreenProps) {
+export function HistoryScreen({ log }: HistoryScreenProps) {
   const { t, language } = useI18n();
   const { items, failed, failure } = useLiveList(log.subscribe, "Loading the history");
   const dates = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" });
@@ -35,11 +33,6 @@ export function HistoryScreen({ log, onBack }: HistoryScreenProps) {
     <main className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.title}>{t.history}</h1>
-        {onBack && (
-          <button className={styles.back} onClick={onBack}>
-            {t.back}
-          </button>
-        )}
       </header>
 
       {failed && (
