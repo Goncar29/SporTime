@@ -915,6 +915,96 @@ describe("App account data", () => {
       await settledCalls();
       expect(screen.getByRole("alert")).toHaveTextContent("couldn't save");
     });
+
+    it("keeps the typed changes when an edit is refused, so it can be saved again", async () => {
+      const fake = createFakeWorkoutLibrary("test");
+      let refuse = true;
+      setup({
+        workouts: {
+          ...fake,
+          update: (workout) =>
+            refuse ? Promise.reject(refusal("permission-denied")) : fake.update(workout),
+        },
+      });
+      click(/^Tabata/);
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      click(/^EMOM/);
+      click("Increase Rounds");
+      typeName("Leg day, harder");
+      click("Save changes");
+      await settledCalls();
+
+      expect(screen.getByRole("alert")).toHaveTextContent("The server refused the change.");
+      expect(screen.getByText("Editing “Leg day”")).toBeInTheDocument();
+      expect(nameInput()).toHaveValue("Leg day, harder");
+      expect(fieldValue("Rounds")).toBe("11");
+
+      refuse = false;
+      click("Save changes");
+      await settledCalls();
+      click("Saved");
+      expect(savedNames().map((button) => button.textContent)).toEqual(["Leg day, harderEMOM"]);
+    });
+
+    it("leaves a later edit alone when an earlier one is refused", async () => {
+      const fake = createFakeWorkoutLibrary("test");
+      let refuseLater: (error: unknown) => void = () => undefined;
+      setup({
+        workouts: {
+          ...fake,
+          update: () =>
+            new Promise<void>((_, reject) => {
+              refuseLater = reject;
+            }),
+        },
+      });
+      typeName("Leg day");
+      click("Save");
+      typeName("Arms");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      typeName("Leg day, harder");
+      click("Save changes");
+      click("Saved");
+      click("Edit Arms");
+
+      refuseLater(refusal("permission-denied"));
+      await settledCalls();
+
+      expect(screen.getByText("Editing “Arms”")).toBeInTheDocument();
+      expect(nameInput()).toHaveValue("Arms");
+    });
+
+    it("keeps the typed name to save as new when the edited workout no longer exists", async () => {
+      const fake = createFakeWorkoutLibrary("test");
+      setup({
+        workouts: {
+          ...fake,
+          update: async ({ id }) => {
+            await fake.remove(id);
+            throw refusal("not-found");
+          },
+        },
+      });
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      typeName("Leg day, harder");
+      click("Save changes");
+      await settledCalls();
+
+      expect(screen.getByRole("alert")).toHaveTextContent("That workout no longer exists");
+      expect(screen.queryByText(/^Editing/)).not.toBeInTheDocument();
+      expect(nameInput()).toHaveValue("Leg day, harder");
+      click("Save");
+      click("Saved");
+      expect(savedNames().map((button) => button.textContent)).toEqual(["Leg day, harderTabata"]);
+    });
   });
 
   describe("failure messages for saved workouts", () => {

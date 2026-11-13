@@ -30,14 +30,21 @@ interface SaveWorkoutFormProps {
   errors: readonly string[];
   /** The saved workout whose changes this form saves, or null to save a new one. */
   editing?: SavedWorkout | null;
+  /** A name to start with instead of the edited workout's, such as one a refused save kept. */
+  initialName?: string | null;
   onSave: (name: string) => void;
 }
 
 /** Saves the settings on screen under a name; it sits next to the settings it saves. */
-export function SaveWorkoutForm({ errors, editing = null, onSave }: SaveWorkoutFormProps) {
+export function SaveWorkoutForm({
+  errors,
+  editing = null,
+  initialName = null,
+  onSave,
+}: SaveWorkoutFormProps) {
   const { t } = useI18n();
   // Callers key this form by the workout being edited, so the name starts over with it.
-  const [draftName, setDraftName] = useState(editing?.name ?? "");
+  const [draftName, setDraftName] = useState(initialName ?? editing?.name ?? "");
   const name = normalizeWorkoutName(draftName);
 
   return (

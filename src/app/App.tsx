@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ProfileScreen } from "../account/ui/ProfileScreen";
 import { useAccountDeletion } from "../account/ui/useAccountDeletion";
 import { PrivacyScreen } from "../account/ui/PrivacyScreen";
@@ -98,6 +98,14 @@ export function App({
     editing && (library.items === null || library.items.some(({ id }) => id === editing.id))
       ? editing
       : null;
+  // A refused save puts its name back in the form; the version remounts the form to show it.
+  const [recoveredName, setRecoveredName] = useState<string | null>(null);
+  const [formVersion, setFormVersion] = useState(0);
+  // Read when a refusal arrives, possibly long after the save if it was queued offline.
+  const editingNow = useRef(editing);
+  useEffect(() => {
+    editingNow.current = editing;
+  }, [editing]);
   const deletion = useAccountDeletion({
     onDelete: deleteAccount,
     confirmedByRedirect: deletionConfirmedByRedirect,
@@ -110,6 +118,16 @@ export function App({
   /** Returns the handler for one operation, so the developer's log names what failed. */
   const reportWorkoutFailure = (operation: string) => (error: unknown) => {
     setSaveFailure({ what: "workout", kind: reportStoreFailure(operation, error) });
+  };
+
+  /** Puts a refused edit back on the Timer, unless another edit has started since. */
+  const restoreRefusedEdit = (workout: SavedWorkout, name: string, config: WorkoutConfig) => {
+    if (editingNow.current !== null) return;
+    setConfigs((current) => ({ ...current, [config.mode]: config }));
+    setSelectedMode(config.mode);
+    setEditing(workout);
+    setRecoveredName(name);
+    setFormVersion((version) => version + 1);
   };
 
   /** The selected settings with the round names trimmed, as they are run and stored. */
@@ -198,6 +216,7 @@ export function App({
               setConfigs((current) => ({ ...current, [config.mode]: config }));
               setSelectedMode(config.mode);
               setEditing(null);
+              setRecoveredName(null);
               setScreen("timer");
             }}
             onEdit={(workout) => {
@@ -205,6 +224,7 @@ export function App({
               setConfigs((current) => ({ ...current, [config.mode]: config }));
               setSelectedMode(config.mode);
               setEditing(workout);
+              setRecoveredName(null);
               setScreen("timer");
             }}
             onRemove={({ id }) => {
@@ -253,16 +273,21 @@ export function App({
             onStart={handleStart}
             saveForm={
               <SaveWorkoutForm
-                key={editingWorkout?.id ?? "new"}
+                key={`${editingWorkout?.id ?? "new"}:${formVersion}`}
                 errors={errors}
                 editing={editingWorkout}
+                initialName={recoveredName}
                 onSave={(name) => {
                   setSaveFailure(null);
+                  setRecoveredName(null);
                   // Not awaited: the server never answers offline, and the write is already queued.
                   if (editingWorkout) {
-                    workouts
-                      .update({ ...editingWorkout, name, config: currentConfig() })
-                      .catch(reportWorkoutFailure("Updating a saved workout"));
+                    const edited = editingWorkout;
+                    const config = currentConfig();
+                    workouts.update({ ...edited, name, config }).catch((error: unknown) => {
+                      reportWorkoutFailure("Updating a saved workout")(error);
+                      restoreRefusedEdit(edited, name, config);
+                    });
                     setEditing(null);
                     return;
                   }
@@ -280,6 +305,7 @@ export function App({
                     workout={editingWorkout}
                     onCancel={() => {
                       setEditing(null);
+                      setRecoveredName(null);
                     }}
                   />
                 )}
