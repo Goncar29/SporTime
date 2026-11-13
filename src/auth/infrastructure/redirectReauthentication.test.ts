@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const firebase = vi.hoisted(() => ({
   getRedirectResult: vi.fn<() => Promise<unknown>>(),
+  signInWithRedirect: vi.fn<() => Promise<never>>(),
 }));
 
 vi.mock("firebase/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("firebase/auth")>()),
   getAuth: () => ({}),
   getRedirectResult: firebase.getRedirectResult,
+  signInWithRedirect: firebase.signInWithRedirect,
 }));
 
 vi.mock("../../shared/firebase/firebaseApp", () => ({ firebaseApp: () => ({}) }));
@@ -75,6 +77,54 @@ describe("firebaseRedirectPending", () => {
     sessionStorage.setItem("firebase:pendingRedirect:key:[DEFAULT]", '"true"');
     const { firebaseRedirectPending } = await freshGateway();
     expect(firebaseRedirectPending()).toBe(true);
+  });
+
+  it("is true once the app leaves for a redirect sign-in, whatever Firebase stores", async () => {
+    // An installed app signs in through a redirect.
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    let pendingWhenLeaving = false;
+    const { createFirebaseAuthGateway, firebaseRedirectPending } = await freshGateway();
+    firebase.signInWithRedirect.mockImplementationOnce(() => {
+      pendingWhenLeaving = firebaseRedirectPending();
+      // The page is leaving, so this never settles.
+      return new Promise<never>(() => undefined);
+    });
+    void createFirebaseAuthGateway().signIn();
+    await vi.waitFor(() => {
+      expect(pendingWhenLeaving).toBe(true);
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("is false again once the redirect's result is read", async () => {
+    sessionStorage.setItem("sportime.redirectSignIn", "true");
+    firebase.getRedirectResult.mockResolvedValue(null);
+    const { createFirebaseAuthGateway, firebaseRedirectPending } = await freshGateway();
+    await createFirebaseAuthGateway().completePendingSignIn();
+    expect(firebaseRedirectPending()).toBe(false);
+  });
+
+  it("is false again when the redirect never left the page", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    firebase.signInWithRedirect.mockRejectedValueOnce(
+      Object.assign(new Error("no"), { code: "auth/network-request-failed" }),
+    );
+    const { createFirebaseAuthGateway, firebaseRedirectPending } = await freshGateway();
+    await expect(createFirebaseAuthGateway().signIn()).rejects.toThrow();
+    expect(firebaseRedirectPending()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("is false when session storage cannot be read", async () => {
+    const { firebaseRedirectPending } = await freshGateway();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Object, "keys").mockImplementationOnce(() => {
+      throw new Error("blocked");
+    });
+    expect(firebaseRedirectPending()).toBe(false);
+    vi.restoreAllMocks();
   });
 
   it("is false otherwise", async () => {
