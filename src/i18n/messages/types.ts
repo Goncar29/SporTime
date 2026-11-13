@@ -109,4 +109,6 @@ export interface Messages {
   deleteAccountErrorWrongAccount: string;
   deleteAccountErrorUnfinished: string;
   deleteAccountErrorSessionEnded: string;
+  accountLoadFailed: string;
+  tryAgain: string;
 }
