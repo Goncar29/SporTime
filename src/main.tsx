@@ -2,7 +2,7 @@ import "@fontsource/barlow-condensed/latin-600.css";
 import "@fontsource/barlow-condensed/latin-800.css";
 import "@fontsource/barlow-condensed/latin-800-italic.css";
 import "./app/global.css";
-import { StrictMode } from "react";
+import { StrictMode, Suspense, use } from "react";
 import { createRoot } from "react-dom/client";
 import { SignedInApp, type UserStores } from "./app/SignedInApp";
 import type { AuthGateway } from "./auth/application/ports";
@@ -137,7 +137,15 @@ if (import.meta.env.MODE === "emulator") {
 }
 
 const authGateway = await createAuthGateway();
-const storesFor = await createStoresFactory(authGateway);
+
+// Loaded once someone is signed in, not before the first paint: the sign-in screen needs no Firestore.
+let storesFactory: Promise<(userId: string) => UserStores> | undefined;
+const loadStoresFactory = () => (storesFactory ??= createStoresFactory(authGateway));
+
+function SignedInWithStores() {
+  const storesFor = use(loadStoresFactory());
+  return <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />;
+}
 
 createRoot(root).render(
   <StrictMode>
@@ -145,7 +153,9 @@ createRoot(root).render(
       <InstallProvider controller={install} dismissals={localStorageInstallDismissals}>
         <UpdateProvider updater={updates}>
           <AuthGate gateway={authGateway}>
-            <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />
+            <Suspense fallback={<main aria-busy="true" />}>
+              <SignedInWithStores />
+            </Suspense>
           </AuthGate>
         </UpdateProvider>
       </InstallProvider>
