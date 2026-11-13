@@ -61,6 +61,19 @@ export function toFailure(error: unknown): AuthFailure {
   return new AuthFailure(kind);
 }
 
+/** Firebase marks a redirect sign-in on its way back under this prefix in session storage. */
+const PENDING_REDIRECT_PREFIX = "firebase:pendingRedirect:";
+
+/** True when this page load is coming back from a redirect sign-in that Firebase still has to finish. */
+export function firebaseRedirectPending(): boolean {
+  try {
+    return Object.keys(sessionStorage).some((key) => key.startsWith(PENDING_REDIRECT_PREFIX));
+  } catch {
+    // Without storage Firebase cannot redirect either.
+    return false;
+  }
+}
+
 export function currentSignInMethod() {
   return signInMethodFor({
     standalone: matchMedia("(display-mode: standalone)").matches,

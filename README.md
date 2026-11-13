@@ -1,5 +1,9 @@
 # Sportime
 
+<p align="center">
+  <img src="public/icon-192.png" alt="The Sportime logo, an S inside a stopwatch" width="128" height="128" />
+</p>
+
 A workout timer for the gym that you can install on your phone. It runs stopwatch, For Time, AMRAP, EMOM, Tabata and interval workouts, keeps timing with no network, and saves your workouts and history to your Google account.
 
 **Live app:** [sportime-4dc6e.web.app](https://sportime-4dc6e.web.app)
@@ -43,7 +47,7 @@ src/
 └── app/        The screens, tab bar and wiring
 ```
 
-Each feature is split in the same layers:
+Each feature uses the layers it needs from these:
 
 - **`domain/`**: pure rules with no framework or browser code, such as how a Tabata timeline is built.
 - **`application/`**: use cases and the **ports** (interfaces) they need, such as `WorkoutLibrary` or `HistoryLog`.
@@ -84,3 +88,9 @@ vp run build
 pnpm exec firebase deploy --only firestore:rules   # rules first, when they change
 pnpm exec firebase deploy --only hosting
 ```
+
+---
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png" alt="Built with Gentle AI" />
+</p>

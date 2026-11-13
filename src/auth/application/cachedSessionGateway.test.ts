@@ -5,7 +5,7 @@ import { withCachedSession, type SessionSnapshotStore } from "./cachedSessionGat
 
 const carlos: User = { id: "u1", name: "Carlos", email: "c@example.com", photoUrl: null };
 
-function setup(stored: User | null) {
+function setup(stored: User | null, returningFromRedirect = false) {
   let emit: (user: User | null) => void = () => undefined;
   const inner: AuthGateway = {
     subscribe: vi.fn((listener: (user: User | null) => void) => {
@@ -23,7 +23,7 @@ function setup(stored: User | null) {
   };
   const listener = vi.fn();
   return {
-    gateway: withCachedSession(inner, store),
+    gateway: withCachedSession(inner, store, () => returningFromRedirect),
     inner,
     store,
     listener,
@@ -38,12 +38,20 @@ describe("withCachedSession", () => {
     expect(listener).toHaveBeenCalledExactlyOnceWith(carlos);
   });
 
-  it("reports nothing until the real answer when no session is known", () => {
+  it("reports signed out at once when no session is known, so sign-in shows without waiting", () => {
     const { gateway, listener, emit } = setup(null);
     gateway.subscribe(listener);
-    expect(listener).not.toHaveBeenCalled();
-    emit(null);
     expect(listener).toHaveBeenCalledExactlyOnceWith(null);
+    emit(carlos);
+    expect(listener).toHaveBeenLastCalledWith(carlos);
+  });
+
+  it("reports nothing until the real answer when coming back from a redirect sign-in", () => {
+    const { gateway, listener, emit } = setup(null, true);
+    gateway.subscribe(listener);
+    expect(listener).not.toHaveBeenCalled();
+    emit(carlos);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(carlos);
   });
 
   it("remembers the user the real session reports", () => {

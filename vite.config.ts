@@ -2,6 +2,35 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig, lazyPlugins } from "vite-plus";
 
+interface BundledFile {
+  fileName: string;
+}
+
+/** Fetches the fonts with the page, instead of only once the CSS that names them has loaded. */
+const preloadFonts = {
+  name: "sportime:preload-fonts",
+  apply: "build" as const,
+  transformIndexHtml: {
+    order: "post" as const,
+    handler(_html: string, { bundle }: { bundle?: Record<string, BundledFile> }) {
+      return Object.values(bundle ?? {})
+        .map(({ fileName }) => fileName)
+        .filter((fileName) => /barlow-condensed-latin-.+\.woff2$/.test(fileName))
+        .map((fileName) => ({
+          tag: "link",
+          attrs: {
+            rel: "preload",
+            as: "font",
+            type: "font/woff2",
+            href: `/${fileName}`,
+            crossorigin: "",
+          },
+          injectTo: "head" as const,
+        }));
+    },
+  },
+};
+
 export default defineConfig({
   staged: {
     "*": "vp check --fix",
@@ -14,6 +43,7 @@ export default defineConfig({
   },
   plugins: lazyPlugins(() => [
     react(),
+    preloadFonts,
     VitePWA({
       // The app decides when a new version takes over, so it never reloads during a workout.
       registerType: "prompt",
@@ -23,6 +53,8 @@ export default defineConfig({
         clientsClaim: true,
         // Fonts are not precached by default, and the design relies on them offline.
         globPatterns: ["**/*.{js,css,html,woff2,png,svg}"],
+        // Only link previews on other sites use it, so it is not stored on the device.
+        globIgnores: ["og-image.png"],
         // Firebase Hosting serves its sign-in handler here; the app shell must not answer it.
         navigateFallbackDenylist: [/^\/__\//],
       },
