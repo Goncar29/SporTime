@@ -9,11 +9,21 @@ export interface StoresLoad<T> {
   retry: () => void;
 }
 
+/** A failed load, told apart from errors in the app it shows. */
+class StoresLoadError extends Error {
+  constructor(cause: unknown) {
+    super("The account's stores did not load", { cause });
+  }
+}
+
 /** Loads once and shares the result; a failure stays until the user asks to retry. */
 export function createStoresLoad<T>(load: () => Promise<T>): StoresLoad<T> {
   let pending: Promise<T> | undefined;
   return {
-    current: () => (pending ??= load()),
+    current: () =>
+      (pending ??= load().catch((cause: unknown) => {
+        throw new StoresLoadError(cause);
+      })),
     retry: () => {
       pending = undefined;
     },
@@ -52,19 +62,25 @@ interface BoundaryProps {
   children: ReactNode;
 }
 
-class LoadFailureBoundary extends Component<BoundaryProps, { failed: boolean }> {
-  override state = { failed: false };
+/** Catches only a failed load; an error in the loaded app goes on to whatever handles it above. */
+class LoadFailureBoundary extends Component<BoundaryProps, { error: unknown }> {
+  override state: { error: unknown } = { error: null };
 
-  static getDerivedStateFromError() {
-    return { failed: true };
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
   }
 
   override componentDidCatch(error: unknown) {
-    console.error("Loading the account's stores failed:", error);
+    if (error instanceof StoresLoadError) {
+      console.error("Loading the account's stores failed:", error.cause);
+    }
   }
 
   override render() {
-    return this.state.failed ? <LoadFailure onRetry={this.props.onRetry} /> : this.props.children;
+    const { error } = this.state;
+    if (error === null) return this.props.children;
+    if (error instanceof StoresLoadError) return <LoadFailure onRetry={this.props.onRetry} />;
+    throw error;
   }
 }
 
