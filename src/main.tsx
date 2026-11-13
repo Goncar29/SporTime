@@ -16,6 +16,8 @@ import {
   localStorageInstallDismissals,
 } from "./install/infrastructure/browserInstall";
 import { InstallProvider } from "./install/ui/InstallProvider";
+import { startBrowserUpdates } from "./update/infrastructure/browserUpdates";
+import { UpdateProvider } from "./update/ui/UpdateProvider";
 import type { SavedWorkoutDraft } from "./workouts/domain/savedWorkout";
 import { localStorageSoundSettingsStore } from "./timer/infrastructure/localStorageSoundSettingsStore";
 import {
@@ -30,6 +32,8 @@ if (!root) throw new Error("Root element not found");
 
 // Before any await below: the browser may offer the install while the rest still loads.
 const install = createBrowserInstall();
+// Also before any await: a broken start-up must still be able to receive the fixed version.
+const updates = startBrowserUpdates();
 
 const timer = {
   clock: systemClock,
@@ -139,9 +143,11 @@ createRoot(root).render(
   <StrictMode>
     <I18nProvider store={localStorageLanguageStore} browserLanguages={navigator.languages}>
       <InstallProvider controller={install} dismissals={localStorageInstallDismissals}>
-        <AuthGate gateway={authGateway}>
-          <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />
-        </AuthGate>
+        <UpdateProvider updater={updates}>
+          <AuthGate gateway={authGateway}>
+            <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />
+          </AuthGate>
+        </UpdateProvider>
       </InstallProvider>
     </I18nProvider>
   </StrictMode>,

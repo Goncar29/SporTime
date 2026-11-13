@@ -192,6 +192,9 @@ test("an edit never brings back a workout deleted on another device", async ({ p
     { timeout: 60_000 },
   );
   expect(logged).toContain("Updating a saved workout failed: not-found");
+  // The typed name stays, ready to save as a new workout.
+  await expect(page.getByRole("textbox", { name: "Workout name" })).toHaveValue("Leg day, harder");
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
   await page.waitForTimeout(3_000);
   expect(await storedNames(uid)).toEqual([]);
 });
