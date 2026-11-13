@@ -1012,6 +1012,63 @@ describe("App account data", () => {
       expect(nameInput()).toHaveValue("Arms");
     });
 
+    it("leaves settings changed since the save alone when the refusal comes late", async () => {
+      const fake = createFakeWorkoutLibrary("test");
+      let refuseLater: (error: unknown) => void = () => undefined;
+      setup({
+        workouts: {
+          ...fake,
+          update: () =>
+            new Promise<void>((_, reject) => {
+              refuseLater = reject;
+            }),
+        },
+      });
+      click(/^EMOM/);
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      typeName("Leg day, harder");
+      click("Save changes");
+      click("Increase Rounds");
+      click("Increase Rounds");
+
+      refuseLater(refusal("permission-denied"));
+      await settledCalls();
+
+      expect(screen.getByRole("alert")).toHaveTextContent("The server refused the change.");
+      expect(screen.queryByText(/^Editing/)).not.toBeInTheDocument();
+      expect(fieldValue("Rounds")).toBe("12");
+      expect(nameInput()).toHaveValue("");
+    });
+
+    it("forgets a kept name once the Timer is left, like any unsaved name", async () => {
+      const fake = createFakeWorkoutLibrary("test");
+      setup({
+        workouts: {
+          ...fake,
+          update: async ({ id }) => {
+            await fake.remove(id);
+            throw refusal("not-found");
+          },
+        },
+      });
+      typeName("Leg day");
+      click("Save");
+      click("Saved");
+      click("Edit Leg day");
+      typeName("Leg day, harder");
+      click("Save changes");
+      await settledCalls();
+      expect(nameInput()).toHaveValue("Leg day, harder");
+
+      typeName("");
+      click("Saved");
+      click("Timer");
+      expect(nameInput()).toHaveValue("");
+    });
+
     it("keeps the typed name to save as new when the edited workout no longer exists", async () => {
       const fake = createFakeWorkoutLibrary("test");
       setup({

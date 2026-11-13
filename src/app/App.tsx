@@ -103,10 +103,13 @@ export function App({
   const [recoveredName, setRecoveredName] = useState<string | null>(null);
   const [formVersion, setFormVersion] = useState(0);
   // Read when a refusal arrives, possibly long after the save if it was queued offline.
-  const editingNow = useRef(editing);
+  const timerNow = useRef({ editing, settings: "" });
   useEffect(() => {
-    editingNow.current = editing;
-  }, [editing]);
+    timerNow.current = {
+      editing,
+      settings: JSON.stringify(sanitizeConfig(selectedMode, configs[selectedMode])),
+    };
+  }, [editing, selectedMode, configs]);
   // A new version of the app reloads the page, which would stop a running workout.
   useHoldUpdates(active !== null);
   const deletion = useAccountDeletion({
@@ -123,9 +126,13 @@ export function App({
     setSaveFailure({ what: "workout", kind: reportStoreFailure(operation, error) });
   };
 
-  /** Puts a refused edit back on the Timer, unless another edit has started since. */
+  /**
+   * Puts a refused edit back on the Timer, unless the Timer has moved on since the save:
+   * another edit started, or its settings changed. The refusal message shows either way.
+   */
   const restoreRefusedEdit = (workout: SavedWorkout, name: string, config: WorkoutConfig) => {
-    if (editingNow.current !== null) return;
+    const now = timerNow.current;
+    if (now.editing !== null || now.settings !== JSON.stringify(config)) return;
     setConfigs((current) => ({ ...current, [config.mode]: config }));
     setSelectedMode(config.mode);
     setEditing(workout);
@@ -322,7 +329,14 @@ export function App({
   return (
     <div className={styles.withTabs}>
       {content}
-      <TabBar current={tabOf(screen)} onSelect={setScreen} />
+      <TabBar
+        current={tabOf(screen)}
+        onSelect={(tab) => {
+          // A kept name is an unsaved draft, and drafts do not outlive the Timer.
+          if (tab !== "timer") setRecoveredName(null);
+          setScreen(tab);
+        }}
+      />
     </div>
   );
 }
