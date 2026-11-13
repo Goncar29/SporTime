@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openTab } from "./helpers";
 
 declare global {
   interface Window {
@@ -92,9 +93,9 @@ test.describe("in Spanish", () => {
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
 
     // The language lives on Profile, behind the bottom tab bar.
-    await page.getByRole("button", { name: "Perfil" }).click();
+    await openTab(page, "Perfil");
     await page.getByRole("button", { name: "English" }).click();
-    await page.getByRole("button", { name: "Timer" }).click();
+    await openTab(page, "Timer");
     await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("button", { name: /^Start/ })).toBeVisible();
