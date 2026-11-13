@@ -28,13 +28,20 @@ describe("createAppUpdater", () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
-  it("applies a version only once", () => {
+  it("applies a version once, however often the app gets busy and free again", () => {
     const apply = vi.fn();
     const updater = createAppUpdater(apply);
-    updater.ready();
     updater.ready();
     updater.setBusy(true);
     updater.setBusy(false);
     expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies a version that becomes ready after the last one was applied", () => {
+    const apply = vi.fn();
+    const updater = createAppUpdater(apply);
+    updater.ready();
+    updater.ready();
+    expect(apply).toHaveBeenCalledTimes(2);
   });
 });

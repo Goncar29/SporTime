@@ -10,11 +10,11 @@ export interface AppUpdater {
 export function createAppUpdater(apply: () => void): AppUpdater {
   let waiting = false;
   let busy = false;
-  let applied = false;
 
+  // Each version that becomes ready is applied once; a later one is applied again.
   const applyWhenFree = () => {
-    if (!waiting || busy || applied) return;
-    applied = true;
+    if (!waiting || busy) return;
+    waiting = false;
     apply();
   };
 

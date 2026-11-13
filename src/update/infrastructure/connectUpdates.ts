@@ -31,11 +31,13 @@ export function connectUpdates({
   };
 
   let controlled = container.controller !== null;
+  let busy = false;
+  // Set once this page asks the waiting worker to take over; the takeover may never come.
   let applying = false;
   let alreadySwitched = false;
   let switchToWaiting: () => Promise<void> = () => Promise.resolve();
 
-  const updater = createAppUpdater(() => {
+  const inner = createAppUpdater(() => {
     if (alreadySwitched) {
       reloadOnce();
       return;
@@ -45,29 +47,36 @@ export function connectUpdates({
   });
 
   container.addEventListener("controllerchange", () => {
-    // The first worker taking over a first visit is not a new version.
-    if (!controlled) {
-      controlled = true;
-      return;
-    }
-    if (applying) {
+    const firstTakeover = !controlled;
+    controlled = true;
+    // The switch this page asked for, made while free: show the new version now.
+    if (applying && !busy) {
       reloadOnce();
       return;
     }
+    // The first worker taking over a first visit is not a new version.
+    if (firstTakeover && !applying) return;
+    // Another tab switched, or a late switch arrived during a workout: reload once free.
     alreadySwitched = true;
-    updater.ready();
+    inner.ready();
   });
 
   switchToWaiting = register({
     onNeedRefresh: () => {
-      updater.ready();
+      inner.ready();
     },
     // workbox-window's own reload signal, for a switch this page made.
     onNeedReload: () => {
-      if (applying) reloadOnce();
+      if (applying && !busy) reloadOnce();
     },
     onRegisteredSW: onRegistered,
   });
 
-  return updater;
+  return {
+    ready: inner.ready,
+    setBusy(next) {
+      busy = next;
+      inner.setBusy(next);
+    },
+  };
 }
