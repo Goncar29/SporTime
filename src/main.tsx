@@ -49,13 +49,20 @@ async function createAuthGateway(): Promise<AuthGateway> {
     const { createFakeAuthGateway } = await import("./auth/infrastructure/fakeAuthGateway");
     return createFakeAuthGateway();
   }
-  const [{ createFirebaseAuthGateway }, { withCachedSession }, { localStorageSessionStore }] =
-    await Promise.all([
-      import("./auth/infrastructure/firebaseAuthGateway"),
-      import("./auth/application/cachedSessionGateway"),
-      import("./auth/infrastructure/localStorageSessionStore"),
-    ]);
-  return withCachedSession(createFirebaseAuthGateway(), localStorageSessionStore);
+  const [
+    { createFirebaseAuthGateway, firebaseRedirectPending },
+    { withCachedSession },
+    { localStorageSessionStore },
+  ] = await Promise.all([
+    import("./auth/infrastructure/firebaseAuthGateway"),
+    import("./auth/application/cachedSessionGateway"),
+    import("./auth/infrastructure/localStorageSessionStore"),
+  ]);
+  return withCachedSession(
+    createFirebaseAuthGateway(),
+    localStorageSessionStore,
+    firebaseRedirectPending,
+  );
 }
 
 // Decided at build time, so the fake stores are never shipped in a production build.

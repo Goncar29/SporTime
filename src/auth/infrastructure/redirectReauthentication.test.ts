@@ -65,3 +65,21 @@ describe("redirectReauthenticatedUserId", () => {
     expect(firebase.getRedirectResult).toHaveBeenCalledOnce();
   });
 });
+
+describe("firebaseRedirectPending", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("is true while Firebase has a redirect sign-in on its way back", async () => {
+    sessionStorage.setItem("firebase:pendingRedirect:key:[DEFAULT]", '"true"');
+    const { firebaseRedirectPending } = await freshGateway();
+    expect(firebaseRedirectPending()).toBe(true);
+  });
+
+  it("is false otherwise", async () => {
+    sessionStorage.setItem("firebase:authUser:key:[DEFAULT]", "{}");
+    const { firebaseRedirectPending } = await freshGateway();
+    expect(firebaseRedirectPending()).toBe(false);
+  });
+});
