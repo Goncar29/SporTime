@@ -4,20 +4,70 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0d10" />
+    <title>Sportime: Tabata, EMOM, AMRAP and interval workout timer</title>
     <meta
       name="description"
-      content="Workout timer: stopwatch, For Time, AMRAP, EMOM, Tabata and intervals."
+      content="Free workout timer for the gym: stopwatch, For Time, AMRAP, EMOM, Tabata and intervals. Voice cues, saved workouts and history. Install it on your phone; it works offline."
     />
+    <link rel="canonical" href="https://sportime-4dc6e.web.app/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>Sportime</title>
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Sportime" />
+    <meta property="og:url" content="https://sportime-4dc6e.web.app/" />
+    <meta property="og:title" content="Sportime: workout timer that works offline" />
+    <meta
+      property="og:description"
+      content="Tabata, EMOM, AMRAP, For Time and interval timer with voice cues, saved workouts and history."
+    />
+    <meta property="og:image" content="https://sportime-4dc6e.web.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Sportime logo, an S inside a stopwatch." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sportime: workout timer that works offline" />
+    <meta
+      name="twitter:description"
+      content="Tabata, EMOM, AMRAP, For Time and interval timer with voice cues, saved workouts and history."
+    />
+    <meta name="twitter:image" content="https://sportime-4dc6e.web.app/og-image.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Sportime",
+        "url": "https://sportime-4dc6e.web.app/",
+        "description": "Workout timer for the gym: stopwatch, For Time, AMRAP, EMOM, Tabata and intervals, with voice cues, saved workouts and history. Works offline.",
+        "applicationCategory": "HealthApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "inLanguage": ["en", "es"],
+        "image": "https://sportime-4dc6e.web.app/og-image.png",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <style>
       html {
         background: #0b0d10;
       }
+      noscript {
+        display: block;
+        padding: 24px;
+        color: #f2f4f0;
+        font-family: system-ui, sans-serif;
+      }
     </style>
   </head>
   <body>
+    <noscript>
+      <h1>Sportime: workout timer</h1>
+      <p>
+        A timer for stopwatch, For Time, AMRAP, EMOM, Tabata and interval workouts, with voice cues,
+        saved workouts and history. Turn on JavaScript to use it.
+      </p>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

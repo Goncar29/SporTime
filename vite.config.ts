@@ -23,6 +23,8 @@ export default defineConfig({
         clientsClaim: true,
         // Fonts are not precached by default, and the design relies on them offline.
         globPatterns: ["**/*.{js,css,html,woff2,png,svg}"],
+        // Only link previews on other sites use it, so it is not stored on the device.
+        globIgnores: ["og-image.png"],
         // Firebase Hosting serves its sign-in handler here; the app shell must not answer it.
         navigateFallbackDenylist: [/^\/__\//],
       },

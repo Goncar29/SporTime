@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /__/
+
+Sitemap: https://sportime-4dc6e.web.app/sitemap.xml
