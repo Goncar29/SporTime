@@ -1,20 +1,23 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 import {
   accountExists,
+  cacheContains,
   clearEmulatorData,
   eventually,
   finishStopwatch,
+  googleButton,
   openTab,
   saveWorkout,
   savedButton,
   signIn,
+  signInAs,
+  signOut,
   startButton,
   stored,
   storedNames,
   uniqueName,
 } from "./helpers";
 
-const googleButton = (page: Page) => page.getByRole("button", { name: "Continue with Google" });
 const deleteLink = (page: Page) => page.getByRole("button", { name: "Delete account" });
 const confirmButton = (page: Page) => page.getByRole("button", { name: "Delete my account" });
 const openDeleteDialog = async (page: Page) => {
@@ -26,55 +29,6 @@ async function acceptDeletion(page: Page) {
   if (!(await confirmButton(page).isVisible())) await openDeleteDialog(page);
   await confirmButton(page).click();
 }
-
-async function signInAs(page: Page, name: string): Promise<string> {
-  await page.evaluate((who) => window.signInForTest(who), name);
-  await expect(startButton(page)).toBeVisible();
-  const uid = await page.evaluate(() => window.currentUidForTest());
-  if (!uid) throw new Error("Sign-in reported no user");
-  return uid;
-}
-
-const signOut = async (page: Page) => {
-  await openTab(page, "Profile");
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(googleButton(page)).toBeVisible();
-};
-
-/** Finds text anywhere in this browser's Firestore cache, including its queue of unsent writes. */
-const cacheContains = (page: Page, text: string) =>
-  page.evaluate(async (needle) => {
-    const databases = await indexedDB.databases();
-    for (const { name } of databases) {
-      if (!name?.startsWith("firestore/")) continue;
-      const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open(name);
-        request.onsuccess = () => {
-          resolve(request.result);
-        };
-        request.onerror = () => {
-          reject(new Error("Could not open the cache"));
-        };
-      });
-      for (const store of Array.from(db.objectStoreNames)) {
-        const items = await new Promise<unknown[]>((resolve, reject) => {
-          const request = db.transaction(store).objectStore(store).getAll();
-          request.onsuccess = () => {
-            resolve(request.result as unknown[]);
-          };
-          request.onerror = () => {
-            reject(new Error("Could not read the cache"));
-          };
-        });
-        if (JSON.stringify(items).includes(needle)) {
-          db.close();
-          return true;
-        }
-      }
-      db.close();
-    }
-    return false;
-  }, text);
 
 /** Holds requests until released, with `navigator.onLine` still true. */
 function holdRequests(context: BrowserContext, pattern: RegExp) {
@@ -251,37 +205,6 @@ test("after a reported failure, nothing the user saves later gets deleted", asyn
   expect(await storedNames(uid)).toContain("After keeping");
   expect(await accountExists(uid)).toBe(true);
 });
-
-for (const bobDeletes of [true, false]) {
-  test(`another account's unsent writes survive when Bob ${bobDeletes ? "deletes his account" : "signs out"}`, async ({
-    page,
-    context,
-  }) => {
-    const aliceName = uniqueName("alice");
-    const alice = await signInAs(await openedPage(page), aliceName);
-    await context.setOffline(true);
-    await saveWorkout(page, "Alice offline");
-    await openTab(page, "Saved");
-    await expect(savedButton(page, "Alice offline")).toBeVisible();
-    await page.waitForTimeout(1_500);
-    await signOut(page);
-    await context.setOffline(false);
-
-    await signInAs(page, uniqueName("bob"));
-    if (bobDeletes) {
-      await openDeleteDialog(page);
-      await acceptDeletion(page);
-      await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
-    } else {
-      await signOut(page);
-    }
-
-    await signInAs(page, aliceName);
-    await eventually(() => storedNames(alice)).toEqual(["Alice offline"]);
-    await openTab(page, "Saved");
-    await expect(savedButton(page, "Alice offline")).toBeVisible();
-  });
-}
 
 test("another open tab keeps working after an account is deleted", async ({ page, context }) => {
   await signIn(page, "leaving");

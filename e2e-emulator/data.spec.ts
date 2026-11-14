@@ -9,6 +9,8 @@ import {
   saveWorkout,
   savedButton,
   signIn,
+  signInAs,
+  signOut,
   stallNetwork,
   startButton,
   stored,
@@ -122,11 +124,8 @@ test("each account only ever sees its own data", async ({ page }) => {
   await finishStopwatch(page);
   await eventually(() => storedNames(alice)).toEqual(["Alice only"]);
 
-  await openTab(page, "Profile");
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await page.evaluate((who) => window.signInForTest(who), uniqueName("bob"));
-  await expect(startButton(page)).toBeVisible();
-  const bob = await page.evaluate(() => window.currentUidForTest());
+  await signOut(page);
+  const bob = await signInAs(page, uniqueName("bob"));
   expect(bob).not.toBe(alice);
 
   await openTab(page, "Saved");

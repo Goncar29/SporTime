@@ -105,3 +105,77 @@ export async function clearEmulatorData() {
     { method: "DELETE" },
   );
 }
+
+export const googleButton = (page: Page) =>
+  page.getByRole("button", { name: "Continue with Google" });
+
+/** Signs in on a page that is already open, without loading it again. */
+export async function signInAs(page: Page, name: string): Promise<string> {
+  await page.evaluate((who) => window.signInForTest(who), name);
+  await expect(startButton(page)).toBeVisible();
+  const uid = await page.evaluate(() => window.currentUidForTest());
+  if (!uid) throw new Error("Sign-in reported no user");
+  return uid;
+}
+
+/** Marks the page that is loaded now, so `reloaded` can tell a fresh one from it. */
+export const markPage = (page: Page) =>
+  page.evaluate(() => {
+    (window as unknown as { beforeReload?: boolean }).beforeReload = true;
+  });
+
+/** Settles once the marked page was replaced by a freshly loaded one, ready to sign in. */
+export const reloaded = (page: Page) =>
+  expect
+    .poll(
+      () =>
+        page
+          .evaluate(() => !("beforeReload" in window) && "signInForTest" in window)
+          .catch(() => false),
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+
+/** Signs out with nothing left to send: the page erases the account and reloads. */
+export async function signOut(page: Page) {
+  await openTab(page, "Profile");
+  await markPage(page);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await reloaded(page);
+  await expect(googleButton(page)).toBeVisible();
+}
+
+/** Finds text anywhere in this browser's Firestore cache, including its queue of unsent writes. */
+export const cacheContains = (page: Page, text: string) =>
+  page.evaluate(async (needle) => {
+    const databases = await indexedDB.databases();
+    for (const { name } of databases) {
+      if (!name?.startsWith("firestore/")) continue;
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(name);
+        request.onsuccess = () => {
+          resolve(request.result);
+        };
+        request.onerror = () => {
+          reject(new Error("Could not open the cache"));
+        };
+      });
+      for (const store of Array.from(db.objectStoreNames)) {
+        const items = await new Promise<unknown[]>((resolve, reject) => {
+          const request = db.transaction(store).objectStore(store).getAll();
+          request.onsuccess = () => {
+            resolve(request.result as unknown[]);
+          };
+          request.onerror = () => {
+            reject(new Error("Could not read the cache"));
+          };
+        });
+        if (JSON.stringify(items).includes(needle)) {
+          db.close();
+          return true;
+        }
+      }
+      db.close();
+    }
+    return false;
+  }, text);
