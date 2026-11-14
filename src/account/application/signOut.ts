@@ -16,6 +16,8 @@ interface Dependencies {
  * The order matters. Sending comes before signing out because Firestore stops waiting for the
  * server once the user changes. Erasing comes after, so a refused sign-out never leaves a live
  * session with no local data; "signedOut" tells the caller to reload for a fresh Firestore.
+ * Once signed out it stays "signedOut" even if erasing fails: the session is gone either way,
+ * and the cache keeps its own note to clear itself on the next start.
  */
 export async function signOut(
   { auth, local }: Dependencies,
@@ -24,6 +26,10 @@ export async function signOut(
   if (force) local.discardPending();
   else if ((await local.sendPending()) === "unsent") return "unsent";
   await auth.signOut();
-  await local.erase();
+  try {
+    await local.erase();
+  } catch (error) {
+    console.warn("This device's copy of the account was not fully erased:", error);
+  }
   return "signedOut";
 }

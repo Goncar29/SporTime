@@ -46,6 +46,16 @@ describe("signOut", () => {
     expect(local.sendPending).not.toHaveBeenCalled();
   });
 
+  it("still reports signed out when erasing fails, since the session is already gone", async () => {
+    const { auth, local } = setup();
+    local.erase.mockRejectedValueOnce(new Error("another tab holds the cache"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await expect(signOut({ auth, local })).resolves.toBe("signedOut");
+    expect(auth.signOut).toHaveBeenCalledOnce();
+    expect(local.erase).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
   it("erases nothing when the provider refuses to sign out", async () => {
     const { auth, local } = setup();
     auth.signOut.mockRejectedValueOnce(new Error("network"));

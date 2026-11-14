@@ -544,7 +544,7 @@ describe("App account data", () => {
         /name, email and profile photo/,
         /Firebase/,
         /saved workouts and finished sessions/,
-        /stay in this browser after you sign out/,
+        /erased from this device when you sign out/,
         /no analytics/i,
         /Delete account/,
       ]) {

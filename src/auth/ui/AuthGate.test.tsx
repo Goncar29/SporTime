@@ -13,6 +13,16 @@ const carlos: User = {
   photoUrl: "https://example.com/p.jpg",
 };
 
+/** Signing out goes through the account's stores; SignedInApp's tests cover it. */
+const idleSignOut = {
+  signingOut: false,
+  unsent: false,
+  failed: false,
+  start: vi.fn(),
+  stay: vi.fn(),
+  signOutAnyway: vi.fn(),
+};
+
 function setup({ language = "en", gateway = {} as Partial<AuthGateway> } = {}) {
   let emit: (user: User | null) => void = () => undefined;
   const fake = {
@@ -29,7 +39,7 @@ function setup({ language = "en", gateway = {} as Partial<AuthGateway> } = {}) {
     <I18nProvider store={{ get: () => language, set: vi.fn() }} browserLanguages={[]}>
       <AuthGate gateway={fake}>
         <p>Private app</p>
-        <AccountMenu />
+        <AccountMenu signOut={idleSignOut} />
       </AuthGate>
     </I18nProvider>,
   );
@@ -75,20 +85,15 @@ describe("AuthGate", () => {
     expect(fake.signIn).toHaveBeenCalledOnce();
   });
 
-  it("shows the app once signed in, and leaves it after signing out", async () => {
-    const { emit, fake } = setup();
+  it("shows the app once signed in, and leaves it after signing out", () => {
+    const { emit } = setup();
     emit(carlos);
     expect(screen.getByText("Private app")).toBeInTheDocument();
     expect(screen.getByText("Carlos Gonzalez")).toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-      await Promise.resolve();
-    });
-    expect(fake.signOut).toHaveBeenCalledOnce();
-
     emit(null);
     expect(screen.queryByText("Private app")).not.toBeInTheDocument();
+    expect(googleButton()).toBeInTheDocument();
   });
 
   it("explains a missing connection", async () => {
@@ -173,6 +178,14 @@ describe("AccountMenu", () => {
     expect(photo).toHaveAttribute("referrerpolicy", "no-referrer");
   });
 
+  it("starts the account's sign-out from its button", () => {
+    const { emit } = setup();
+    emit(carlos);
+    idleSignOut.start.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(idleSignOut.start).toHaveBeenCalledOnce();
+  });
+
   it("shows initials when there is no photo", () => {
     const { emit } = setup();
     emit({ ...carlos, photoUrl: null });
@@ -194,5 +207,14 @@ describe("AccountMenu", () => {
     expect(screen.getByRole("main")).toHaveTextContent(/name, email and profile photo/);
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
+  });
+
+  it("tells in Spanish too that signing out erases the data from this device", () => {
+    const { emit } = setup({ language: "es" });
+    emit(null);
+    fireEvent.click(screen.getByRole("button", { name: "Privacidad" }));
+    const notice = screen.getByRole("main");
+    expect(notice).toHaveTextContent(/se borra de este dispositivo al cerrar sesión/);
+    expect(notice).not.toHaveTextContent(/siguen en este navegador después de cerrar sesión/);
   });
 });

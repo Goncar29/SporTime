@@ -63,6 +63,12 @@ export const en: Messages = {
   signInErrorNetwork: "You need a connection to sign in. Try again when you're back online.",
   signInErrorUnknown: "We couldn't sign you in. Please try again.",
   signOut: "Sign out",
+  signingOut: "Signing out…",
+  signOutFailed: "We couldn't sign you out. Please try again.",
+  unsentChanges: "Unsent changes",
+  unsentChangesWarning: "You have unsent changes. If you sign out now, they will be lost.",
+  stay: "Stay",
+  signOutAnyway: "Sign out anyway",
   savedWorkouts: "Saved workouts",
   workoutName: "Workout name",
   saveWorkout: "Save",
@@ -130,7 +136,7 @@ export const en: Messages = {
     },
     {
       heading: "On this device",
-      body: "This browser keeps your name, email and photo address until you sign out, so the app opens without a connection. Your saved workouts and finished sessions stay in this browser after you sign out, until you delete your account or clear the browser's data, so avoid signing in on a device you share if that matters to you. Your language choice, your sound settings and anything not yet sent are kept here too.",
+      body: "While you are signed in, this browser keeps your name, email and photo address, a copy of your saved workouts and finished sessions, and anything not yet sent, so the app works without a connection. All of it is erased from this device when you sign out: anything not yet sent is sent first, and if it can't be, the app warns you before erasing it. Your language choice and your sound settings stay here.",
     },
     {
       heading: "What we don't do",

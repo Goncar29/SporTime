@@ -9,7 +9,6 @@ import styles from "./AuthGate.module.css";
 
 interface Auth {
   user: User;
-  signOut: () => void;
   /** For a failure that ends the session, whose own screen is gone by the time it arrives. */
   reportFailure: (kind: AuthFailureKind) => void;
 }
@@ -71,14 +70,9 @@ export function AuthGate({ gateway, children }: AuthGateProps) {
         ? {
             user,
             reportFailure: setFailure,
-            signOut() {
-              gateway.signOut().catch((error: unknown) => {
-                console.error("Sign-out failed:", error);
-              });
-            },
           }
         : null,
-    [user, gateway],
+    [user],
   );
 
   if (user === undefined) return <main className={styles.page} aria-busy="true" />;

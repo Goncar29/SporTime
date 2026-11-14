@@ -64,3 +64,25 @@
   outline: 3px solid var(--text);
   outline-offset: 2px;
 }
+
+.signOut:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.status {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: var(--ink);
+  background: #ffb4a8;
+  font-size: 1.125rem;
+  font-weight: 600;
+}

@@ -4,7 +4,7 @@ import "@fontsource/barlow-condensed/latin-800-italic.css";
 import "./app/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import type { SignOutOptions, SignOutResult } from "./account/application/signOut";
+import { createSignOutSignal } from "./account/infrastructure/signOutSignal";
 import { SignedInApp, type UserStores } from "./app/SignedInApp";
 import { StoresLoader, createStoresLoad } from "./app/StoresLoader";
 import type { AuthGateway } from "./auth/application/ports";
@@ -67,16 +67,24 @@ async function createAuthGateway(): Promise<AuthGateway> {
   );
 }
 
-/** The account's stores, plus signing out, which sends and then erases this device's copy. */
-type AccountStores = UserStores & {
-  signOut: (options?: SignOutOptions) => Promise<SignOutResult>;
-};
+// Another tab's sign-out stops this tab's Firestore and erases its outbox, so start afresh.
+const signOutSignal = createSignOutSignal();
+signOutSignal.subscribe(() => {
+  location.reload();
+});
 
 // Decided at build time, so the fake stores are never shipped in a production build.
 async function createStoresFactory(
   authGateway: AuthGateway,
-): Promise<(userId: string) => AccountStores> {
+): Promise<(userId: string) => UserStores> {
   const { signOut } = await import("./account/application/signOut");
+  // Told right after the provider signs out, before erasing, which other tabs must not hold up.
+  const auth = {
+    async signOut() {
+      await authGateway.signOut();
+      signOutSignal.announce();
+    },
+  };
   if (import.meta.env.MODE === "e2e") {
     const [{ createFakeWorkoutLibrary }, { createFakeHistoryLog }] = await Promise.all([
       import("./workouts/infrastructure/fakeWorkoutLibrary"),
@@ -93,7 +101,7 @@ async function createStoresFactory(
       history: createFakeHistoryLog(userId),
       deleteAccount: () => authGateway.signOut(),
       deletionConfirmedByRedirect: () => Promise.resolve(false),
-      signOut: (options) => signOut({ auth: authGateway, local }, options),
+      signOut: (options) => signOut({ auth, local }, options),
     });
   }
   const [
@@ -116,7 +124,7 @@ async function createStoresFactory(
     import("./account/infrastructure/localAccountData"),
   ]);
   // One set per account: two outboxes over the same storage would send the same write twice.
-  const stores = new Map<string, AccountStores>();
+  const stores = new Map<string, UserStores>();
   return (userId) => {
     const existing = stores.get(userId);
     if (existing) return existing;
@@ -149,7 +157,7 @@ async function createStoresFactory(
         stores.delete(userId);
       },
     });
-    const created: AccountStores = {
+    const created: UserStores = {
       workouts,
       history,
       deleteAccount: () =>
@@ -162,7 +170,7 @@ async function createStoresFactory(
           }),
         }),
       deletionConfirmedByRedirect: () => identity.confirmedByRedirect(),
-      signOut: (options) => signOut({ auth: authGateway, local }, options),
+      signOut: (options) => signOut({ auth, local }, options),
     };
     stores.set(userId, created);
     return created;
@@ -188,7 +196,11 @@ createRoot(root).render(
           <AuthGate gateway={authGateway}>
             <StoresLoader load={storesFactory}>
               {(storesFor) => (
-                <SignedInApp timer={timer} storesFor={storesFor} account={<AccountMenu />} />
+                <SignedInApp
+                  timer={timer}
+                  storesFor={storesFor}
+                  account={(signOut) => <AccountMenu signOut={signOut} />}
+                />
               )}
             </StoresLoader>
           </AuthGate>

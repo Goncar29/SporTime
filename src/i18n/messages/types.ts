@@ -44,6 +44,13 @@ export interface Messages {
   signInErrorNetwork: string;
   signInErrorUnknown: string;
   signOut: string;
+  signingOut: string;
+  signOutFailed: string;
+  /** The warning before signing out with changes that could not be sent. */
+  unsentChanges: string;
+  unsentChangesWarning: string;
+  stay: string;
+  signOutAnyway: string;
   savedWorkouts: string;
   workoutName: string;
   saveWorkout: string;

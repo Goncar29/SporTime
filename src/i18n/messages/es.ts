@@ -70,6 +70,12 @@ export const es: Messages = {
     "Necesitas conexión para iniciar sesión. Inténtalo de nuevo cuando vuelvas a estar en línea.",
   signInErrorUnknown: "No pudimos iniciar tu sesión. Inténtalo de nuevo.",
   signOut: "Cerrar sesión",
+  signingOut: "Cerrando sesión…",
+  signOutFailed: "No pudimos cerrar tu sesión. Inténtalo de nuevo.",
+  unsentChanges: "Cambios sin enviar",
+  unsentChangesWarning: "Tenés cambios sin enviar. Si cerrás sesión ahora se pierden.",
+  stay: "Quedarme",
+  signOutAnyway: "Cerrar sesión igual",
   savedWorkouts: "Entrenamientos guardados",
   workoutName: "Nombre del entrenamiento",
   saveWorkout: "Guardar",
@@ -136,7 +142,7 @@ export const es: Messages = {
     },
     {
       heading: "En este dispositivo",
-      body: "Este navegador conserva tu nombre, correo y dirección de la foto hasta que cierres sesión, para que la app abra sin conexión. Tus entrenamientos guardados y sesiones terminadas siguen en este navegador después de cerrar sesión, hasta que elimines tu cuenta o borres los datos del navegador, así que evita iniciar sesión en un dispositivo compartido si eso te importa. También se conservan aquí tu idioma, tus ajustes de sonido y lo que aún no se haya enviado.",
+      body: "Mientras la sesión está abierta, este navegador conserva tu nombre, correo y dirección de la foto, una copia de tus entrenamientos guardados y sesiones terminadas, y lo que aún no se haya enviado, para que la app funcione sin conexión. Todo eso se borra de este dispositivo al cerrar sesión: lo que falte enviar se envía antes, y si no se puede, la app avisa antes de borrarlo. Tu idioma y tus ajustes de sonido se quedan aquí.",
     },
     {
       heading: "Lo que no hacemos",
