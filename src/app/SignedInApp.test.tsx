@@ -212,7 +212,7 @@ describe("signing out", () => {
     });
     const dialog = screen.getByRole("alertdialog", { name: "Cambios sin enviar" });
     expect(dialog).toHaveTextContent(
-      "Tenés cambios sin enviar. Si cerrás sesión ahora se pierden.",
+      "Tienes cambios sin enviar. Si cierras sesión ahora, se perderán.",
     );
     expect(within(dialog).getByRole("button", { name: "Quedarme" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cerrar sesión igual" })).toBeInTheDocument();
