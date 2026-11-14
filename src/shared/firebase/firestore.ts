@@ -1,10 +1,13 @@
 import { getAuth } from "firebase/auth";
 import {
+  clearIndexedDbPersistence,
   connectFirestoreEmulator,
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  terminate,
+  waitForPendingWrites,
   type Firestore,
 } from "firebase/firestore";
 import { firebaseApp } from "./firebaseApp";
@@ -27,6 +30,26 @@ export function firestore(): Firestore {
     instance = getFirestore(firebaseApp());
   }
   return instance;
+}
+
+/**
+ * Settles once the server has confirmed every write Firestore holds. It never settles offline,
+ * and rejects when the signed-in user changes, so it must run before signing out.
+ */
+export function serverHasWrites(): Promise<void> {
+  return waitForPendingWrites(firestore());
+}
+
+/**
+ * Stops Firestore and erases its cache on this device, writes still queued included. The cache
+ * can only be cleared while no instance runs, so it is stopped first; the next call to
+ * `firestore()` starts a fresh one.
+ */
+export async function clearLocalCache(): Promise<void> {
+  const running = firestore();
+  instance = undefined;
+  await terminate(running);
+  await clearIndexedDbPersistence(running);
 }
 
 /** Firestore writes as whoever Auth reports, so a write must wait for that account to be confirmed. */

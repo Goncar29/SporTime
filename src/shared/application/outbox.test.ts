@@ -219,6 +219,50 @@ describe("withOutbox", () => {
     expect(store.load().map(({ draft }) => draft)).toEqual([{ order: 1 }]);
   });
 
+  describe("flushNow", () => {
+    it("hands every held write to the collection and reports none left", async () => {
+      const store = memoryStore([
+        { id: "a", draft: { order: 1 } },
+        { id: "b", draft: { order: 2 } },
+      ]);
+      const { outbox, fake } = setup({ store });
+
+      await expect(outbox.flushNow()).resolves.toBe(0);
+
+      expect(fake.stored.get("a")).toEqual({ order: 1 });
+      expect(fake.stored.get("b")).toEqual({ order: 2 });
+      expect(store.load()).toEqual([]);
+    });
+
+    it("reports what it still holds when the account is not ready", async () => {
+      const store = memoryStore([{ id: "left", draft: { order: 1 } }]);
+      const { outbox, fake } = setup({ store, whenReady: () => Promise.resolve(false) });
+
+      await expect(outbox.flushNow()).resolves.toBe(1);
+
+      expect(fake.collection.put).not.toHaveBeenCalled();
+      expect(store.load()).toHaveLength(1);
+    });
+
+    it("reports a write the local cache could not take", async () => {
+      const store = memoryStore([{ id: "left", draft: { order: 1 } }]);
+      const fake = fakeCollection();
+      fake.collection.has = () => Promise.reject(new Error("cache broken"));
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { outbox } = setup({ store, fake });
+
+      await expect(outbox.flushNow()).resolves.toBe(1);
+
+      expect(store.load()).toHaveLength(1);
+    });
+
+    it("reports nothing held when there was nothing to send", async () => {
+      const { outbox, fake } = setup();
+      await expect(outbox.flushNow()).resolves.toBe(0);
+      expect(fake.collection.put).not.toHaveBeenCalled();
+    });
+  });
+
   it("sends the edited version when the edit lands while the write is being checked", async () => {
     const fake = fakeCollection();
     const check = deferred<boolean>();

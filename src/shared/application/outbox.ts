@@ -28,7 +28,16 @@ interface Options<T, Draft> {
   whenReady: () => Promise<boolean>;
 }
 
-export interface Outbox<T, Draft> {
+/** Writes this device holds for an account before Firestore's own cache has them. */
+export interface HeldWrites {
+  /**
+   * Tries now to hand every held write to the collection, and resolves to how many it still
+   * holds. Zero means Firestore's local cache has them all, not that the server does.
+   */
+  flushNow: () => Promise<number>;
+}
+
+export interface Outbox<T, Draft> extends HeldWrites {
   subscribe: SubscribeToList<T>;
   /** Durable as soon as it returns. Settles when the server answers, so callers must not wait for it. */
   add: (draft: Draft) => Promise<void>;
@@ -109,9 +118,10 @@ export function withOutbox<T extends { id: string }, Draft>({
         });
       }
     });
+    return queue;
   };
 
-  flush();
+  void flush();
 
   return {
     subscribe(onData, onError) {
@@ -148,7 +158,7 @@ export function withOutbox<T extends { id: string }, Draft>({
         waiters.set(id, { resolve, reject });
       });
       replace([...store.load(), { id, draft }]);
-      flush();
+      void flush();
       return settled;
     },
     cancel(id) {
@@ -160,6 +170,10 @@ export function withOutbox<T extends { id: string }, Draft>({
       if (!items.some((item) => item.id === id)) return false;
       replace(items.map((item) => (item.id === id ? { id, draft } : item)));
       return true;
+    },
+    async flushNow() {
+      await flush();
+      return store.load().length;
     },
   };
 }

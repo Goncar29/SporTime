@@ -12,7 +12,7 @@ import {
   type DocumentReference,
   type Firestore,
 } from "firebase/firestore";
-import { withOutbox, type OutboxStore } from "../../shared/application/outbox";
+import { withOutbox, type HeldWrites, type OutboxStore } from "../../shared/application/outbox";
 import { storeFailureCode } from "../../shared/domain/storeFailure";
 import { isInLocalCache } from "../../shared/firebase/localCache";
 import type { WorkoutLibrary } from "../application/ports";
@@ -50,7 +50,7 @@ export function createFirestoreWorkoutLibrary(
   db: Firestore,
   userId: string,
   { store, whenReady }: Durability,
-): WorkoutLibrary {
+): WorkoutLibrary & HeldWrites {
   const workouts = collection(db, "users", userId, "workouts");
 
   const outbox = withOutbox<SavedWorkout, SavedWorkoutDraft>({
@@ -78,6 +78,7 @@ export function createFirestoreWorkoutLibrary(
 
   return {
     subscribe: outbox.subscribe,
+    flushNow: outbox.flushNow,
     save: outbox.add,
     async update({ id, ...draft }) {
       // Revised first, so a save still waiting in the outbox sends this version and never the old one.

@@ -10,7 +10,7 @@ import {
   setDoc,
   type Firestore,
 } from "firebase/firestore";
-import { withOutbox, type OutboxStore } from "../../shared/application/outbox";
+import { withOutbox, type HeldWrites, type OutboxStore } from "../../shared/application/outbox";
 import { isInLocalCache } from "../../shared/firebase/localCache";
 import type { HistoryLog } from "../application/ports";
 import { parseHistoryEntry, type HistoryDraft, type HistoryEntry } from "../domain/historyEntry";
@@ -27,7 +27,7 @@ export function createFirestoreHistoryLog(
   db: Firestore,
   userId: string,
   { store, whenReady }: Durability,
-): HistoryLog {
+): HistoryLog & HeldWrites {
   const history = collection(db, "users", userId, "history");
 
   const outbox = withOutbox<HistoryEntry, HistoryDraft>({
@@ -55,6 +55,7 @@ export function createFirestoreHistoryLog(
 
   return {
     subscribe: outbox.subscribe,
+    flushNow: outbox.flushNow,
     add: outbox.add,
     async remove(id) {
       outbox.cancel(id);

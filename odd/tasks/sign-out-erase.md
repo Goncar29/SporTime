@@ -1,0 +1,32 @@
+Objective: when someone signs out, send their pending changes first, then erase that account's data from the device; if the changes cannot be sent, warn before erasing.
+Branch: feat/sign-out-erase, from main at 2b4a038. Delivery strategy: ask-on-risk; push, merge and deploy only with the user's OK. Test runner: `npx pnpm@10 exec vp test run`, `npx pnpm@10 exec vp check`, plus the Chrome and emulator end-to-end suites.
+
+## Specs
+
+- S1. Question: "¿Borramos los datos que quedan en el dispositivo al cerrar sesión (la caché de Firestore y los cambios pendientes de envío)?" Answer: "Sí, pero sin perder datos" — "Al cerrar sesión, primero se envían los cambios pendientes. Si no hay conexión, se avisa antes de borrar. Es un cambio con tests."
+  1. Signing out first sends every pending change of that account: the app's own outbox (localStorage `sportime.outbox.workouts.<uid>`, `sportime.outbox.history.<uid>`) and Firestore's queued writes (`waitForPendingWrites`, before Firebase `signOut`, with a time limit because it never settles offline).
+  2. Once everything is sent, the app signs out and erases that account's local data: the Firestore IndexedDB cache (`terminate` then `clearIndexedDbPersistence`) and both outbox keys. The page then reloads so a fresh Firestore starts.
+  3. Data already on the server is never touched: after signing back in, every workout and history entry is still there.
+  4. Device settings stay: `sportime.language`, `sportime.soundSettings`, `sportime.installDismissedAt`.
+- S2. Question: what to do offline with unsent changes. Answer: "Avisar y dejar elegir" — "Un aviso como 'Tenés cambios sin enviar. Si cerrás sesión ahora se pierden.' con dos botones: 'Quedarme' o 'Cerrar sesión igual' (borra todo)."
+  1. Spanish copy, exactly: message "Tenés cambios sin enviar. Si cerrás sesión ahora se pierden.", buttons "Quedarme" and "Cerrar sesión igual".
+  2. English copy: "You have unsent changes. If you sign out now, they will be lost.", buttons "Stay" and "Sign out anyway".
+  3. "Quedarme"/"Stay" closes the warning and keeps the session and the pending changes as they were; they are sent when the connection returns, as today.
+  4. "Cerrar sesión igual"/"Sign out anyway" discards the pending changes, signs out and erases as in S1.2.
+  5. While sending, the menu shows that it is signing out ("Signing out…" / "Cerrando sesión…") and the button cannot be pressed twice.
+- S3. "Hacerlo completo": implement the whole behavior with tests and separate commits, after this scope was explained: forcing the send, shutting down Firestore and clearing its cache with a reload, other open tabs, the warning and the privacy text.
+  1. Other open tabs of the app: when they see the account sign out, they reload, so none keeps a stopped Firestore or an old outbox in memory.
+  2. The privacy screen's "On this device" paragraph (`en.ts`, `es.ts`) stops saying data stays after signing out and says it is erased when signing out.
+  3. The emulator e2e test "another account's unsent writes survive when Bob … signs out" (`e2e-emulator/account.spec.ts`) describes the old behavior; it is replaced by tests of S1 and S2.
+- Assumptions: "sent" means the server confirmed it (outbox empty and `waitForPendingWrites` resolved), not just written to the local cache. Time limit for sending: 10 seconds, then the S2 warning. Clearing the Firestore cache clears it for the whole browser profile; any other account's unsent writes were already sent or discarded at its own sign-out. In the e2e fake mode (no Firestore) erasing is a no-op and sign-out stays as today. Sign-outs that the provider forces (expired session, account deletion) keep their current behavior.
+
+## Tasks
+
+- [ ] T1 (S1.1, S1.2, S1.3, S1.4, S2.3, S2.4) Application and infrastructure: outbox can send now and report what is still pending; a per-mode "local account data" port with `sendPending()` (outbox + `waitForPendingWrites`, 10 s limit) and `erase()` (discard outboxes, terminate, clear IndexedDB); a sign-out use case: send, then sign out and erase, or report "unsent". Route: worker. Risk: item 1 (erases stored data), item 4 (async send/terminate ordering). Commit: pending.
+- [ ] T2 (S2.1, S2.2, S2.5, S3.1, S3.2) UI: sign-out progress state, warning dialog with the exact copy, reload after erasing, other tabs reload on sign-out, privacy text in EN and ES. Route: worker. Risk: item 4 (multi-tab). Commit: pending.
+- [ ] T3 (S1, S2, S3.3) Emulator e2e: online sign-out leaves no cached data and the server keeps everything; offline sign-out warns; "Stay" keeps the session and later sends; "Sign out anyway" erases; replace the old "unsent writes survive" test. Route: worker. Risk: item 1. Commit: pending.
+
+## Log
+
+- L1 (2026-11-14): "vamos por los pendientes". Answers: plan "es spark"; App Check "Más adelante"; skill "Dejarla solo local"; sign-out data "Sí, pero sin perder datos".
+- L2 (2026-11-14): Offline choice: "Avisar y dejar elegir". After the explorer map (sign-out only calls Firebase `signOut`; no flush API; `clearIndexedDbPersistence` needs `terminate` and stops Firestore in other tabs; an existing e2e test requires unsent writes to survive sign-out), the scope (about 400-600 lines, 2-3 commits, high-risk data and multi-tab) was explained and the user chose "Hacerlo completo".

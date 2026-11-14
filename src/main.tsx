@@ -4,6 +4,7 @@ import "@fontsource/barlow-condensed/latin-800-italic.css";
 import "./app/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import type { SignOutOptions, SignOutResult } from "./account/application/signOut";
 import { SignedInApp, type UserStores } from "./app/SignedInApp";
 import { StoresLoader, createStoresLoad } from "./app/StoresLoader";
 import type { AuthGateway } from "./auth/application/ports";
@@ -66,30 +67,44 @@ async function createAuthGateway(): Promise<AuthGateway> {
   );
 }
 
+/** The account's stores, plus signing out, which sends and then erases this device's copy. */
+type AccountStores = UserStores & {
+  signOut: (options?: SignOutOptions) => Promise<SignOutResult>;
+};
+
 // Decided at build time, so the fake stores are never shipped in a production build.
 async function createStoresFactory(
   authGateway: AuthGateway,
-): Promise<(userId: string) => UserStores> {
+): Promise<(userId: string) => AccountStores> {
+  const { signOut } = await import("./account/application/signOut");
   if (import.meta.env.MODE === "e2e") {
     const [{ createFakeWorkoutLibrary }, { createFakeHistoryLog }] = await Promise.all([
       import("./workouts/infrastructure/fakeWorkoutLibrary"),
       import("./history/infrastructure/fakeHistoryLog"),
     ]);
+    // No Firestore here: nothing waits to be sent and nothing is cached, so sign-out stays as it was.
+    const local = {
+      sendPending: () => Promise.resolve("sent" as const),
+      discardPending: () => undefined,
+      erase: () => Promise.resolve(),
+    };
     return (userId) => ({
       workouts: createFakeWorkoutLibrary(userId),
       history: createFakeHistoryLog(userId),
       deleteAccount: () => authGateway.signOut(),
       deletionConfirmedByRedirect: () => Promise.resolve(false),
+      signOut: (options) => signOut({ auth: authGateway, local }, options),
     });
   }
   const [
-    { accountReady, firestore },
+    { accountReady, clearLocalCache, firestore, serverHasWrites },
     { createLocalStorageOutboxStore },
     { createFirestoreWorkoutLibrary },
     { createFirestoreHistoryLog },
     { deleteAccount },
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
+    { createLocalAccountData },
   ] = await Promise.all([
     import("./shared/firebase/firestore"),
     import("./shared/infrastructure/localStorageOutboxStore"),
@@ -98,9 +113,10 @@ async function createStoresFactory(
     import("./account/application/deleteAccount"),
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
+    import("./account/infrastructure/localAccountData"),
   ]);
   // One set per account: two outboxes over the same storage would send the same write twice.
-  const stores = new Map<string, UserStores>();
+  const stores = new Map<string, AccountStores>();
   return (userId) => {
     const existing = stores.get(userId);
     if (existing) return existing;
@@ -116,12 +132,26 @@ async function createStoresFactory(
       historyOutbox.save([]);
     };
     const identity = createFirebaseAccountIdentity(userId);
-    const created: UserStores = {
-      workouts: createFirestoreWorkoutLibrary(firestore(), userId, {
-        store: workoutOutbox,
-        whenReady,
-      }),
-      history: createFirestoreHistoryLog(firestore(), userId, { store: historyOutbox, whenReady }),
+    const workouts = createFirestoreWorkoutLibrary(firestore(), userId, {
+      store: workoutOutbox,
+      whenReady,
+    });
+    const history = createFirestoreHistoryLog(firestore(), userId, {
+      store: historyOutbox,
+      whenReady,
+    });
+    const local = createLocalAccountData({
+      outboxes: [workouts, history],
+      discardPendingWrites,
+      serverHasWrites,
+      clearCache: clearLocalCache,
+      forget: () => {
+        stores.delete(userId);
+      },
+    });
+    const created: AccountStores = {
+      workouts,
+      history,
       deleteAccount: () =>
         deleteAccount({
           identity,
@@ -132,6 +162,7 @@ async function createStoresFactory(
           }),
         }),
       deletionConfirmedByRedirect: () => identity.confirmedByRedirect(),
+      signOut: (options) => signOut({ auth: authGateway, local }, options),
     };
     stores.set(userId, created);
     return created;
