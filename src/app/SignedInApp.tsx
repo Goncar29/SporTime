@@ -43,6 +43,7 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
       key={user.id}
       timer={timer}
       account={account?.(signOut)}
+      signingOut={signOut.signingOut}
       workouts={stores.workouts}
       history={stores.history}
       deleteAccount={deleteAccount}

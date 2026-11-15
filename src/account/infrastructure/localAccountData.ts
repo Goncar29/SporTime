@@ -15,12 +15,24 @@ interface Dependencies {
   forget: () => void;
 }
 
-async function send(outboxes: HeldWrites[], serverHasWrites: () => Promise<void>) {
+async function sendOnce(outboxes: HeldWrites[], serverHasWrites: () => Promise<void>) {
   const held = await Promise.all(outboxes.map((outbox) => outbox.flushNow()));
   // Another account's session, or a broken cache, keeps them here: they were not sent.
   if (held.some((count) => count > 0)) return "unsent";
   await serverHasWrites();
   return "sent";
+}
+
+/**
+ * The server only confirms the writes made before it was asked, so a change made while waiting
+ * would be left out. A second round, right before the caller signs out, sends and waits for it.
+ */
+async function send(
+  outboxes: HeldWrites[],
+  serverHasWrites: () => Promise<void>,
+): Promise<SendResult> {
+  if ((await sendOnce(outboxes, serverHasWrites)) === "unsent") return "unsent";
+  return sendOnce(outboxes, serverHasWrites);
 }
 
 /** Firestore waits for the network without limit, so without this a lost connection looks like a hang. */

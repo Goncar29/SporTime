@@ -42,11 +42,7 @@ export function AccountMenu({ signOut }: AccountMenuProps) {
           {t.signOut}
         </button>
       </section>
-      {signOut.signingOut && (
-        <p className={styles.status} role="status">
-          {t.signingOut}
-        </p>
-      )}
+      {/* While signing out, the app shows the progress over its blocked screens. */}
       {signOut.failed && (
         <p className={styles.error} role="alert">
           {t.signOutFailed}

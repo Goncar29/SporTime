@@ -67,6 +67,11 @@ interface AppProps {
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
+  /**
+   * Pending changes are being sent before signing out. A change made now could miss the send
+   * and be erased with the session, so nothing can be used until it ends.
+   */
+  signingOut?: boolean;
 }
 
 /** Settings and Privacy open from Profile, so its tab stays marked while they are shown. */
@@ -82,6 +87,7 @@ export function App({
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
+  signingOut = false,
 }: AppProps) {
   const { t, language } = useI18n();
   const [sound, setSound] = useState(() => parseSoundSettings(timer.soundStore.get()));
@@ -332,16 +338,25 @@ export function App({
   })();
 
   return (
-    <div className={styles.withTabs}>
-      {content}
-      <TabBar
-        current={tabOf(screen)}
-        onSelect={(tab) => {
-          // A kept name is an unsaved draft, and drafts do not outlive the Timer.
-          if (tab !== "timer") setRecoveredName(null);
-          setScreen(tab);
-        }}
-      />
-    </div>
+    <>
+      <div className={styles.withTabs} inert={signingOut}>
+        {content}
+        <TabBar
+          current={tabOf(screen)}
+          onSelect={(tab) => {
+            // A kept name is an unsaved draft, and drafts do not outlive the Timer.
+            if (tab !== "timer") setRecoveredName(null);
+            setScreen(tab);
+          }}
+        />
+      </div>
+      {signingOut && (
+        <div className={styles.signingOut}>
+          <p className={styles.signingOutStatus} role="status">
+            {t.signingOut}
+          </p>
+        </div>
+      )}
+    </>
   );
 }

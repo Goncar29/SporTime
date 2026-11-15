@@ -60,10 +60,46 @@ describe("createLocalAccountData", () => {
   });
 
   describe("sendPending", () => {
-    it("hands both outboxes to Firestore, then waits for the server", async () => {
+    it("hands both outboxes to Firestore, waits for the server, then checks again for later changes", async () => {
       const { data, calls } = setup();
       await expect(data.sendPending()).resolves.toBe("sent");
-      expect(calls).toEqual(["flush0", "flush1", "serverHasWrites"]);
+      expect(calls).toEqual([
+        "flush0",
+        "flush1",
+        "serverHasWrites",
+        "flush0",
+        "flush1",
+        "serverHasWrites",
+      ]);
+    });
+
+    it("reports unsent when a change made while waiting is still held", async () => {
+      const { data, deps } = setup();
+      deps.outboxes[1]?.flushNow.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+      await expect(data.sendPending()).resolves.toBe("unsent");
+      expect(deps.serverHasWrites).toHaveBeenCalledOnce();
+    });
+
+    it("gives up when the second wait does not end within the same 10 seconds", async () => {
+      vi.useFakeTimers();
+      const { data, deps } = setup();
+      deps.serverHasWrites
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(resolve, 6_000);
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              setTimeout(resolve, 6_000);
+            }),
+        );
+      const result = data.sendPending();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(result).resolves.toBe("unsent");
+      expect(deps.serverHasWrites).toHaveBeenCalledTimes(2);
     });
 
     it("reports unsent without trying while the browser is offline", async () => {

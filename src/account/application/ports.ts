@@ -24,7 +24,10 @@ export type SendResult = "sent" | "unsent";
 
 /** What this device keeps for the signed-in account, apart from the server's copy. */
 export interface LocalAccountData {
-  /** Sends every change still on this device. Never rejects; it reports "unsent" instead. */
+  /**
+   * Sends every change still on this device, including one made while it waited for the server.
+   * Never rejects; it reports "unsent" instead.
+   */
   sendPending(): Promise<SendResult>;
   /** Drops the changes not yet sent, which are then lost. */
   discardPending(): void;

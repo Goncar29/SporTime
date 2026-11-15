@@ -39,11 +39,19 @@ describe("signOut", () => {
     expect(local.erase).not.toHaveBeenCalled();
   });
 
-  it("when forced, drops the pending changes without sending them, then signs out and erases", async () => {
+  it("when forced, signs out without sending, then drops the pending changes and erases", async () => {
     const { auth, local, calls } = setup({ sent: "unsent" });
     await expect(signOut({ auth, local }, { force: true })).resolves.toBe("signedOut");
-    expect(calls).toEqual(["discardPending", "signOut", "erase"]);
+    expect(calls).toEqual(["signOut", "discardPending", "erase"]);
     expect(local.sendPending).not.toHaveBeenCalled();
+  });
+
+  it("when forced and the provider refuses, keeps the pending changes", async () => {
+    const { auth, local } = setup({ sent: "unsent" });
+    auth.signOut.mockRejectedValueOnce(new Error("network"));
+    await expect(signOut({ auth, local }, { force: true })).rejects.toThrow("network");
+    expect(local.discardPending).not.toHaveBeenCalled();
+    expect(local.erase).not.toHaveBeenCalled();
   });
 
   it("still reports signed out when erasing fails, since the session is already gone", async () => {

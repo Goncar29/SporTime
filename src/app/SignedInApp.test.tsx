@@ -160,6 +160,52 @@ describe("signing out", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it("blocks the screens and the tab bar meanwhile, and frees them when changes stay unsent", async () => {
+    const sending = deferred();
+    setup({ signOut: () => sending.promise });
+    await click("Profile");
+    await click("Sign out");
+    const blocked = (element: HTMLElement) => element.closest("[inert]") !== null;
+    expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(true);
+    expect(blocked(screen.getByRole("button", { name: "Settings" }))).toBe(true);
+    expect(blocked(screen.getByRole("heading", { level: 1, name: "Profile" }))).toBe(true);
+    // The progress stays visible and announced, outside the blocked part.
+    expect(blocked(screen.getByRole("status"))).toBe(false);
+    expect(screen.getByRole("status")).toHaveTextContent("Signing out…");
+
+    await act(async () => {
+      sending.resolve("unsent");
+      await Promise.resolve();
+    });
+    expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(false);
+    expect(blocked(screen.getByRole("alertdialog", { name: "Unsent changes" }))).toBe(false);
+    await click("Stay");
+    expect(blocked(screen.getByRole("button", { name: "Sign out" }))).toBe(false);
+  });
+
+  it("frees the screens and the tab bar when the sign-out fails", async () => {
+    let refuse: (error: Error) => void = () => undefined;
+    setup({
+      signOut: () =>
+        new Promise<SignOutResult>((_, reject) => {
+          refuse = reject;
+        }),
+    });
+    await click("Profile");
+    await click("Sign out");
+    expect(screen.getByRole("button", { name: "Saved" }).closest("[inert]")).not.toBeNull();
+
+    await act(async () => {
+      refuse(new Error("network"));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Saved" }).closest("[inert]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign out" }).closest("[inert]")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't sign you out. Please try again.",
+    );
+  });
+
   it("warns about unsent changes; Stay closes the warning and changes nothing", async () => {
     const { gateway, signOut, reload } = setup({ signOut: () => Promise.resolve("unsent") });
     await click("Profile");
