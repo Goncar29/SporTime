@@ -281,4 +281,88 @@ describe("withOutbox", () => {
     expect(fake.collection.put).toHaveBeenCalledWith(id, { order: 5 });
     expect(fake.stored.get(id)).toEqual({ order: 5 });
   });
+
+  /** A collection whose next check of the local cache waits until the test answers it. */
+  function heldCheck(fake = fakeCollection()) {
+    const check = deferred<boolean>();
+    const has = fake.collection.has;
+    let calls = 0;
+    const holdOn = { call: 1 };
+    fake.collection.has = (id) => (++calls === holdOn.call ? check.promise : has(id));
+    return { fake, check, holdOn };
+  }
+
+  describe("a write removed while it is being checked", () => {
+    it("is never written after it was deleted", async () => {
+      const { fake, check } = heldCheck();
+      const { outbox, store } = setup({ fake });
+      void outbox.add({ order: 1 });
+      await flushed();
+      const id = store.load()[0]?.id ?? "";
+
+      outbox.cancel(id);
+      check.resolve(false);
+      await flushed();
+
+      expect(fake.collection.put).not.toHaveBeenCalled();
+      expect(fake.stored.has(id)).toBe(false);
+    });
+
+    it("is never written after the account's pending writes were discarded", async () => {
+      const { fake, check } = heldCheck();
+      const store = memoryStore([{ id: "left", draft: { order: 1 } }]);
+      setup({ store, fake });
+      await flushed();
+
+      store.save([]);
+      check.resolve(false);
+      await flushed();
+
+      expect(fake.collection.put).not.toHaveBeenCalled();
+      expect(fake.stored.has("left")).toBe(false);
+    });
+
+    it("still answers a save that another tab sent meanwhile", async () => {
+      const { fake, check } = heldCheck();
+      const { outbox, store } = setup({ fake });
+      const saved = outbox.add({ order: 1 });
+      await flushed();
+      const id = store.load()[0]?.id ?? "";
+
+      // Another tab sharing this storage sent it and dropped it.
+      fake.stored.set(id, { order: 1 });
+      store.save([]);
+      check.resolve(false);
+
+      await expect(saved).resolves.toBeUndefined();
+      expect(fake.stored.get(id)).toEqual({ order: 1 });
+    });
+  });
+
+  it("keeps an edit made while the older version is being confirmed, and sends it", async () => {
+    const { fake, check, holdOn } = heldCheck();
+    holdOn.call = 2;
+    const { outbox, store } = setup({ fake });
+    void outbox.add({ order: 1 });
+    await flushed();
+    const id = store.load()[0]?.id ?? "";
+    expect(fake.collection.put).toHaveBeenCalledWith(id, { order: 1 });
+
+    // Another tab revises it after the older version was handed over, before it was dropped.
+    expect(outbox.revise(id, { order: 5 })).toBe(true);
+    check.resolve(true);
+    await flushed();
+
+    expect(fake.stored.get(id)).toEqual({ order: 5 });
+    expect(fake.collection.put).toHaveBeenLastCalledWith(id, { order: 5 });
+    expect(store.load()).toEqual([]);
+  });
+
+  it("drops a write once the version sent is the one it holds", async () => {
+    const { outbox, store, fake } = setup();
+    await outbox.add({ order: 1 });
+    await flushed();
+    expect(fake.collection.put).toHaveBeenCalledOnce();
+    expect(store.load()).toEqual([]);
+  });
 });
