@@ -9,10 +9,23 @@ Branch: feat/sign-out-erase (fixes as separate commits after T6 of sign-out-eras
   3. Confirmed findings are fixed with the smallest patch, at most two fix rounds; findings left after round two are escalated to the user. WARNING and SUGGESTION findings are reported, not fixed automatically.
   4. The result is reported as JUDGMENT: APPROVED or JUDGMENT: ESCALATED with the findings, tests and fixes.
 
+- S2. Question: "Hallazgos que pueden perder o dejar datos. ¿Cuáles arreglamos? (cada uno con test que falle primero)" Answer: all four — "Borrado que reaparece (los 2 jueces)", "Borrado de cuenta sin candado (los 2)", "Cierre de sesión interrumpido (los 2)", "Carreras del outbox entre pestañas (juez A)". Question: "Hallazgos menores. ¿Cuáles arreglamos?" Answer: "Pantalla que queda encendida (los 2)", "Pausa en los últimos 100 ms (juez A)", "CSP completa (los 2)".
+  1. (JD-A-001, JD-B-002) A workout or history entry deleted while the outbox is sending never comes back on the server, also after account deletion discards the outbox.
+  2. (JD-A-004, JD-A-005) Two tabs changing the shared outbox at once never lose a pending item or an edit.
+  3. (JD-A-002, JD-B-003) Account deletion holds other changes off like sign-out does: no change from this or another tab can land after the erase and before the account is removed; a change attempted meanwhile is refused with a message, never left on the server.
+  4. (JD-A-003, JD-B-004) Sign-out interrupted at any point (tab closed, browser closed, an app update reload) never leaves the account's data on the device: the next start clears it. App updates never reload the page during sign-out or account deletion.
+  5. (JD-A-006, JD-B-005) The screen never stays awake after a workout pauses or ends, even after a quick pause and resume.
+  6. (JD-A-007) A pause pressed as the workout ends still finishes the session and records it in history.
+  7. (JD-A-008, JD-B-006) Hosting sends a full Content-Security-Policy that allows only what the app uses (its own origin, Google sign-in, Firebase Auth and Firestore, the fonts it serves), keeps frame-ancestors 'none' and the /__/auth exception, and the app still signs in, syncs and installs.
+
 ## Tasks
 
 - [x] T1 (S1.1) Blind judges A and B on the baseline tree. Route: jd-judge-a, jd-judge-b (background, together). Commit: none (read-only).
-- [ ] T2 (S1.2, S1.3) Freeze the severe rows, RED test per row, fix round 1 (and round 2 if needed), re-judgment. Route: jd-fix-agent per Judgment Day. Risk: decided per finding. Commit: pending.
+- [x] T2 (S1.2, S1.3) Freeze the severe rows, RED test per row, fix round 1 (and round 2 if needed), re-judgment. Route: jd-fix-agent per Judgment Day. Risk: item 6 for JD-B-001 (no test caught the crash before). Commit: 631051d.
+- [ ] T4 (S2.1, S2.2) Outbox: no resurrection after delete, no lost item or edit across tabs. Route: worker (parallel with T6, T7, T8; surface src/shared/**). Risk: item 1 (stored data), item 4 (concurrency). Commit: pending.
+- [ ] T5 (S2.3, S2.4) Account deletion under the account lock and blocking writes; sign-out and deletion survive interruption (clear-on-start marker before signing out, no update reload while they run). Route: worker after sign-out-erase T6 (same files). Risk: item 1, item 4. Commit: pending.
+- [ ] T6 (S2.5, S2.6) Timer: wake lock never leaked; a pause at the end still finishes and records the session. Route: worker (parallel; surface src/timer/**). Risk: item 6. Commit: pending.
+- [ ] T7 (S2.7) Full CSP in firebase.json, checked on the hosting emulator. Route: worker (parallel; surface firebase.json, e2e). Risk: item 5 (delivery: hosting headers), item 2 (security). Commit: pending.
 - [ ] T3 (S1.4) Final verification (unit, vp check, emulator e2e) and the judgment. Route: inline. Commit: pending.
 
 ## Log
@@ -30,3 +43,5 @@ Branch: feat/sign-out-erase (fixes as separate commits after T6 of sign-out-eras
   - JD-A-006 + JD-B-005 (both judges) WARNING/SUGGESTION src/timer/infrastructure/browserTimerAdapters.ts:106-110: two overlapping wakeLock requests (quick pause/resume) leak the first sentinel, so the screen stays on after the workout ends.
   - JD-A-007 SUGGESTION src/timer/domain/session.ts:40: a pause in the last 100 ms leaves the session paused past its end; exiting then never records it in history.
   - JD-A-008 + JD-B-006 (both judges) SUGGESTION firebase.json:37: the CSP only sets frame-ancestors; no script-src, connect-src or object-src defense in depth.
+- L3 (2026-11-16): Round 1 fix of JD-B-001 by jd-fix-agent, commit 631051d (connectUpdates.ts returns an updater that does nothing when the container is missing; browserUpdates.ts unchanged). RED: "connectUpdates > starts with updates off where the browser has no service workers" failed with TypeError: Cannot read properties of undefined (reading 'controller') at connectUpdates.ts:33. GREEN: src/update 2 files 12/12. Scoped re-judgment (judge A): JD-B-001 verified. No severe rows left; one fix round used. Pending: T3 final verification after sign-out-erase T6, and the user's decision on the informational rows.
+- L4 (2026-11-16): The user chose to fix every informational row (S2). T4, T6, T7 run in parallel with sign-out-erase T6 on disjoint files; T5 waits for it. Each fix starts from a failing test.
