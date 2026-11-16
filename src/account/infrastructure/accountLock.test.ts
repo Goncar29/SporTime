@@ -110,6 +110,40 @@ describe("account lock", () => {
     await expect(lock.shared(() => Promise.reject(new Error("bang")))).rejects.toThrow("bang");
   });
 
+  it("takes the lock from holders that never let go, telling them, and holds later ones off", async () => {
+    const log: string[] = [];
+    const lock = createAccountLock("u1", createFakeLockManager());
+    const stuck = step(log, "stuck");
+    const taken = expect(lock.shared(stuck.work)).rejects.toMatchObject({ name: "AbortError" });
+    await settle();
+
+    const owner = step(log, "owner");
+    const result = lock.takeOver(owner.work);
+    await settle();
+    await taken;
+    expect(log).toEqual(["stuck:start", "owner:start"]);
+
+    const later = step(log, "later");
+    void lock.shared(later.work);
+    await settle();
+    expect(log).not.toContain("later:start");
+    owner.finish();
+    await expect(result).resolves.toEqual({ value: "owner" });
+    await settle();
+    expect(log).toContain("later:start");
+    // The holder it took the lock from ending later lets nothing else in early.
+    stuck.finish();
+    await settle();
+    const exclusive = step(log, "exclusive");
+    void lock.exclusive(exclusive.work, 10_000);
+    await settle();
+    expect(log).not.toContain("exclusive:start");
+    later.finish();
+    await settle();
+    expect(log).toContain("exclusive:start");
+    exclusive.finish();
+  });
+
   describe("without Web Locks in the browser", () => {
     it("just runs the work, shared or exclusive, with nothing to wait for", async () => {
       const log: string[] = [];
@@ -123,6 +157,9 @@ describe("account lock", () => {
       expect(log).toEqual(["shared:start", "exclusive:start"]);
       exclusive.finish();
       await expect(result).resolves.toEqual({ value: "exclusive" });
+      await expect(lock.takeOver(() => Promise.resolve("taken"))).resolves.toEqual({
+        value: "taken",
+      });
     });
   });
 });

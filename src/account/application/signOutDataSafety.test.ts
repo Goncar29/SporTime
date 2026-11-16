@@ -146,6 +146,7 @@ function twoTabs() {
       signedOut,
       signingOut: { announce: () => undefined, subscribe: () => () => undefined },
       reload: () => undefined,
+      page: new EventTarget(),
     });
     return { tabs, signedOut };
   };
@@ -154,12 +155,13 @@ function twoTabs() {
 
   const outboxA = openOutbox();
   const atSignOut: string[] = [];
+  let onProviderSignOut: () => Promise<void> = () => Promise.resolve();
   const auth = {
-    signOut: () => {
+    signOut: async () => {
+      await onProviderSignOut();
       atSignOut.push(...server.confirmed);
       // As the app does: other tabs hear of it right after the provider signs out.
       a.signedOut.announce();
-      return Promise.resolve();
     },
   };
   let rounds = 0;
@@ -186,25 +188,46 @@ function twoTabs() {
       await outboxB.flushNow();
       return { answer };
     });
+  // The same in the tab that signs out, as when a timer finishes there meanwhile.
+  const addInA = () =>
+    a.tabs.guard(async () => {
+      const answer = outboxA.add({});
+      await outboxA.flushNow();
+      return { answer };
+    });
 
   return {
     server,
     store,
     tabB: b.tabs,
     addInB,
+    addInA,
     signOutA: {
       outbox: outboxA,
       atSignOut,
       onServerWait: (listener: (round: number) => void) => {
         onServerWait = listener;
       },
-      start: () => signOut({ auth, local, otherTabs: a.tabs }),
+      /** Runs as the provider is asked to sign out, before the other tabs hear of it. */
+      onProviderSignOut: (listener: () => Promise<void>) => {
+        onProviderSignOut = listener;
+      },
+      start: (options?: { force?: boolean }) =>
+        signOut({ auth, local, otherTabs: a.tabs }, options),
     },
   };
 }
 
 /** Lets every queued promise callback run. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function deferred() {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
 
 describe("signing out never loses data", () => {
   beforeEach(() => {
@@ -279,17 +302,70 @@ describe("signing out never loses data", () => {
     server.confirmAll();
     await settle();
 
-    const outcome = await result;
-    const madeInB = await changeInB;
-    if (outcome === "signedOut") {
-      // Everything this device's cache got was on the server when the session ended.
-      expect([...server.cached].every((id) => signOutA.atSignOut.includes(id))).toBe(true);
+    // This tab's own change reached the server, so it signs out; tab B's change waited for it
+    // and was refused, with the message, instead of being stored and then erased.
+    await expect(result).resolves.toBe("signedOut");
+    await expect(changeInB).resolves.toBe("refused");
+    expect(tabB.get()).toBe("lostChange");
+    // Everything this device's cache got was on the server when the session ended.
+    expect(signOutA.atSignOut).toEqual(["w1"]);
+    expect([...server.cached]).toEqual(["w1"]);
+    expect(store.load()).toEqual([]);
+  });
+
+  it("when forced past another tab's change that never let go, that tab says its change is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const { server, store, signOutA, tabB } = twoTabs();
+      // A change in tab B that holds the lock far too long, then is stored meanwhile.
+      const storing = deferred();
+      const changeInB = tabB.guard(async () => {
+        await storing.promise;
+        return "stored";
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      signOutA.onProviderSignOut(async () => {
+        storing.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const result = signOutA.start({ force: true });
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(result).resolves.toBe("signedOut");
+      await expect(changeInB).resolves.toBe("stored");
+      expect(tabB.get()).toBe("lostChange");
       expect(store.load()).toEqual([]);
-      if (madeInB === "refused") expect(tabB.get()).toBe("lostChange");
-    } else {
-      expect(outcome).toBe("unsent");
+      expect(server.confirmed.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
     }
-    expect(madeInB).toBeDefined();
+  });
+
+  it("reports unsent when a change made in this tab waits for its own sign-out, then saves it", async () => {
+    const { server, signOutA, addInA } = twoTabs();
+    void signOutA.outbox.add({});
+    await settle();
+
+    let changeInA: Promise<"saved" | "refused"> | undefined;
+    signOutA.onServerWait((round) => {
+      // A timer in this very tab finishes while it sends.
+      if (round === 1) {
+        changeInA = addInA().then(
+          () => "saved" as const,
+          () => "refused" as const,
+        );
+      }
+    });
+    const result = signOutA.start();
+    await settle();
+    server.confirmAll();
+    await settle();
+
+    await expect(result).resolves.toBe("unsent");
+    expect(signOutA.atSignOut).toEqual([]);
+    await expect(changeInA).resolves.toBe("saved");
+    expect([...server.cached]).toEqual(["w1", "w2"]);
   });
 
   it("keeps the pending changes when the provider refuses a forced sign-out", async () => {

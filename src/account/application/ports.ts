@@ -54,7 +54,10 @@ export interface OtherTabsActivity {
 export interface OtherTabsGate {
   /**
    * Runs `work` once no change is being made in another tab, and holds new ones until it ends.
-   * Null, without running it, when they did not finish in time.
+   * Null, without running it, when they did not finish in time. When forced, it then takes over
+   * from them instead, and their changes are reported lost there if the account signs out.
    */
-  holdOff<T>(work: () => Promise<T>): Promise<{ value: T } | null>;
+  holdOff<T>(work: () => Promise<T>, options?: { force?: boolean }): Promise<{ value: T } | null>;
+  /** True while a change asked for in this tab waits for `work` to end. */
+  changeWaitingHere(): boolean;
 }

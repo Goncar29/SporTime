@@ -66,16 +66,26 @@ describe("signOut", () => {
 
   describe("with other tabs of the account open", () => {
     /** Holds the other tabs' changes while the work runs, or gives up when they never let go. */
-    const holdingOff = (calls: string[], granted = true): OtherTabsGate => ({
-      holdOff<T>(work: () => Promise<T>) {
-        if (!granted) return Promise.resolve(null);
-        calls.push("holdOff");
-        return work().then((value) => {
-          calls.push("letGo");
-          return { value };
-        });
-      },
-    });
+    const holdingOff = (
+      calls: string[],
+      granted = true,
+      { waitingHere = false } = {},
+    ): OtherTabsGate & { forced: boolean[] } => {
+      const forced: boolean[] = [];
+      return {
+        forced,
+        holdOff<T>(work: () => Promise<T>, options?: { force?: boolean }) {
+          forced.push(options?.force ?? false);
+          if (!granted) return Promise.resolve(null);
+          calls.push("holdOff");
+          return work().then((value) => {
+            calls.push("letGo");
+            return { value };
+          });
+        },
+        changeWaitingHere: () => waitingHere,
+      };
+    };
 
     it("holds their changes off from sending until erasing ends", async () => {
       const { auth, local, calls } = setup();
@@ -98,11 +108,40 @@ describe("signOut", () => {
       expect(calls).toEqual([]);
     });
 
-    it("when forced, signs out anyway even if another tab does not let go", async () => {
+    it("when forced, has the tabs that do not let go overruled, and never signs out without the lock", async () => {
       const { auth, local, calls } = setup({ sent: "unsent" });
-      const otherTabs = holdingOff(calls, false);
-      await expect(signOut({ auth, local, otherTabs }, { force: true })).resolves.toBe("signedOut");
-      expect(calls).toEqual(["signOut", "discardPending", "erase"]);
+      const overruling = holdingOff(calls);
+      await expect(signOut({ auth, local, otherTabs: overruling }, { force: true })).resolves.toBe(
+        "signedOut",
+      );
+      expect(overruling.forced).toEqual([true]);
+      expect(calls).toEqual(["holdOff", "signOut", "discardPending", "erase", "letGo"]);
+
+      calls.length = 0;
+      const refusing = holdingOff(calls, false);
+      await expect(signOut({ auth, local, otherTabs: refusing }, { force: true })).resolves.toBe(
+        "unsent",
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it("does not overrule them when not forced", async () => {
+      const { auth, local, calls } = setup();
+      const otherTabs = holdingOff(calls);
+      await signOut({ auth, local, otherTabs });
+      expect(otherTabs.forced).toEqual([false]);
+    });
+
+    it("reports unsent, keeping the session, when a change asked for in this tab waits for it", async () => {
+      for (const force of [false, true]) {
+        const { auth, local, calls } = setup();
+        const otherTabs = holdingOff(calls, true, { waitingHere: true });
+        await expect(signOut({ auth, local, otherTabs }, { force })).resolves.toBe("unsent");
+        expect(auth.signOut).not.toHaveBeenCalled();
+        expect(local.discardPending).not.toHaveBeenCalled();
+        expect(local.erase).not.toHaveBeenCalled();
+        expect(calls.at(-1)).toBe("letGo");
+      }
     });
   });
 

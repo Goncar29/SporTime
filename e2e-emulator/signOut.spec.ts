@@ -1,12 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  asksBeforeLeaving,
   cacheContains,
   clearEmulatorData,
   eventually,
   finishStopwatch,
   googleButton,
+  holdWrites,
   markPage,
   openTab,
+  queuedWrites,
   reloaded,
   restoreNetwork,
   saveWorkout,
@@ -49,6 +52,30 @@ const deviceHolds = async (page: Page, text: string) =>
   ));
 
 const historyCount = async (uid: string) => (await stored(uid, "history")).length;
+
+const otherTabNotice = (page: Page) => page.getByText("Signing out in another tab…");
+
+/** Opens a second tab of the signed-in account, with a stopwatch running, to finish later. */
+async function openTabWithStopwatch(page: Page) {
+  const other = await page.context().newPage();
+  await other.goto("/");
+  await expect(startButton(other)).toBeVisible();
+  await openTab(other, "Timer");
+  await other.getByRole("button", { name: /^Stopwatch/ }).click();
+  await startButton(other).click();
+  await expect(other.getByRole("button", { name: "Finish" })).toBeVisible();
+  return other;
+}
+
+/**
+ * Finishes that stopwatch while the tab is blocked, as a press that lands just as another tab
+ * starts signing out: the finished session is a change the tab now has to store.
+ */
+async function finishWhileBlocked(page: Page) {
+  await expect(page.locator("[inert]").getByRole("button", { name: "Finish" })).toHaveCount(1);
+  await page.getByRole("button", { name: "Finish" }).dispatchEvent("click");
+  await expect(page.getByRole("button", { name: "New workout" })).toBeVisible();
+}
 
 test.beforeEach(clearEmulatorData);
 
@@ -238,6 +265,87 @@ test("another open tab is blocked while one signs out, and usable again after St
 
   await restoreNetwork(context);
   await eventually(() => storedNames(uid)).toEqual(["Online", "Stalled"]);
+});
+
+test("a change made in another tab while one signs out is saved when that tab stays", async ({
+  page,
+  context,
+}) => {
+  const uid = await signIn(page, "stay-other-change");
+  await saveWorkout(page, "Online");
+  await eventually(() => storedNames(uid)).toEqual(["Online"]);
+  const other = await openTabWithStopwatch(page);
+
+  // Something left to send on a stalled network keeps this tab signing out until the warning.
+  await stallNetwork(context);
+  await saveWorkout(page, "Stalled");
+  await openTab(page, "Profile");
+  await signOutButton(page).click();
+  await expect(otherTabNotice(other)).toBeVisible();
+
+  await finishWhileBlocked(other);
+  // It waits for the sign-out, only in that tab's memory, so leaving the tab would ask first.
+  await expect.poll(() => asksBeforeLeaving(other)).toBe(true);
+  expect(await historyCount(uid)).toBe(0);
+
+  await expect(warning(page)).toBeVisible({ timeout: 30_000 });
+  // The account stayed signed in, so the change was stored, and nothing is left to lose.
+  await expect.poll(() => asksBeforeLeaving(other)).toBe(false);
+  await warning(page).getByRole("button", { name: "Stay" }).click();
+  await expect(otherTabNotice(other)).toHaveCount(0);
+  await expect(other.getByRole("alert")).toHaveCount(0);
+
+  await restoreNetwork(context);
+  await eventually(() => historyCount(uid)).toBe(1);
+  await eventually(() => storedNames(uid)).toEqual(["Online", "Stalled"]);
+  expect(await other.evaluate(() => window.currentUidForTest())).toBe(uid);
+  expect(await page.evaluate(() => window.currentUidForTest())).toBe(uid);
+  await other.getByRole("button", { name: "New workout" }).click();
+  await openTab(other, "History");
+  await expect(other.getByRole("listitem")).toHaveCount(1);
+});
+
+test("a change made in another tab while one signs out is refused, with a message, when it signs out", async ({
+  page,
+  context,
+}) => {
+  const uid = await signIn(page, "refused-other-change");
+  await saveWorkout(page, "Online");
+  await eventually(() => storedNames(uid)).toEqual(["Online"]);
+  const other = await openTabWithStopwatch(page);
+
+  // This tab's own change waits for the server until the test lets it through.
+  const writes = await holdWrites(context);
+  await saveWorkout(page, "Sent late");
+  // Proves the check of the device below can fail: the held write is queued there now.
+  await expect.poll(() => queuedWrites(page)).toBeGreaterThan(0);
+  await openTab(page, "Profile");
+  await markPage(page);
+  await markPage(other);
+  await signOutButton(page).click();
+  await expect(otherTabNotice(other)).toBeVisible();
+
+  await finishWhileBlocked(other);
+  await expect.poll(() => asksBeforeLeaving(other)).toBe(true);
+
+  // Everything this tab had reaches the server, so it signs out while that change still waits.
+  await writes.release();
+  await reloaded(page);
+  await expect(googleButton(page)).toBeVisible();
+
+  const lost = other.getByText("Couldn't save: you signed out in another tab.");
+  await expect(lost).toBeVisible();
+  await expect(lost).toHaveAttribute("role", "alert");
+  // The app's own reload to the sign-in screen never asks.
+  expect(await asksBeforeLeaving(other)).toBe(false);
+  await reloaded(other);
+  await expect(googleButton(other)).toBeVisible();
+
+  expect(await storedNames(uid)).toEqual(["Online", "Sent late"]);
+  await other.waitForTimeout(3_000);
+  expect(await historyCount(uid)).toBe(0);
+  expect(await outboxKeys(other, uid)).toEqual([]);
+  expect(await queuedWrites(other)).toBe(0);
 });
 
 test("another open tab reloads to the sign-in screen when the account signs out", async ({

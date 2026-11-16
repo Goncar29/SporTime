@@ -1,4 +1,4 @@
-import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { openTab } from "../e2e/helpers";
 
 export { openTab };
@@ -98,6 +98,67 @@ export async function finishStopwatch(page: Page) {
 export const stallNetwork = (context: BrowserContext) =>
   context.route(EMULATOR_CALLS, () => undefined);
 export const restoreNetwork = (context: BrowserContext) => context.unroute(EMULATOR_CALLS);
+
+const WRITES = /\/Write\/channel/;
+
+/**
+ * Holds every request that carries writes to the server until `release`, which lets them go on
+ * as they were, so the writes then reach the server when the test decides.
+ */
+export async function holdWrites(context: BrowserContext) {
+  const held: Route[] = [];
+  await context.route(WRITES, (route) => {
+    held.push(route);
+  });
+  return {
+    async release() {
+      await context.unroute(WRITES);
+      await Promise.all(held.splice(0).map((route) => route.continue().catch(() => undefined)));
+    },
+  };
+}
+
+/** Writes this browser's Firestore still holds to send, from every tab (its "mutations" store). */
+export const queuedWrites = (page: Page) =>
+  page.evaluate(async () => {
+    let count = 0;
+    for (const { name } of await indexedDB.databases()) {
+      if (!name?.startsWith("firestore/")) continue;
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(name);
+        request.onsuccess = () => {
+          resolve(request.result);
+        };
+        request.onerror = () => {
+          reject(new Error("Could not open the cache"));
+        };
+      });
+      if (db.objectStoreNames.contains("mutations")) {
+        count += await new Promise<number>((resolve, reject) => {
+          const request = db.transaction("mutations").objectStore("mutations").count();
+          request.onsuccess = () => {
+            resolve(request.result);
+          };
+          request.onerror = () => {
+            reject(new Error("Could not read the cache"));
+          };
+        });
+      }
+      db.close();
+    }
+    return count;
+  });
+
+/**
+ * True when leaving the page now would make the browser ask first. A synthetic event, so no
+ * dialog opens; the page's own handler decides as it would for a real close or reload.
+ */
+export const asksBeforeLeaving = (page: Page) =>
+  page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
 
 export async function clearEmulatorData() {
   await fetch(

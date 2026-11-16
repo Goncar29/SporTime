@@ -24,24 +24,26 @@ interface Dependencies {
  * forced, the changes are dropped only once the provider signed out, so a refusal keeps them.
  * The account's other tabs share what this one sends and erases, so their changes wait from the
  * send until erasing ends. If one of theirs does not finish in time, it is not sent: "unsent",
- * unless forced, which signs out anyway, as the user chose to lose what was not sent.
+ * unless forced, which overrules those tabs, as the user chose to lose what was not sent; they
+ * then say that their change was lost. A change asked for in this tab meanwhile waits for this
+ * very sign-out, and it would be refused after it, so it is "unsent" too, and saved once it ends.
  */
 export async function signOut(
   { auth, local, otherTabs }: Dependencies,
   options: SignOutOptions = {},
 ): Promise<SignOutResult> {
-  const run = () => signOutHere({ auth, local }, options);
+  const run = () => signOutHere({ auth, local, otherTabs }, options);
   if (!otherTabs) return run();
-  const held = await otherTabs.holdOff(run);
-  if (held) return held.value;
-  return options.force ? run() : "unsent";
+  const held = await otherTabs.holdOff(run, { force: options.force ?? false });
+  return held ? held.value : "unsent";
 }
 
 async function signOutHere(
-  { auth, local }: Omit<Dependencies, "otherTabs">,
+  { auth, local, otherTabs }: Dependencies,
   { force = false }: SignOutOptions,
 ): Promise<SignOutResult> {
   if (!force && (await local.sendPending()) === "unsent") return "unsent";
+  if (otherTabs?.changeWaitingHere()) return "unsent";
   await auth.signOut();
   if (force) local.discardPending();
   try {

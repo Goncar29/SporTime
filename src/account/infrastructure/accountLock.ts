@@ -4,7 +4,7 @@ export type LockMode = "shared" | "exclusive";
 export interface Locks {
   request<T>(
     name: string,
-    options: { mode: LockMode; signal?: AbortSignal },
+    options: { mode: LockMode; signal?: AbortSignal; steal?: boolean },
     callback: () => Promise<T>,
   ): Promise<T>;
 }
@@ -22,6 +22,11 @@ export interface AccountLock {
    * without running it, when the lock was not free within `timeoutMs`.
    */
   exclusive<T>(work: () => Promise<T>, timeoutMs: number): Promise<{ value: T } | null>;
+  /**
+   * Runs `work` while holding the account's lock alone, taken at once from whoever holds it:
+   * their wait for it rejects with an "AbortError", though what they were doing goes on.
+   */
+  takeOver<T>(work: () => Promise<T>): Promise<{ value: T }>;
 }
 
 /** The browser's Web Locks, shared by every tab of the app, or none in an older browser. */
@@ -41,6 +46,7 @@ export function createAccountLock(userId: string, locks: Locks | undefined): Acc
       available: false,
       shared: (work) => work(),
       exclusive: async (work) => ({ value: await work() }),
+      takeOver: async (work) => ({ value: await work() }),
     };
   }
 
@@ -67,5 +73,9 @@ export function createAccountLock(userId: string, locks: Locks | undefined): Acc
         clearTimeout(timer);
       }
     },
+    takeOver: (work) =>
+      locks.request(name, { mode: "exclusive", steal: true }, async () => ({
+        value: await work(),
+      })),
   };
 }

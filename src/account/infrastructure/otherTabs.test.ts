@@ -52,13 +52,16 @@ function createBrowser(
       subscribe: subscribe(own.signingOut),
     };
     const reload = vi.fn();
+    // Each tab is its own page, which the browser asks before it closes or reloads it.
+    const page = new EventTarget();
     const otherTabs = createOtherTabs({
       lock: createAccountLock("u1", locks),
       signedOut,
       signingOut,
       reload,
+      page,
     });
-    return { otherTabs, reload, signedOut };
+    return { otherTabs, reload, signedOut, page };
   };
 }
 
@@ -72,6 +75,13 @@ function deferred<T = void>() {
 
 /** Lets every queued promise callback run. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** True when the page asked the browser to confirm leaving, as closing or reloading it would. */
+function asksBeforeLeaving(page: EventTarget): boolean {
+  const event = new Event("beforeunload", { cancelable: true });
+  page.dispatchEvent(event);
+  return event.defaultPrevented;
+}
 
 describe("other tabs of the account", () => {
   afterEach(() => {
@@ -184,6 +194,177 @@ describe("other tabs of the account", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await expect(result).resolves.toBeNull();
     expect(work).not.toHaveBeenCalled();
+    expect(b.otherTabs.get()).toBe("idle");
+  });
+
+  describe("when a forced sign-out takes the lock from a change that does not let go", () => {
+    it("reports that change lost when the account then signs out, never silently", async () => {
+      vi.useFakeTimers();
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      const storing = deferred();
+      const saving = b.otherTabs.guard(async () => {
+        await storing.promise;
+        return "stored";
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      const work = vi.fn(async () => {
+        // That change is stored only now, while this tab signs out.
+        storing.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+        a.signedOut.announce();
+        return "signedOut";
+      });
+      const result = a.otherTabs.holdOff(work, { force: true });
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(result).resolves.toEqual({ value: "signedOut" });
+      await expect(saving).resolves.toBe("stored");
+      expect(b.otherTabs.get()).toBe("lostChange");
+      expect(b.reload).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(b.reload).toHaveBeenCalledOnce();
+    });
+
+    it("holds the changes asked for meanwhile, and refuses them once it signed out", async () => {
+      vi.useFakeTimers();
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      void b.otherTabs.guard(() => new Promise(() => undefined));
+      await vi.advanceTimersByTimeAsync(0);
+
+      const later = vi.fn(() => Promise.resolve("stored"));
+      const ending = deferred();
+      let refused: Promise<void> | undefined;
+      const result = a.otherTabs.holdOff(
+        async () => {
+          refused = expect(b.otherTabs.guard(later)).rejects.toBeInstanceOf(SignedOutElsewhere);
+          await ending.promise;
+          a.signedOut.announce();
+          return "signedOut";
+        },
+        { force: true },
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(refused).toBeDefined();
+      expect(later).not.toHaveBeenCalled();
+
+      ending.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(result).resolves.toEqual({ value: "signedOut" });
+      await refused;
+      expect(later).not.toHaveBeenCalled();
+      expect(b.otherTabs.get()).toBe("lostChange");
+    });
+
+    it("waits for them first, and does not take over when not forced", async () => {
+      vi.useFakeTimers();
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      const storing = deferred();
+      void b.otherTabs.guard(() => storing.promise);
+      await vi.advanceTimersByTimeAsync(0);
+
+      const work = vi.fn(() => Promise.resolve("signedOut"));
+      const forced = a.otherTabs.holdOff(work, { force: true });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(work).not.toHaveBeenCalled();
+      storing.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(forced).resolves.toEqual({ value: "signedOut" });
+      expect(b.otherTabs.get()).not.toBe("lostChange");
+    });
+  });
+
+  describe("leaving the page", () => {
+    it("asks before leaving while a change waits for another tab's sign-out", async () => {
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      const ending = deferred<string>();
+      const result = a.otherTabs.holdOff(() => ending.promise);
+      await settle();
+
+      const saving = b.otherTabs.guard(() => Promise.resolve("stored"));
+      await settle();
+      expect(asksBeforeLeaving(b.page)).toBe(true);
+
+      ending.resolve("unsent");
+      await result;
+      await saving;
+      expect(asksBeforeLeaving(b.page)).toBe(false);
+    });
+
+    it("does not ask when nothing waits", () => {
+      const openTab = createBrowser();
+      const a = openTab();
+      expect(asksBeforeLeaving(a.page)).toBe(false);
+    });
+
+    it("does not ask when the app itself reloads after the account signed out", async () => {
+      vi.useFakeTimers();
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      const ending = deferred();
+      void a.otherTabs.holdOff(async () => {
+        await ending.promise;
+        a.signedOut.announce();
+        return "signedOut";
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      const saving = b.otherTabs.guard(() => Promise.resolve("stored"));
+      saving.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(asksBeforeLeaving(b.page)).toBe(true);
+
+      ending.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(b.otherTabs.get()).toBe("lostChange");
+      expect(asksBeforeLeaving(b.page)).toBe(false);
+      // Nor the tab that signed out, which reloads at once.
+      expect(asksBeforeLeaving(a.page)).toBe(false);
+    });
+  });
+
+  it("knows when a change asked for here waits for this tab's own sign-out", async () => {
+    const openTab = createBrowser();
+    const a = openTab();
+    const ending = deferred<string>();
+    let waitingDuringSignOut: boolean | undefined;
+    const result = a.otherTabs.holdOff(async () => {
+      expect(a.otherTabs.changeWaitingHere()).toBe(false);
+      void a.otherTabs.guard(() => Promise.resolve("stored"));
+      await settle();
+      waitingDuringSignOut = a.otherTabs.changeWaitingHere();
+      return ending.promise;
+    });
+    await settle();
+    ending.resolve("unsent");
+    await result;
+    await settle();
+    expect(waitingDuringSignOut).toBe(true);
+    expect(a.otherTabs.changeWaitingHere()).toBe(false);
+  });
+
+  it("frees the tab when its wait for the end of another tab's sign-out fails", async () => {
+    const failing: Locks = {
+      request(_name, { mode }, callback) {
+        if (mode === "shared") {
+          return Promise.reject(new DOMException("The lock was taken", "AbortError"));
+        }
+        return callback();
+      },
+    };
+    const openTab = createBrowser({ locks: failing });
+    const a = openTab();
+    const b = openTab();
+    await a.otherTabs.holdOff(() => Promise.resolve("unsent"));
+    await settle();
     expect(b.otherTabs.get()).toBe("idle");
   });
 

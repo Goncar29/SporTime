@@ -31,7 +31,15 @@ interface Dependencies {
   signingOut: TabSignal;
   /** Starts afresh on the sign-in screen. */
   reload: () => void;
+  /** Where the browser asks before closing or reloading the page; the window by default. */
+  page?: EventTarget;
 }
+
+/** How the browser tells a holder that a forced sign-out took the lock from it. */
+const lockTaken = (error: unknown) =>
+  typeof error === "object" &&
+  error !== null &&
+  (error as { name?: unknown }).name === "AbortError";
 
 /**
  * The account's tabs in this browser share its outbox and Firestore's cache, and a sign-out in
@@ -39,11 +47,21 @@ interface Dependencies {
  * or never be stored. The account's lock orders them: changes share it until they are stored on
  * this device, and signing out holds it alone. Without Web Locks nothing waits, as before.
  */
-export function createOtherTabs({ lock, signedOut, signingOut, reload }: Dependencies): OtherTabs {
+export function createOtherTabs({
+  lock,
+  signedOut,
+  signingOut,
+  reload,
+  page = window,
+}: Dependencies): OtherTabs {
   let status: OtherTabsStatus = "idle";
   const listeners = new Set<() => void>();
   /** Changes asked for here and not yet stored or refused. */
   let waiting = 0;
+  /** Of those, the ones still waiting for the lock, which live only in this page's memory. */
+  let queued = 0;
+  /** A forced sign-out took the lock while a change here was being stored, so it may erase it. */
+  let overruled = false;
   let signedOutElsewhere = false;
   let leaving = false;
 
@@ -66,12 +84,21 @@ export function createOtherTabs({ lock, signedOut, signingOut, reload }: Depende
     signingOut.subscribe(() => {
       if (status === "lostChange") return;
       set("signingOut");
+      const ended = () => {
+        overruled = false;
+        if (status === "signingOut") set("idle");
+      };
       // Granted once that tab let go: it either reloads everything here, or it did not sign out.
-      void lock
-        .shared(() => Promise.resolve())
-        .then(() => {
-          if (status === "signingOut") set("idle");
-        });
+      // Refused only when yet another tab took the lock, which then tells this one again.
+      void lock.shared(() => Promise.resolve()).then(ended, ended);
+    });
+
+    page.addEventListener("beforeunload", (event) => {
+      // Once signed out, nothing waiting can be saved, and the app reloads on its own.
+      if (queued === 0 || leaving || signedOutElsewhere || signedOut.signedOutSinceLoad()) return;
+      // Closing or reloading now would lose the change without a word, so the browser asks.
+      event.preventDefault();
+      (event as BeforeUnloadEvent).returnValue = "unsent";
     });
   }
 
@@ -82,7 +109,7 @@ export function createOtherTabs({ lock, signedOut, signingOut, reload }: Depende
       return;
     }
     // A waiting change is refused once it gets the lock, and it must not go unexplained.
-    if (waiting > 0 || status === "lostChange") loseChange();
+    if (waiting > 0 || overruled || status === "lostChange") loseChange();
     else reload();
   });
 
@@ -97,25 +124,49 @@ export function createOtherTabs({ lock, signedOut, signingOut, reload }: Depende
     guard: async (write) => {
       if (!lock.available) return write();
       waiting += 1;
+      queued += 1;
+      let granted = false;
+      let writing: ReturnType<typeof write> | undefined;
+      const granting = () => {
+        if (granted) return;
+        granted = true;
+        queued -= 1;
+      };
       try {
         return await lock.shared(() => {
+          granting();
           if (signedOutElsewhere || signedOut.signedOutSinceLoad()) {
             loseChange();
             return Promise.reject(new SignedOutElsewhere());
           }
-          return write();
+          writing = write();
+          return writing;
         });
+      } catch (error) {
+        if (!writing || !lockTaken(error)) throw error;
+        // A forced sign-out elsewhere took the lock while this change was being stored. It still
+        // ends, but that sign-out may erase it, and then this tab must say so.
+        overruled = true;
+        return await writing;
       } finally {
+        granting();
         waiting -= 1;
       }
     },
-    holdOff(work) {
-      if (!lock.available) return work().then((value) => ({ value }));
-      return lock.exclusive(() => {
-        // Only once it holds the lock: every change started elsewhere before is stored by now.
+    async holdOff(work, { force = false } = {}) {
+      if (!lock.available) return { value: await work() };
+      const signOutHere = () => {
+        // Only once it holds the lock: every change started elsewhere before is stored by now,
+        // or, when it was taken, reported lost there if this tab signs out.
         signingOut.announce();
         return work();
-      }, HOLD_OFF_WAIT_MS);
+      };
+      const held = await lock.exclusive(signOutHere, HOLD_OFF_WAIT_MS);
+      if (held || !force) return held;
+      // The user chose to lose what was not sent, so the tabs that did not let go are overruled
+      // rather than the account signing out without the lock.
+      return lock.takeOver(signOutHere);
     },
+    changeWaitingHere: () => queued > 0,
   };
 }

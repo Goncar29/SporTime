@@ -83,6 +83,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe("writes while another tab may be signing out", () => {
   afterEach(() => {
     firestore.setDoc.mockReset().mockResolvedValue(undefined);
+    firestore.updateDoc.mockReset().mockResolvedValue(undefined);
     firestore.deleteDoc.mockReset().mockResolvedValue(undefined);
   });
 
@@ -172,6 +173,14 @@ describe("writes while another tab may be signing out", () => {
     );
     const { library } = setup({ guard: recordingGuard() });
     await expect(library.update(edited)).rejects.toMatchObject({ code: "permission-denied" });
+  });
+});
+
+describe("after the writes made while another tab may be signing out", () => {
+  it("starts with Firestore answering every write at once, whatever those tests set", async () => {
+    await expect(firestore.setDoc({ path: PATH })).resolves.toBeUndefined();
+    await expect(firestore.updateDoc({ path: PATH })).resolves.toBeUndefined();
+    await expect(firestore.deleteDoc({ path: PATH })).resolves.toBeUndefined();
   });
 });
 
