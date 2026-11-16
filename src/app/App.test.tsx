@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { OtherTabsStatus } from "../account/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import { AuthFailure } from "../auth/domain/user";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
@@ -35,7 +36,7 @@ function setup({
     screenAwake: { acquire: vi.fn(), release: vi.fn() },
   };
   const store = { get: () => null, set: vi.fn() };
-  render(
+  const tree = (otherTabs?: OtherTabsStatus) => (
     <I18nProvider store={store} browserLanguages={["en-US"]}>
       <UpdateProvider updater={updater}>
         <App
@@ -44,12 +45,18 @@ function setup({
           history={history}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
+          otherTabs={otherTabs}
         />
       </UpdateProvider>
-    </I18nProvider>,
+    </I18nProvider>
   );
+  const { rerender } = render(tree());
   return {
     timer,
+    /** What the account's other open tabs are doing. */
+    setOtherTabs: (status: OtherTabsStatus) => {
+      rerender(tree(status));
+    },
     advance: (ms: number) => {
       act(() => {
         now += ms;
@@ -165,6 +172,24 @@ describe("App", () => {
       updater.ready();
     });
     expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a running workout too while another tab signs out, and frees it afterwards", () => {
+    const { setOtherTabs } = setup();
+    click(/^Tabata/);
+    click(/^Start/);
+    setOtherTabs("signingOut");
+    expect(screen.getByRole("status")).toHaveTextContent("Signing out in another tab…");
+    expect(screen.getByRole("button", { name: "Pause" }).closest("[inert]")).not.toBeNull();
+
+    setOtherTabs("lostChange");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't save: you signed out in another tab.",
+    );
+
+    setOtherTabs("idle");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pause" }).closest("[inert]")).toBeNull();
   });
 
   it("pausing freezes the time and is the only way to exit", () => {

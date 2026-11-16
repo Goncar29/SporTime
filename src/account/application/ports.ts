@@ -37,3 +37,24 @@ export interface LocalAccountData {
    */
   erase(): Promise<void>;
 }
+
+/**
+ * What the account's other open tabs are doing: one is signing out, which blocks this one, or it
+ * signed out while a change made here was waiting, so that change could not be saved.
+ */
+export type OtherTabsStatus = "idle" | "signingOut" | "lostChange";
+
+export interface OtherTabsActivity {
+  get(): OtherTabsStatus;
+  /** Calls `listener` when the status changes. Returns the unsubscribe function. */
+  subscribe(listener: () => void): () => void;
+}
+
+/** Keeps the other tabs' changes waiting while this tab signs out. */
+export interface OtherTabsGate {
+  /**
+   * Runs `work` once no change is being made in another tab, and holds new ones until it ends.
+   * Null, without running it, when they did not finish in time.
+   */
+  holdOff<T>(work: () => Promise<T>): Promise<{ value: T } | null>;
+}

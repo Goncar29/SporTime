@@ -4,7 +4,10 @@ import "@fontsource/barlow-condensed/latin-800-italic.css";
 import "./app/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createSignOutSignal } from "./account/infrastructure/signOutSignal";
+import {
+  createSignOutSignal,
+  createSigningOutSignal,
+} from "./account/infrastructure/signOutSignal";
 import { SignedInApp, type UserStores } from "./app/SignedInApp";
 import { StoresLoader, createStoresLoad } from "./app/StoresLoader";
 import type { AuthGateway } from "./auth/application/ports";
@@ -67,10 +70,17 @@ async function createAuthGateway(): Promise<AuthGateway> {
   );
 }
 
+const reloadPage = () => {
+  location.reload();
+};
+
 // Another tab's sign-out stops this tab's Firestore and erases its outbox, so start afresh.
 const signOutSignal = createSignOutSignal();
+const signingOutSignal = createSigningOutSignal();
+// Once an account's stores exist, they decide, since a change waiting there must be explained first.
+let reloadsOnSignOutElsewhere = true;
 signOutSignal.subscribe(() => {
-  location.reload();
+  if (reloadsOnSignOutElsewhere) reloadPage();
 });
 
 // Decided at build time, so the fake stores are never shipped in a production build.
@@ -113,6 +123,8 @@ async function createStoresFactory(
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
     { createLocalAccountData },
+    { browserLocks, createAccountLock },
+    { createOtherTabs },
   ] = await Promise.all([
     import("./shared/firebase/firestore"),
     import("./shared/infrastructure/localStorageOutboxStore"),
@@ -122,6 +134,8 @@ async function createStoresFactory(
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
     import("./account/infrastructure/localAccountData"),
+    import("./account/infrastructure/accountLock"),
+    import("./account/infrastructure/otherTabs"),
   ]);
   // One set per account: two outboxes over the same storage would send the same write twice.
   const stores = new Map<string, UserStores>();
@@ -140,13 +154,23 @@ async function createStoresFactory(
       historyOutbox.save([]);
     };
     const identity = createFirebaseAccountIdentity(userId);
+    // Changes wait while another tab signs out, and are refused once it did (or none without Web Locks).
+    const otherTabs = createOtherTabs({
+      lock: createAccountLock(userId, browserLocks()),
+      signedOut: signOutSignal,
+      signingOut: signingOutSignal,
+      reload: reloadPage,
+    });
+    reloadsOnSignOutElsewhere = false;
     const workouts = createFirestoreWorkoutLibrary(firestore(), userId, {
       store: workoutOutbox,
       whenReady,
+      guard: otherTabs.guard,
     });
     const history = createFirestoreHistoryLog(firestore(), userId, {
       store: historyOutbox,
       whenReady,
+      guard: otherTabs.guard,
     });
     const local = createLocalAccountData({
       outboxes: [workouts, history],
@@ -170,7 +194,9 @@ async function createStoresFactory(
           }),
         }),
       deletionConfirmedByRedirect: () => identity.confirmedByRedirect(),
-      signOut: (options) => signOut({ auth, local }, options),
+      // Holds the other tabs' changes from the send until erasing ends.
+      signOut: (options) => signOut({ auth, local, otherTabs }, options),
+      otherTabs,
     };
     stores.set(userId, created);
     return created;

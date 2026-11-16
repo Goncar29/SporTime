@@ -203,6 +203,43 @@ test("Sign out anyway discards the unsent changes and erases the account from th
   expect(await historyCount(uid)).toBe(0);
 });
 
+test("another open tab is blocked while one signs out, and usable again after Stay", async ({
+  page,
+  context,
+}) => {
+  const uid = await signIn(page, "blocked-tab");
+  await saveWorkout(page, "Online");
+  await eventually(() => storedNames(uid)).toEqual(["Online"]);
+  const other = await context.newPage();
+  await other.goto("/");
+  await expect(startButton(other)).toBeVisible();
+
+  // Something left to send on a stalled network keeps the first tab signing out until the warning.
+  await stallNetwork(context);
+  await saveWorkout(page, "Stalled");
+  await openTab(page, "Profile");
+  await signOutButton(page).click();
+  await expect(page.getByText("Signing out…", { exact: true })).toBeVisible();
+
+  const notice = other.getByText("Signing out in another tab…");
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute("role", "status");
+  await expect(other.locator("[inert]").getByRole("button", { name: "Saved" })).toHaveCount(1);
+
+  await expect(warning(page)).toBeVisible({ timeout: 30_000 });
+  await warning(page).getByRole("button", { name: "Stay" }).click();
+  await expect(warning(page)).toHaveCount(0);
+
+  await expect(notice).toHaveCount(0);
+  await expect(other.locator("[inert]")).toHaveCount(0);
+  await openTab(other, "Saved");
+  await expect(savedButton(other, "Online")).toBeVisible();
+  expect(await other.evaluate(() => window.currentUidForTest())).toBe(uid);
+
+  await restoreNetwork(context);
+  await eventually(() => storedNames(uid)).toEqual(["Online", "Stalled"]);
+});
+
 test("another open tab reloads to the sign-in screen when the account signs out", async ({
   page,
   context,

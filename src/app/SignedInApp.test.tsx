@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { OtherTabsStatus } from "../account/application/ports";
 import type { SignOutOptions, SignOutResult } from "../account/application/signOut";
 import type { AuthGateway } from "../auth/application/ports";
 import type { User } from "../auth/domain/user";
@@ -18,9 +19,34 @@ interface Options {
   language?: "en" | "es";
   /** The account's sign-out. By default it signs out with the provider, like a real one. */
   signOut?: SignOut;
+  /** What the account's other open tabs are doing; none by default, as in the e2e build. */
+  otherTabs?: ReturnType<typeof createOtherTabsStatus>;
 }
 
-function setup({ language = "en", signOut }: Options = {}) {
+/** The other tabs' status as the account's stores report it, changed by the test. */
+function createOtherTabsStatus() {
+  let current: OtherTabsStatus = "idle";
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set(next: OtherTabsStatus) {
+      act(() => {
+        current = next;
+        listeners.forEach((listener) => {
+          listener();
+        });
+      });
+    },
+  };
+}
+
+function setup({ language = "en", signOut, otherTabs }: Options = {}) {
   let report: (user: User | null) => void = () => undefined;
   const gateway = {
     subscribe(listener: (user: User | null) => void) {
@@ -56,6 +82,7 @@ function setup({ language = "en", signOut }: Options = {}) {
     deleteAccount: () => Promise.resolve(),
     deletionConfirmedByRedirect: () => Promise.resolve(false),
     signOut: accountSignOut,
+    otherTabs,
   });
   render(
     <I18nProvider store={{ get: () => language, set: vi.fn() }} browserLanguages={["en-US"]}>
@@ -262,6 +289,54 @@ describe("signing out", () => {
     );
     expect(within(dialog).getByRole("button", { name: "Quedarme" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cerrar sesión igual" })).toBeInTheDocument();
+  });
+
+  describe("in another tab", () => {
+    const blocked = (element: HTMLElement) => element.closest("[inert]") !== null;
+
+    it("shows that another tab is signing out and blocks this one until it ends without signing out", () => {
+      const otherTabs = createOtherTabsStatus();
+      setup({ otherTabs });
+      // The Timer's own values are outputs, which are statuses too, so it is found by its text.
+      const notice = () => screen.queryByText("Signing out in another tab…");
+      expect(notice()).not.toBeInTheDocument();
+
+      otherTabs.set("signingOut");
+      expect(notice()).toHaveAttribute("role", "status");
+      expect(blocked(notice() as HTMLElement)).toBe(false);
+      expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(true);
+      expect(blocked(screen.getByRole("button", { name: /^Start/ }))).toBe(true);
+
+      otherTabs.set("idle");
+      expect(notice()).not.toBeInTheDocument();
+      expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(false);
+      expect(blocked(screen.getByRole("button", { name: /^Start/ }))).toBe(false);
+    });
+
+    it("says a change could not be saved because another tab signed out, with the app blocked", () => {
+      const otherTabs = createOtherTabsStatus();
+      setup({ otherTabs });
+      otherTabs.set("lostChange");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Couldn't save: you signed out in another tab.",
+      );
+      expect(blocked(screen.getByRole("alert"))).toBe(false);
+      expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(true);
+    });
+
+    it("is translated", () => {
+      const otherTabs = createOtherTabsStatus();
+      setup({ language: "es", otherTabs });
+      otherTabs.set("signingOut");
+      expect(screen.getByText("Cerrando sesión en otra pestaña…")).toHaveAttribute(
+        "role",
+        "status",
+      );
+      otherTabs.set("lostChange");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "No se pudo guardar: se cerró la sesión en otra pestaña.",
+      );
+    });
   });
 
   it("explains a refused sign-out, keeps the session and does not reload", async () => {

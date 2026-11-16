@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createSignOutSignal } from "./signOutSignal";
+import { createSignOutSignal, createSigningOutSignal } from "./signOutSignal";
 
 /** What another tab receives when this one writes to the shared storage. */
 function deliverToOtherTabs(changedKey: string | null = localStorage.key(0)) {
@@ -49,6 +49,26 @@ describe("sign-out signal", () => {
     deliverToOtherTabs("sportime.language");
     deliverToOtherTabs(null);
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("tells whether any tab signed out since this page loaded, even before the change arrives", () => {
+    const signal = createSignOutSignal();
+    expect(signal.signedOutSinceLoad()).toBe(false);
+    // Written by another tab: the storage is shared, the event may still be on its way.
+    createSignOutSignal().announce();
+    expect(signal.signedOutSinceLoad()).toBe(true);
+    expect(createSignOutSignal().signedOutSinceLoad()).toBe(false);
+  });
+
+  it("tells other tabs that one started signing out, apart from the sign-out itself", () => {
+    const signedOut = listen();
+    const started = vi.fn();
+    unsubscribes.push(createSigningOutSignal().subscribe(started));
+    createSigningOutSignal().announce();
+    expect(started).not.toHaveBeenCalled();
+    deliverToOtherTabs();
+    expect(started).toHaveBeenCalledOnce();
+    expect(signedOut).not.toHaveBeenCalled();
   });
 
   it("stops telling once unsubscribed", () => {

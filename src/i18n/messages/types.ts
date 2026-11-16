@@ -46,6 +46,10 @@ export interface Messages {
   signOut: string;
   signingOut: string;
   signOutFailed: string;
+  /** Another tab of the account is signing out, which blocks this one meanwhile. */
+  signingOutElsewhere: string;
+  /** A change made here waited for that sign-out, which ended the session, so it was not saved. */
+  lostChangeSignedOutElsewhere: string;
   /** The warning before signing out with changes that could not be sent. */
   unsentChanges: string;
   unsentChangesWarning: string;

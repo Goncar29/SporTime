@@ -1,4 +1,4 @@
-import type { LocalAccountData } from "./ports";
+import type { LocalAccountData, OtherTabsGate } from "./ports";
 
 export type SignOutResult = "signedOut" | "unsent";
 
@@ -10,6 +10,8 @@ export interface SignOutOptions {
 interface Dependencies {
   auth: { signOut(): Promise<void> };
   local: LocalAccountData;
+  /** The account's other open tabs; without them nothing waits. */
+  otherTabs?: OtherTabsGate;
 }
 
 /**
@@ -20,10 +22,24 @@ interface Dependencies {
  * and the cache keeps its own note to clear itself on the next start.
  * Signing out follows the send with nothing in between, so no change can slip past it; when
  * forced, the changes are dropped only once the provider signed out, so a refusal keeps them.
+ * The account's other tabs share what this one sends and erases, so their changes wait from the
+ * send until erasing ends. If one of theirs does not finish in time, it is not sent: "unsent",
+ * unless forced, which signs out anyway, as the user chose to lose what was not sent.
  */
 export async function signOut(
-  { auth, local }: Dependencies,
-  { force = false }: SignOutOptions = {},
+  { auth, local, otherTabs }: Dependencies,
+  options: SignOutOptions = {},
+): Promise<SignOutResult> {
+  const run = () => signOutHere({ auth, local }, options);
+  if (!otherTabs) return run();
+  const held = await otherTabs.holdOff(run);
+  if (held) return held.value;
+  return options.force ? run() : "unsent";
+}
+
+async function signOutHere(
+  { auth, local }: Omit<Dependencies, "otherTabs">,
+  { force = false }: SignOutOptions,
 ): Promise<SignOutResult> {
   if (!force && (await local.sendPending()) === "unsent") return "unsent";
   await auth.signOut();

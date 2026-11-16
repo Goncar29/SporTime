@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { SendResult } from "./ports";
+import type { OtherTabsGate, SendResult } from "./ports";
 import { signOut } from "./signOut";
 
 function setup({ sent = "sent" as SendResult } = {}) {
@@ -62,6 +62,48 @@ describe("signOut", () => {
     expect(auth.signOut).toHaveBeenCalledOnce();
     expect(local.erase).toHaveBeenCalledOnce();
     warn.mockRestore();
+  });
+
+  describe("with other tabs of the account open", () => {
+    /** Holds the other tabs' changes while the work runs, or gives up when they never let go. */
+    const holdingOff = (calls: string[], granted = true): OtherTabsGate => ({
+      holdOff<T>(work: () => Promise<T>) {
+        if (!granted) return Promise.resolve(null);
+        calls.push("holdOff");
+        return work().then((value) => {
+          calls.push("letGo");
+          return { value };
+        });
+      },
+    });
+
+    it("holds their changes off from sending until erasing ends", async () => {
+      const { auth, local, calls } = setup();
+      const otherTabs = holdingOff(calls);
+      await expect(signOut({ auth, local, otherTabs })).resolves.toBe("signedOut");
+      expect(calls).toEqual(["holdOff", "sendPending", "signOut", "erase", "letGo"]);
+    });
+
+    it("also lets them go when the changes could not be sent", async () => {
+      const { auth, local, calls } = setup({ sent: "unsent" });
+      const otherTabs = holdingOff(calls);
+      await expect(signOut({ auth, local, otherTabs })).resolves.toBe("unsent");
+      expect(calls).toEqual(["holdOff", "sendPending", "letGo"]);
+    });
+
+    it("reports unsent and touches nothing when a change in another tab does not finish in time", async () => {
+      const { auth, local, calls } = setup();
+      const otherTabs = holdingOff(calls, false);
+      await expect(signOut({ auth, local, otherTabs })).resolves.toBe("unsent");
+      expect(calls).toEqual([]);
+    });
+
+    it("when forced, signs out anyway even if another tab does not let go", async () => {
+      const { auth, local, calls } = setup({ sent: "unsent" });
+      const otherTabs = holdingOff(calls, false);
+      await expect(signOut({ auth, local, otherTabs }, { force: true })).resolves.toBe("signedOut");
+      expect(calls).toEqual(["signOut", "discardPending", "erase"]);
+    });
   });
 
   it("erases nothing when the provider refuses to sign out", async () => {

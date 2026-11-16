@@ -72,6 +72,8 @@ export const es: Messages = {
   signOut: "Cerrar sesión",
   signingOut: "Cerrando sesión…",
   signOutFailed: "No pudimos cerrar tu sesión. Inténtalo de nuevo.",
+  signingOutElsewhere: "Cerrando sesión en otra pestaña…",
+  lostChangeSignedOutElsewhere: "No se pudo guardar: se cerró la sesión en otra pestaña.",
   unsentChanges: "Cambios sin enviar",
   unsentChangesWarning: "Tienes cambios sin enviar. Si cierras sesión ahora, se perderán.",
   stay: "Quedarme",

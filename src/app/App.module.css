@@ -3,7 +3,15 @@
   padding-bottom: var(--tabbar-height);
 }
 
-/* Covers the blocked app while signing out, and keeps the progress in view. */
+/* Lets a running workout be blocked without changing its layout. */
+.timer {
+  display: contents;
+}
+
+/*
+ * Covers the blocked app while this or another tab signs out, and keeps the progress, or why a
+ * change was not saved, in view.
+ */
 .signingOut {
   position: fixed;
   inset: 0;

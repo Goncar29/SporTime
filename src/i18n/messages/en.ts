@@ -65,6 +65,8 @@ export const en: Messages = {
   signOut: "Sign out",
   signingOut: "Signing out…",
   signOutFailed: "We couldn't sign you out. Please try again.",
+  signingOutElsewhere: "Signing out in another tab…",
+  lostChangeSignedOutElsewhere: "Couldn't save: you signed out in another tab.",
   unsentChanges: "Unsent changes",
   unsentChangesWarning: "You have unsent changes. If you sign out now, they will be lost.",
   stay: "Stay",

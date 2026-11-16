@@ -1,31 +1,46 @@
-const KEY = "sportime.signedOut";
+const SIGNED_OUT = "sportime.signedOut";
+const SIGNING_OUT = "sportime.signingOut";
 
-export interface SignOutSignal {
-  /** Tells the app's other tabs that this one signed out. */
+export interface TabSignal {
+  /** Tells the app's other tabs. */
   announce: () => void;
-  /** Calls `listener` when another tab signs out. Returns the unsubscribe function. */
+  /** Calls `listener` when another tab announces. Returns the unsubscribe function. */
   subscribe: (listener: () => void) => () => void;
 }
 
+export interface SignOutSignal extends TabSignal {
+  /**
+   * True once any tab signed out after this page loaded. Read from the shared storage, so it
+   * can be true before the change reaches this tab.
+   */
+  signedOutSinceLoad: () => boolean;
+}
+
+function read(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Tabs share the session but each runs its own Firestore, which a sign-out elsewhere stops and
- * erases. The browser sends a storage change only to the other tabs, never to the one that made
- * it, so this tells exactly the tabs that must reload, and leaves a session ended by the provider
- * (an expired session, a deleted account) to the tab that shows why.
+ * The browser sends a storage change only to the other tabs, never to the one that made it, so
+ * this reaches exactly the tabs that must react.
  */
-export function createSignOutSignal(): SignOutSignal {
+function createTabSignal(key: string, what: string): TabSignal {
   return {
     announce() {
       try {
         // Always a new value: an unchanged one would not reach the other tabs.
-        localStorage.setItem(KEY, `${Date.now()}-${Math.random()}`);
+        localStorage.setItem(key, `${Date.now()}-${Math.random()}`);
       } catch (error) {
-        console.warn("Other tabs could not be told about the sign-out:", error);
+        console.warn(`Other tabs could not be told about the ${what}:`, error);
       }
     },
     subscribe(listener) {
       const onStorage = (event: StorageEvent) => {
-        if (event.key === KEY && event.newValue !== null) listener();
+        if (event.key === key && event.newValue !== null) listener();
       };
       window.addEventListener("storage", onStorage);
       return () => {
@@ -33,4 +48,22 @@ export function createSignOutSignal(): SignOutSignal {
       };
     },
   };
+}
+
+/**
+ * Tabs share the session but each runs its own Firestore, which a sign-out elsewhere stops and
+ * erases. Only the other tabs must reload, which leaves a session ended by the provider (an
+ * expired session, a deleted account) to the tab that shows why.
+ */
+export function createSignOutSignal(): SignOutSignal {
+  const atLoad = read(SIGNED_OUT);
+  return {
+    ...createTabSignal(SIGNED_OUT, "sign-out"),
+    signedOutSinceLoad: () => read(SIGNED_OUT) !== atLoad,
+  };
+}
+
+/** Tells the other tabs that one started signing out, so they hold their changes meanwhile. */
+export function createSigningOutSignal(): TabSignal {
+  return createTabSignal(SIGNING_OUT, "start of the sign-out");
 }

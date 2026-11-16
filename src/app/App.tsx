@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { OtherTabsStatus } from "../account/application/ports";
 import { ProfileScreen } from "../account/ui/ProfileScreen";
 import { useAccountDeletion } from "../account/ui/useAccountDeletion";
 import { PrivacyScreen } from "../account/ui/PrivacyScreen";
@@ -72,6 +73,11 @@ interface AppProps {
    * and be erased with the session, so nothing can be used until it ends.
    */
   signingOut?: boolean;
+  /**
+   * Another tab of the account is signing out, so nothing here can be used until it ends; or it
+   * signed out while a change made here waited, so that change was not saved.
+   */
+  otherTabs?: OtherTabsStatus;
 }
 
 /** Settings and Privacy open from Profile, so its tab stays marked while they are shown. */
@@ -88,6 +94,7 @@ export function App({
   deletionConfirmedByRedirect,
   account,
   signingOut = false,
+  otherTabs = "idle",
 }: AppProps) {
   const { t, language } = useI18n();
   const [sound, setSound] = useState(() => parseSoundSettings(timer.soundStore.get()));
@@ -205,14 +212,35 @@ export function App({
     setActive(null);
   };
 
+  const blocked = signingOut || otherTabs !== "idle";
+  // Outside the blocked part, so it stays visible and announced.
+  const overlay = blocked && (
+    <div className={styles.signingOut}>
+      {signingOut || otherTabs === "signingOut" ? (
+        <p className={styles.signingOutStatus} role="status">
+          {signingOut ? t.signingOut : t.signingOutElsewhere}
+        </p>
+      ) : (
+        <p className={styles.signingOutStatus} role="alert">
+          {t.lostChangeSignedOutElsewhere}
+        </p>
+      )}
+    </div>
+  );
+
   if (active) {
     return (
-      <TimerScreen
-        mode={active.mode}
-        timeline={active.timeline}
-        controller={active.controller}
-        onExit={handleExit}
-      />
+      <>
+        <div className={styles.timer} inert={blocked}>
+          <TimerScreen
+            mode={active.mode}
+            timeline={active.timeline}
+            controller={active.controller}
+            onExit={handleExit}
+          />
+        </div>
+        {overlay}
+      </>
     );
   }
 
@@ -339,7 +367,7 @@ export function App({
 
   return (
     <>
-      <div className={styles.withTabs} inert={signingOut}>
+      <div className={styles.withTabs} inert={blocked}>
         {content}
         <TabBar
           current={tabOf(screen)}
@@ -350,13 +378,7 @@ export function App({
           }}
         />
       </div>
-      {signingOut && (
-        <div className={styles.signingOut}>
-          <p className={styles.signingOutStatus} role="status">
-            {t.signingOut}
-          </p>
-        </div>
-      )}
+      {overlay}
     </>
   );
 }

@@ -26,6 +26,20 @@ import { toStoredConfig } from "../domain/workout";
 interface Durability {
   store: OutboxStore<SavedWorkoutDraft>;
   whenReady: () => Promise<boolean>;
+  /**
+   * Runs a change until it is stored on this device, holding off a sign-out in another tab, or
+   * refuses it. Without one, changes run at once.
+   */
+  guard?: <T>(write: () => Promise<T>) => Promise<T>;
+}
+
+const runAtOnce = <T>(write: () => Promise<T>) => write();
+
+/** The server's answer, kept apart so the guard does not wait for it. */
+function answerLater(answer: Promise<void>): { answer: Promise<void> } {
+  // Read after the guard ends; until then a refusal must not count as unhandled.
+  answer.catch(() => undefined);
+  return { answer };
 }
 
 /**
@@ -49,9 +63,11 @@ async function explainRefusal(ref: DocumentReference, error: unknown): Promise<u
 export function createFirestoreWorkoutLibrary(
   db: Firestore,
   userId: string,
-  { store, whenReady }: Durability,
+  { store, whenReady, guard = runAtOnce }: Durability,
 ): WorkoutLibrary & HeldWrites {
   const workouts = collection(db, "users", userId, "workouts");
+  /** Firestore answers in order, so once this read answers, the change before it is in the cache. */
+  const inLocalCache = (ref: DocumentReference) => getDocFromCache(ref).catch(() => undefined);
 
   const outbox = withOutbox<SavedWorkout, SavedWorkoutDraft>({
     store,
@@ -79,28 +95,50 @@ export function createFirestoreWorkoutLibrary(
   return {
     subscribe: outbox.subscribe,
     flushNow: outbox.flushNow,
-    save: outbox.add,
+    async save(draft) {
+      const { answer } = await guard(async () => {
+        const saved = answerLater(outbox.add(draft));
+        // Handed to Firestore's cache now, where a sign-out in another tab waits for the server.
+        await outbox.flushNow();
+        return saved;
+      });
+      await answer;
+    },
     async update({ id, ...draft }) {
-      // Revised first, so a save still waiting in the outbox sends this version and never the old one.
-      const heldHere = outbox.revise(id, draft);
-      // Once the outbox has handed it to Firestore, or it was never here, Firestore updates it.
-      if (heldHere && !(await isInLocalCache(() => getDocFromCache(doc(workouts, id))))) return;
       const ref = doc(workouts, id);
-      try {
+      const sent = await guard(async () => {
+        // Revised first, so a save still waiting in the outbox sends this version and never the old one.
+        const heldHere = outbox.revise(id, draft);
+        // Once the outbox has handed it to Firestore, or it was never here, Firestore updates it.
+        if (heldHere && !(await isInLocalCache(() => getDocFromCache(ref)))) return null;
         // An update, unlike setDoc, fails for a workout deleted elsewhere instead of bringing it back.
-        await updateDoc(ref, {
-          name: draft.name,
-          config: toStoredConfig(draft.config),
-          createdAt: draft.createdAt,
-        });
+        const updated = answerLater(
+          updateDoc(ref, {
+            name: draft.name,
+            config: toStoredConfig(draft.config),
+            createdAt: draft.createdAt,
+          }),
+        );
+        await inLocalCache(ref);
+        return updated;
+      });
+      if (!sent) return;
+      try {
+        await sent.answer;
       } catch (error) {
         throw await explainRefusal(ref, error);
       }
     },
     async remove(id) {
-      outbox.cancel(id);
-      // Also covers a write that was already on its way when it was cancelled.
-      await deleteDoc(doc(workouts, id));
+      const ref = doc(workouts, id);
+      const { answer } = await guard(async () => {
+        outbox.cancel(id);
+        // Also covers a write that was already on its way when it was cancelled.
+        const removed = answerLater(deleteDoc(ref));
+        await inLocalCache(ref);
+        return removed;
+      });
+      await answer;
     },
   };
 }

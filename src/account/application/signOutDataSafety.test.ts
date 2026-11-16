@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { withOutbox, type Pending } from "../../shared/application/outbox";
+import { createAccountLock } from "../infrastructure/accountLock";
+import { createFakeLockManager } from "../infrastructure/fakeLockManager";
 import { createLocalAccountData } from "../infrastructure/localAccountData";
+import { createOtherTabs } from "../infrastructure/otherTabs";
 import { signOut } from "./signOut";
 
 interface Item {
@@ -41,6 +44,7 @@ function createServer() {
 
   return {
     collection,
+    cached,
     confirmed,
     /** Like `waitForPendingWrites`: only the writes issued before the call. */
     serverHasWrites: () =>
@@ -98,6 +102,107 @@ function setup() {
   return { server, outbox, store, auth, local, atSignOut };
 }
 
+/**
+ * Two tabs of the account in one browser: one Firestore cache and server, one outbox storage,
+ * one set of Web Locks, and storage changes that reach the other tab only.
+ */
+function twoTabs() {
+  const server = createServer();
+  let held: Pending<object>[] = [];
+  const store = {
+    load: () => held,
+    save: (items: Pending<object>[]) => {
+      held = items;
+    },
+  };
+  const openOutbox = () =>
+    withOutbox<Item, object>({
+      collection: server.collection,
+      store,
+      parse: (id) => ({ id }),
+      newestFirst: () => 0,
+      whenReady: () => Promise.resolve(true),
+    });
+  const locks = createFakeLockManager();
+  const listeners = { a: new Set<() => void>(), b: new Set<() => void>() };
+  let signOuts = 0;
+  const openOtherTabs = (own: Set<() => void>, other: Set<() => void>) => {
+    const atLoad = signOuts;
+    const signedOut = {
+      announce() {
+        signOuts += 1;
+        other.forEach((listener) => {
+          listener();
+        });
+      },
+      subscribe(listener: () => void) {
+        own.add(listener);
+        return () => own.delete(listener);
+      },
+      signedOutSinceLoad: () => signOuts !== atLoad,
+    };
+    const tabs = createOtherTabs({
+      lock: createAccountLock("u1", locks),
+      signedOut,
+      signingOut: { announce: () => undefined, subscribe: () => () => undefined },
+      reload: () => undefined,
+    });
+    return { tabs, signedOut };
+  };
+  const a = openOtherTabs(listeners.a, listeners.b);
+  const b = openOtherTabs(listeners.b, listeners.a);
+
+  const outboxA = openOutbox();
+  const atSignOut: string[] = [];
+  const auth = {
+    signOut: () => {
+      atSignOut.push(...server.confirmed);
+      // As the app does: other tabs hear of it right after the provider signs out.
+      a.signedOut.announce();
+      return Promise.resolve();
+    },
+  };
+  let rounds = 0;
+  let onServerWait: (round: number) => void = () => undefined;
+  const local = createLocalAccountData({
+    outboxes: [outboxA],
+    discardPendingWrites: () => {
+      store.save([]);
+    },
+    serverHasWrites: () => {
+      const waiting = server.serverHasWrites();
+      onServerWait(++rounds);
+      return waiting;
+    },
+    clearCache: () => Promise.resolve(),
+    forget: () => undefined,
+  });
+
+  const outboxB = openOutbox();
+  // What tab B's stores do with a new change: stored locally while holding the account's lock.
+  const addInB = () =>
+    b.tabs.guard(async () => {
+      const answer = outboxB.add({});
+      await outboxB.flushNow();
+      return { answer };
+    });
+
+  return {
+    server,
+    store,
+    tabB: b.tabs,
+    addInB,
+    signOutA: {
+      outbox: outboxA,
+      atSignOut,
+      onServerWait: (listener: (round: number) => void) => {
+        onServerWait = listener;
+      },
+      start: () => signOut({ auth, local, otherTabs: a.tabs }),
+    },
+  };
+}
+
 /** Lets every queued promise callback run. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -150,6 +255,41 @@ describe("signing out never loses data", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("never erases a change made in another tab while signing out unless the server has it", async () => {
+    const { server, store, signOutA, addInB, tabB } = twoTabs();
+    void signOutA.outbox.add({});
+    await settle();
+
+    let changeInB: Promise<"saved" | "refused"> | undefined;
+    signOutA.onServerWait((round) => {
+      // Right after this tab's second, and last, wait for the server started.
+      if (round === 2) {
+        changeInB = addInB().then(
+          () => "saved" as const,
+          () => "refused" as const,
+        );
+      }
+    });
+    const result = signOutA.start();
+    await settle();
+    server.confirm("w1");
+    await settle();
+    server.confirmAll();
+    await settle();
+
+    const outcome = await result;
+    const madeInB = await changeInB;
+    if (outcome === "signedOut") {
+      // Everything this device's cache got was on the server when the session ended.
+      expect([...server.cached].every((id) => signOutA.atSignOut.includes(id))).toBe(true);
+      expect(store.load()).toEqual([]);
+      if (madeInB === "refused") expect(tabB.get()).toBe("lostChange");
+    } else {
+      expect(outcome).toBe("unsent");
+    }
+    expect(madeInB).toBeDefined();
   });
 
   it("keeps the pending changes when the provider refuses a forced sign-out", async () => {
