@@ -28,6 +28,10 @@ function setup(add = vi.fn(() => Promise.resolve())) {
       now += ms;
       controller.tick();
     },
+    /** Moves the clock without a tick, as between two of the timer's frames. */
+    elapse: (ms: number) => {
+      now += ms;
+    },
   };
 }
 
@@ -55,6 +59,15 @@ describe("recordFinishedSessions", () => {
       activeMs: 10_000,
       marks: 1,
     });
+  });
+
+  it("saves a workout paused as it ends, before the next tick", () => {
+    const { add, controller, advance, elapse } = setup();
+    controller.start();
+    advance(9_990);
+    elapse(40);
+    controller.pause();
+    expect(add).toHaveBeenCalledTimes(1);
   });
 
   it("does not save again when the finished timer notifies again", () => {

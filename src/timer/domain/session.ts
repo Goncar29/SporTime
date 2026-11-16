@@ -47,8 +47,10 @@ export function resume(session: Session, now: number): Session {
   return { ...session, status: "running", anchorAt: now };
 }
 
+/** A pause can land after the end, between ticks, so a paused session may be due too. */
 export function settle(session: Session, timeline: Timeline, now: number): Session {
-  if (session.status !== "running" || timeline.totalMs === null) return session;
+  if (session.status !== "running" && session.status !== "paused") return session;
+  if (timeline.totalMs === null) return session;
   if (positionAt(session, now) < timeline.totalMs) return session;
   return { ...session, status: "finished", positionMs: timeline.totalMs, anchorAt: null };
 }

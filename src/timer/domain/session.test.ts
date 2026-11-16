@@ -53,6 +53,20 @@ describe("settle", () => {
     expect(positionAt(settled, 900_000)).toBe(tabata.totalMs);
   });
 
+  it("finishes a session paused at its end", () => {
+    const total = tabata.totalMs ?? 0;
+    const paused = pause(start(createSession(), 0), total + 40);
+    const settled = settle(paused, tabata, total + 40);
+    expect(settled.status).toBe("finished");
+    expect(positionAt(settled, total + 10_000)).toBe(total);
+  });
+
+  it("keeps a session paused before its end paused", () => {
+    const total = tabata.totalMs ?? 0;
+    const paused = pause(start(createSession(), 0), total - 40);
+    expect(settle(paused, tabata, total + 10_000)).toBe(paused);
+  });
+
   it("keeps running before the end, and forever when open-ended", () => {
     const running = start(createSession(), 0);
     expect(settle(running, tabata, 1_000).status).toBe("running");

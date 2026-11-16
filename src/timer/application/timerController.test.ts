@@ -28,6 +28,10 @@ function setup(workout = timeline, sound: SoundSettings = DEFAULT_SOUND_SETTINGS
       now = 1_000 + ms;
       controller.tick();
     },
+    /** Moves the clock as a browser does between interval ticks. */
+    advanceWithoutTick(ms: number) {
+      now = 1_000 + ms;
+    },
   };
 }
 
@@ -94,6 +98,30 @@ describe("timerController", () => {
     expect(t.controller.getView().status).toBe("finished");
     expect(t.cues.play).toHaveBeenLastCalledWith("finish");
     expect(t.screenAwake.release).toHaveBeenCalledOnce();
+  });
+
+  it("a pause pressed as the workout ends still finishes it and releases the screen", () => {
+    const total = timeline.totalMs ?? 0;
+    const status = vi.fn();
+    t.controller.subscribe(() => status(t.controller.getView().status));
+    t.controller.start();
+    t.advanceTo(total - 60);
+    status.mockClear();
+    // The clock passes the end between interval ticks, and the pause lands first.
+    t.advanceWithoutTick(total + 40);
+    t.controller.pause();
+    expect(status.mock.calls).toEqual([["finished"]]);
+    expect(t.controller.getView().positionMs).toBe(total);
+    expect(t.cues.play).toHaveBeenLastCalledWith("finish");
+    expect(t.screenAwake.release).toHaveBeenCalledOnce();
+  });
+
+  it("a pause before the end still pauses", () => {
+    const total = timeline.totalMs ?? 0;
+    t.controller.start();
+    t.advanceWithoutTick(total - 40);
+    t.controller.pause();
+    expect(t.controller.getView()).toMatchObject({ status: "paused", positionMs: total - 40 });
   });
 
   it("skip announces the phase it lands on", () => {

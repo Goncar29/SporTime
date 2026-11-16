@@ -107,7 +107,8 @@ export function createWakeLockScreenAwake(): ScreenAwake {
     if (!("wakeLock" in navigator) || sentinel) return;
     try {
       const acquired = await navigator.wakeLock.request("screen");
-      if (wanted) sentinel = acquired;
+      // Overlapping requests (a quick pause and resume) each get a lock: keep only one.
+      if (wanted && !sentinel) sentinel = acquired;
       else await acquired.release();
     } catch {
       // Denied or unsupported: the timer still works, the screen may just dim.
