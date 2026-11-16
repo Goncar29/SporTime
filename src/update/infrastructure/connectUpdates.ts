@@ -6,8 +6,8 @@ export type UpdateRegistration = (options: RegisterSWOptions) => () => Promise<v
 
 interface ConnectUpdatesOptions {
   register: UpdateRegistration;
-  /** navigator.serviceWorker */
-  container: EventTarget & { controller: object | null };
+  /** navigator.serviceWorker, missing in some in-app browsers, private windows and plain http. */
+  container: (EventTarget & { controller: object | null }) | undefined;
   reload: () => void;
   onRegistered?: RegisterSWOptions["onRegisteredSW"];
 }
@@ -23,6 +23,9 @@ export function connectUpdates({
   reload,
   onRegistered,
 }: ConnectUpdatesOptions): AppUpdater {
+  // Without service workers there are no updates to apply; the app still has to start.
+  if (!container) return { ready: () => undefined, setBusy: () => undefined };
+
   let reloading = false;
   const reloadOnce = () => {
     if (reloading) return;

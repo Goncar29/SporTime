@@ -80,4 +80,15 @@ describe("connectUpdates", () => {
     otherTabApplied();
     expect(reload).not.toHaveBeenCalled();
   });
+
+  it("starts with updates off where the browser has no service workers", () => {
+    const register = vi.fn<UpdateRegistration>();
+    const reload = vi.fn();
+    const updater = connectUpdates({ register, container: undefined, reload });
+    updater.ready();
+    updater.setBusy(true);
+    updater.setBusy(false);
+    expect(register).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
 });
