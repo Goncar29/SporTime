@@ -7,7 +7,15 @@ export interface Pending<Draft> {
 
 export interface OutboxStore<Draft> {
   load: () => Pending<Draft>[];
+  /** Replaces everything held; `save([])` discards it all. */
   save: (items: Pending<Draft>[]) => void;
+  /**
+   * Adds or replaces one write without rewriting the others, so tabs sharing the store never
+   * undo each other's changes. Without it, the outbox rewrites the whole list.
+   */
+  put?: (item: Pending<Draft>) => void;
+  /** Drops one write without rewriting the others. */
+  remove?: (id: string) => void;
 }
 
 export interface DurableCollection<T, Draft> {
@@ -71,27 +79,50 @@ export function withOutbox<T extends { id: string }, Draft>({
   const waiters = new Map<string, Waiter>();
   let queue = Promise.resolve();
 
-  const replace = (items: Pending<Draft>[]) => {
-    store.save(items);
+  const changed = () => {
     refreshers.forEach((refresh) => {
       refresh();
     });
   };
 
-  const drop = (id: string) => {
-    replace(store.load().filter((item) => item.id !== id));
+  const hold = (item: Pending<Draft>) => {
+    if (store.put) store.put(item);
+    else {
+      const items = store.load();
+      store.save(
+        items.some(({ id }) => id === item.id)
+          ? items.map((each) => (each.id === item.id ? item : each))
+          : [...items, item],
+      );
+    }
+    changed();
   };
+
+  const drop = (id: string) => {
+    if (store.remove) store.remove(id);
+    else store.save(store.load().filter((item) => item.id !== id));
+    changed();
+  };
+
+  const held = (id: string) => store.load().find((item) => item.id === id);
+  const sameDraft = (a: Draft, b: Draft) => JSON.stringify(a) === JSON.stringify(b);
 
   const send = async ({ id, draft }: Pending<Draft>) => {
     if (parse(id, draft) === null) {
       drop(id);
       return;
     }
-    if (!(await collection.has(id))) {
+    if (await collection.has(id)) {
+      waiters.get(id)?.resolve();
+      drop(id);
+      return;
+    }
+    // Read again after every wait: a delete may have removed it, or an edit revised it, meanwhile.
+    let latest = held(id);
+    while (latest) {
       const waiter = waiters.get(id);
-      // Read again after waiting: an edit may have revised it meanwhile.
-      const latest = store.load().find((item) => item.id === id)?.draft ?? draft;
-      collection.put(id, latest).then(
+      const sent = latest.draft;
+      collection.put(id, sent).then(
         () => waiter?.resolve(),
         (error: unknown) => {
           if (waiter) waiter.reject(error);
@@ -101,10 +132,15 @@ export function withOutbox<T extends { id: string }, Draft>({
       );
       // The cache answers in order, so a hit means the write above is stored locally.
       if (!(await collection.has(id))) return;
-    } else {
-      waiters.get(id)?.resolve();
+      latest = held(id);
+      if (!latest) return;
+      if (sameDraft(latest.draft, sent)) {
+        drop(id);
+        return;
+      }
     }
-    drop(id);
+    // Deleted, discarded, or sent by another tab before it was sent here: never write it now.
+    waiters.get(id)?.resolve();
   };
 
   const flush = () => {
@@ -157,7 +193,7 @@ export function withOutbox<T extends { id: string }, Draft>({
       const settled = new Promise<void>((resolve, reject) => {
         waiters.set(id, { resolve, reject });
       });
-      replace([...store.load(), { id, draft }]);
+      hold({ id, draft });
       void flush();
       return settled;
     },
@@ -166,9 +202,8 @@ export function withOutbox<T extends { id: string }, Draft>({
       drop(id);
     },
     revise(id, draft) {
-      const items = store.load();
-      if (!items.some((item) => item.id === id)) return false;
-      replace(items.map((item) => (item.id === id ? { id, draft } : item)));
+      if (!held(id)) return false;
+      hold({ id, draft });
       return true;
     },
     async flushNow() {
