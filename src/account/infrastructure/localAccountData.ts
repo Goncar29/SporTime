@@ -13,6 +13,11 @@ interface Dependencies {
   clearCache: () => Promise<void>;
   /** Forgets the account's stores, which hold the stopped Firestore. */
   forget: () => void;
+  /**
+   * The note that has the next start clear the cache, taken back by `clearCache` once it is
+   * cleared. None where nothing is cached.
+   */
+  clearOnNextStart?: { mark: () => void; unmark: () => void };
 }
 
 async function sendOnce(outboxes: HeldWrites[], serverHasWrites: () => Promise<void>) {
@@ -60,6 +65,7 @@ export function createLocalAccountData({
   serverHasWrites,
   clearCache,
   forget,
+  clearOnNextStart,
 }: Dependencies): LocalAccountData {
   return {
     sendPending() {
@@ -67,6 +73,8 @@ export function createLocalAccountData({
       return withTimeout(send(outboxes, serverHasWrites));
     },
     discardPending: discardPendingWrites,
+    eraseOnNextStart: () => clearOnNextStart?.mark(),
+    keepOnNextStart: () => clearOnNextStart?.unmark(),
     async erase() {
       discardPendingWrites();
       try {

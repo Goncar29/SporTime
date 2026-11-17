@@ -10,31 +10,16 @@ import {
   waitForPendingWrites,
   type Firestore,
 } from "firebase/firestore";
+import { markForClearing, markedForClearing, unmarkForClearing } from "./clearOnStart";
 import { firebaseApp } from "./firebaseApp";
+
+export { markForClearing, unmarkForClearing };
 
 let instance: Firestore | undefined;
 
-/** Set when erasing the cache failed, so the next start erases it before using Firestore. */
-const CLEAR_ON_START = "sportime.clearLocalCache";
-
-function markForClearing() {
-  try {
-    localStorage.setItem(CLEAR_ON_START, "true");
-  } catch (error) {
-    console.warn("The cache could not be marked for clearing:", error);
-  }
-}
-
-function markedForClearing(): boolean {
-  try {
-    return localStorage.getItem(CLEAR_ON_START) === "true";
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Clears a cache left by a failed erase. Only possible before the new instance is first used;
+ * Clears a cache left by a sign-out that did not finish erasing it, cut short or failed. Only
+ * possible before the new instance is first used;
  * Firestore runs its work in order, so anything asked of it afterwards waits for the clear.
  */
 function clearLeftoverCache(db: Firestore) {
@@ -44,11 +29,7 @@ function clearLeftoverCache(db: Firestore) {
     console.warn("The cache left by an earlier sign-out could not be cleared:", error);
   };
   try {
-    clearIndexedDbPersistence(db)
-      .then(() => {
-        localStorage.removeItem(CLEAR_ON_START);
-      })
-      .catch(failed);
+    clearIndexedDbPersistence(db).then(unmarkForClearing).catch(failed);
   } catch (error) {
     failed(error);
   }
@@ -85,7 +66,8 @@ export function serverHasWrites(): Promise<void> {
 /**
  * Stops Firestore and erases its cache on this device, writes still queued included. The cache
  * can only be cleared while no instance runs, so it is stopped first; the next call to
- * `firestore()` starts a fresh one.
+ * `firestore()` starts a fresh one. A note to clear it on the next start, left by the sign-out
+ * in case the page went first, is taken back only once it is cleared.
  */
 export async function clearLocalCache(): Promise<void> {
   const running = firestore();
@@ -97,6 +79,7 @@ export async function clearLocalCache(): Promise<void> {
     markForClearing();
     throw error;
   }
+  unmarkForClearing();
 }
 
 /** Firestore writes as whoever Auth reports, so a write must wait for that account to be confirmed. */

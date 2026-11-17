@@ -32,6 +32,13 @@ export interface LocalAccountData {
   /** Drops the changes not yet sent, which are then lost. */
   discardPending(): void;
   /**
+   * Notes that the next start must erase this device's copy, so a page closed or reloaded before
+   * `erase` ends still leaves nothing behind. Erasing takes the note back once it is done.
+   */
+  eraseOnNextStart(): void;
+  /** Takes that note back: the session stays, and so does this device's copy. */
+  keepOnNextStart(): void;
+  /**
    * Erases the account's data from this device and leaves the device's own settings. Firestore
    * stops here, so the page must reload before anything reads or writes again.
    */

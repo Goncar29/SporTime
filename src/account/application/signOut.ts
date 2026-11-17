@@ -27,6 +27,8 @@ interface Dependencies {
  * unless forced, which overrules those tabs, as the user chose to lose what was not sent; they
  * then say that their change was lost. A change asked for in this tab meanwhile waits for this
  * very sign-out, and it would be refused after it, so it is "unsent" too, and saved once it ends.
+ * Everything was sent before the note that has the next start erase this device's copy, so a
+ * page that goes before erasing ends loses nothing the server lacks, even if still signed in.
  */
 export async function signOut(
   { auth, local, otherTabs }: Dependencies,
@@ -44,7 +46,15 @@ async function signOutHere(
 ): Promise<SignOutResult> {
   if (!force && (await local.sendPending()) === "unsent") return "unsent";
   if (otherTabs?.changeWaitingHere()) return "unsent";
-  await auth.signOut();
+  // From here the page may go at any moment (closed, or reloaded by an update), so the next
+  // start erases this device's copy unless erasing below finishes first.
+  local.eraseOnNextStart();
+  try {
+    await auth.signOut();
+  } catch (error) {
+    local.keepOnNextStart();
+    throw error;
+  }
   if (force) local.discardPending();
   try {
     await local.erase();

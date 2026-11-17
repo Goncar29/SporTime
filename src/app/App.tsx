@@ -127,8 +127,6 @@ export function App({
       settings: sanitizeConfig(selectedMode, configs[selectedMode]),
     };
   }, [editing, selectedMode, configs]);
-  // A new version of the app reloads the page, which would stop a running workout.
-  useHoldUpdates(active !== null);
   const deletion = useAccountDeletion({
     onDelete: deleteAccount,
     confirmedByRedirect: deletionConfirmedByRedirect,
@@ -137,6 +135,13 @@ export function App({
       setScreen("profile");
     },
   });
+
+  // A change stored after the account's data is erased and before the account is removed would
+  // stay on the server for ever, so nothing can be used until the deletion ends.
+  const blocked = signingOut || deletion.deleting || otherTabs !== "idle";
+  // A new version of the app reloads the page, which would stop a running workout, or cut a
+  // sign-out or a deletion short between its steps.
+  useHoldUpdates(active !== null || blocked);
 
   /** Returns the handler for one operation, so the developer's log names what failed. */
   const reportWorkoutFailure = (operation: string) => (error: unknown) => {
@@ -212,13 +217,16 @@ export function App({
     setActive(null);
   };
 
-  const blocked = signingOut || otherTabs !== "idle";
   // Outside the blocked part, so it stays visible and announced.
   const overlay = blocked && (
     <div className={styles.signingOut}>
-      {signingOut || otherTabs === "signingOut" ? (
+      {signingOut || deletion.deleting || otherTabs === "signingOut" ? (
         <p className={styles.signingOutStatus} role="status">
-          {signingOut ? t.signingOut : t.signingOutElsewhere}
+          {signingOut
+            ? t.signingOut
+            : deletion.deleting
+              ? t.deletingAccount
+              : t.signingOutElsewhere}
         </p>
       ) : (
         <p className={styles.signingOutStatus} role="alert">

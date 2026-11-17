@@ -10,7 +10,15 @@ function setup({ sent = "sent" as SendResult } = {}) {
       return Promise.resolve();
     });
   const auth = { signOut: step("signOut") };
+  /** What a start would do with this device's copy if the page went now. */
+  const device = { nextStartErases: false };
   const local = {
+    eraseOnNextStart: vi.fn(() => {
+      device.nextStartErases = true;
+    }),
+    keepOnNextStart: vi.fn(() => {
+      device.nextStartErases = false;
+    }),
     sendPending: vi.fn(() => {
       calls.push("sendPending");
       return Promise.resolve(sent);
@@ -20,7 +28,7 @@ function setup({ sent = "sent" as SendResult } = {}) {
     }),
     erase: step("erase"),
   };
-  return { auth, local, calls };
+  return { auth, local, calls, device };
 }
 
 describe("signOut", () => {
@@ -142,6 +150,40 @@ describe("signOut", () => {
         expect(local.erase).not.toHaveBeenCalled();
         expect(calls.at(-1)).toBe("letGo");
       }
+    });
+  });
+
+  describe("when the page goes before it ends (tab closed, browser closed, an app update)", () => {
+    it.each([false, true])(
+      "has the next start erase this device's copy from before the provider signs out (forced: %s)",
+      async (force) => {
+        const { auth, local, device } = setup();
+        const whenSigningOut: boolean[] = [];
+        auth.signOut.mockImplementationOnce(() => {
+          whenSigningOut.push(device.nextStartErases);
+          return Promise.resolve();
+        });
+        await expect(signOut({ auth, local }, { force })).resolves.toBe("signedOut");
+        expect(whenSigningOut).toEqual([true]);
+      },
+    );
+
+    it("leaves the next start alone when the changes could not be sent", async () => {
+      const { auth, local, device } = setup({ sent: "unsent" });
+      await expect(signOut({ auth, local })).resolves.toBe("unsent");
+      expect(device.nextStartErases).toBe(false);
+    });
+
+    it("takes the note back when the provider refuses, so the session keeps its data", async () => {
+      const { auth, local, device } = setup();
+      const whenSigningOut: boolean[] = [];
+      auth.signOut.mockImplementationOnce(() => {
+        whenSigningOut.push(device.nextStartErases);
+        return Promise.reject(new Error("network"));
+      });
+      await expect(signOut({ auth, local })).rejects.toThrow("network");
+      expect(whenSigningOut).toEqual([true]);
+      expect(device.nextStartErases).toBe(false);
     });
   });
 

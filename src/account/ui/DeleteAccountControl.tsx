@@ -12,7 +12,8 @@ interface DeleteAccountControlProps {
 /**
  * Deleting the account takes one accepted dialog. Firebase may still need Google to confirm an
  * old sign-in; after a redirect for that, the deletion finishes by itself. Success signs the user
- * out, which brings back the sign-in screen.
+ * out, which brings back the sign-in screen. While it runs, the app shows its progress over the
+ * blocked screens.
  */
 export function DeleteAccountControl({ deletion, className }: DeleteAccountControlProps) {
   const { t } = useI18n();
@@ -30,11 +31,6 @@ export function DeleteAccountControl({ deletion, className }: DeleteAccountContr
       >
         {t.deleteAccount}
       </button>
-      {deleting && (
-        <p className={styles.body} role="status">
-          {t.deletingAccount}
-        </p>
-      )}
       {failure && (
         <p className={styles.error} role="alert">
           {failure === "dataErased"

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { OtherTabsStatus } from "../account/application/ports";
 import type { SignOutOptions, SignOutResult } from "../account/application/signOut";
 import type { AuthGateway } from "../auth/application/ports";
-import type { User } from "../auth/domain/user";
+import { AuthFailure, type User } from "../auth/domain/user";
 import { AccountMenu } from "../auth/ui/AccountMenu";
 import { AuthGate } from "../auth/ui/AuthGate";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
@@ -21,6 +21,8 @@ interface Options {
   signOut?: SignOut;
   /** What the account's other open tabs are doing; none by default, as in the e2e build. */
   otherTabs?: ReturnType<typeof createOtherTabsStatus>;
+  /** The account's deletion; by default it removes the account, which signs it out. */
+  deleteAccount?: () => Promise<void>;
 }
 
 /** The other tabs' status as the account's stores report it, changed by the test. */
@@ -46,7 +48,7 @@ function createOtherTabsStatus() {
   };
 }
 
-function setup({ language = "en", signOut, otherTabs }: Options = {}) {
+function setup({ language = "en", signOut, otherTabs, deleteAccount }: Options = {}) {
   let report: (user: User | null) => void = () => undefined;
   const gateway = {
     subscribe(listener: (user: User | null) => void) {
@@ -79,7 +81,11 @@ function setup({ language = "en", signOut, otherTabs }: Options = {}) {
   const storesFor = (userId: string) => ({
     workouts: createFakeWorkoutLibrary(userId),
     history: createFakeHistoryLog(userId),
-    deleteAccount: () => Promise.resolve(),
+    deleteAccount:
+      deleteAccount ??
+      (async () => {
+        await gateway.signOut();
+      }),
     deletionConfirmedByRedirect: () => Promise.resolve(false),
     signOut: accountSignOut,
     otherTabs,
@@ -349,6 +355,35 @@ describe("signing out", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
     expect(screen.getByRole("heading", { level: 1, name: "Profile" })).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleting the account", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const accept = async () => {
+    await click("Profile");
+    await click("Delete account");
+    await click("Delete my account");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  };
+
+  it("reloads the page once the account is gone, so a later sign-in here starts afresh", async () => {
+    const { reload } = setup();
+    await accept();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("does not reload when the deletion fails, and says why", async () => {
+    const { reload } = setup({ deleteAccount: () => Promise.reject(new AuthFailure("network")) });
+    await accept();
+    expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
     expect(reload).not.toHaveBeenCalled();
   });
 });

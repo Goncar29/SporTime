@@ -224,6 +224,39 @@ test("another open tab keeps working after an account is deleted", async ({ page
   await eventually(async () => (await stored(uid, "history")).length).toBe(1);
 });
 
+test("another open tab is held while the account is deleted, and nothing it saves is left behind", async ({
+  page,
+  context,
+}) => {
+  const uid = await signIn(page, "leaving");
+  await saveWorkout(page, "First");
+  await eventually(() => storedNames(uid)).toEqual(["First"]);
+  const other = await context.newPage();
+  await other.goto("/");
+  await expect(startButton(other)).toBeVisible();
+
+  // Holds the deletes, so the deletion stays between erasing and removing the account.
+  const hold = holdRequests(context, /\/Write\/channel/);
+  await hold.ready;
+  await openDeleteDialog(page);
+  await acceptDeletion(page);
+  await expect(page.getByText("Deleting…")).toBeVisible();
+  await expect(other.getByText("Signing out in another tab…")).toBeVisible({ timeout: 30_000 });
+
+  hold.release();
+  await context.unroute(/\/Write\/channel/);
+  await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
+  await expect(googleButton(other)).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(3_000);
+  expect(await accountExists(uid)).toBe(false);
+  expect(await storedNames(uid)).toEqual([]);
+  expect(await stored(uid, "history")).toEqual([]);
+  const leftovers = await other.evaluate(() =>
+    Object.keys(localStorage).filter((key) => key.startsWith("sportime.outbox")),
+  );
+  expect(leftovers).toEqual([]);
+});
+
 test("a removal refused for an old sign-in asks again, then finishes", async ({ page }) => {
   const who = uniqueName("tooold");
   const uid = await signInAs(await openedPage(page), who);

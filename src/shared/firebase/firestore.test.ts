@@ -34,7 +34,7 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 const firestoreModule = await import("./firestore");
-const { clearLocalCache, serverHasWrites } = firestoreModule;
+const { clearLocalCache, markForClearing, serverHasWrites } = firestoreModule;
 const firestore = () => firestoreModule.firestore() as unknown as { id: number };
 
 /** The module as a newly loaded page sees it, with no Firestore started yet. */
@@ -97,6 +97,31 @@ describe("clearLocalCache", () => {
     sdk.calls = [];
     const db = next.firestore();
     expect(sdk.calls).toEqual([`clear ${db.id}`]);
+  });
+
+  it("a sign-out cut short after its note has the next start clear the cache, keeping the outbox", async () => {
+    // Decided: also for an account still signed in, whose copy was confirmed by the server before
+    // the note and is read again from it; changes the outbox still holds stay and are sent.
+    firestore();
+    localStorage.setItem("sportime.outbox.workouts.u1", '[{"id":"w1","draft":{}}]');
+    markForClearing();
+
+    const next = await nextStart();
+    sdk.calls = [];
+    const db = next.firestore();
+    await next.serverHasWrites();
+    expect(sdk.calls).toEqual([`clear ${db.id}`, `waitForPendingWrites ${db.id}`]);
+    expect(localStorage.getItem("sportime.outbox.workouts.u1")).toBe('[{"id":"w1","draft":{}}]');
+  });
+
+  it("takes the sign-out's note back once the cache was cleared, so the next start clears nothing", async () => {
+    firestore();
+    markForClearing();
+    await clearLocalCache();
+    const next = await nextStart();
+    sdk.calls = [];
+    next.firestore();
+    expect(sdk.calls).toEqual([]);
   });
 
   it("clears nothing on a start that follows a successful erase", async () => {

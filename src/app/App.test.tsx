@@ -18,6 +18,8 @@ interface Stores {
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
+  /** This tab is signing out. */
+  signingOut?: boolean;
 }
 
 function setup({
@@ -26,6 +28,7 @@ function setup({
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
   updater = createAppUpdater(() => undefined),
+  signingOut = false,
 }: Stores = {}) {
   let now = 0;
   const timer = {
@@ -46,6 +49,7 @@ function setup({
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
+          signingOut={signingOut}
         />
       </UpdateProvider>
     </I18nProvider>
@@ -171,6 +175,40 @@ describe("App", () => {
     act(() => {
       updater.ready();
     });
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds a new version of the app back while this tab signs out", () => {
+    const apply = vi.fn();
+    const updater = createAppUpdater(apply);
+    setup({ updater, signingOut: true });
+    act(() => {
+      updater.ready();
+    });
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("holds a new version of the app back while the account is deleted, and applies it once that ends", async () => {
+    const apply = vi.fn();
+    const updater = createAppUpdater(apply);
+    let fail: (error: unknown) => void = () => undefined;
+    setup({
+      updater,
+      deleteAccount: () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        }),
+    });
+    click("Profile");
+    click("Delete account");
+    click("Delete my account");
+    act(() => {
+      updater.ready();
+    });
+    expect(apply).not.toHaveBeenCalled();
+
+    fail(new AuthFailure("network"));
+    await act(() => vi.advanceTimersByTimeAsync(0));
     expect(apply).toHaveBeenCalledTimes(1);
   });
 
@@ -623,6 +661,26 @@ describe("App account data", () => {
       expect(screen.getByRole("button", { name: "Delete account" })).toBeDisabled();
       fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
       expect(deleteAccount).toHaveBeenCalledOnce();
+    });
+
+    it("blocks the screens and the tab bar meanwhile, with the progress shown outside them", () => {
+      setup({ deleteAccount: () => new Promise<void>(() => undefined) });
+      accept();
+      const blocked = (element: HTMLElement) => element.closest("[inert]") !== null;
+      expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(true);
+      expect(blocked(screen.getByRole("button", { name: "Timer" }))).toBe(true);
+      expect(blocked(screen.getByRole("heading", { level: 1, name: "Profile" }))).toBe(true);
+      expect(screen.getByRole("status")).toHaveTextContent("Deleting…");
+      expect(blocked(screen.getByRole("status"))).toBe(false);
+    });
+
+    it("frees the screens and the tab bar once a deletion fails", async () => {
+      setup({ deleteAccount: () => Promise.reject(new AuthFailure("network")) });
+      accept();
+      await settledCalls();
+      expect(screen.getByRole("button", { name: "Saved" }).closest("[inert]")).toBeNull();
+      expect(screen.getByRole("button", { name: "Delete account" }).closest("[inert]")).toBeNull();
+      expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
     });
 
     it("reports a failure and allows another try", async () => {

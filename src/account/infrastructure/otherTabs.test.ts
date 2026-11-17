@@ -170,6 +170,63 @@ describe("other tabs of the account", () => {
     expect(b.otherTabs.get()).not.toBe("lostChange");
   });
 
+  describe("when another tab signs out after a change stored here", () => {
+    it("says the change was lost when the server never confirmed it, then reloads a moment later", async () => {
+      vi.useFakeTimers();
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      // Stored here, say while the other tab warned about unsent changes; the server never answers.
+      void b.otherTabs.confirming(new Promise<void>(() => undefined));
+      await vi.advanceTimersByTimeAsync(0);
+
+      // "Sign out anyway" in the other tab, which drops what the server did not confirm.
+      await a.otherTabs.holdOff(
+        () => {
+          a.signedOut.announce();
+          return Promise.resolve("signedOut");
+        },
+        { force: true },
+      );
+      expect(b.otherTabs.get()).toBe("lostChange");
+      expect(b.reload).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(b.reload).toHaveBeenCalledOnce();
+    });
+
+    it("reloads at once, as before, when the server confirmed every change made here", async () => {
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      await b.otherTabs.confirming(b.otherTabs.guard(() => Promise.resolve("stored")));
+      await expect(b.otherTabs.confirming(Promise.reject(new Error("refused")))).rejects.toThrow(
+        "refused",
+      );
+
+      await a.otherTabs.holdOff(() => {
+        a.signedOut.announce();
+        return Promise.resolve("signedOut");
+      });
+      expect(b.reload).toHaveBeenCalledOnce();
+      expect(b.otherTabs.get()).not.toBe("lostChange");
+    });
+
+    it("changes nothing for the tab that signs out itself", async () => {
+      const openTab = createBrowser();
+      const a = openTab();
+      openTab();
+      void a.otherTabs.confirming(new Promise<void>(() => undefined));
+      await expect(
+        a.otherTabs.holdOff(() => {
+          a.signedOut.announce();
+          return Promise.resolve("signedOut");
+        }),
+      ).resolves.toEqual({ value: "signedOut" });
+      expect(a.otherTabs.get()).toBe("idle");
+      expect(a.reload).not.toHaveBeenCalled();
+    });
+  });
+
   it("refuses a change made once another tab signed out", async () => {
     const openTab = createBrowser();
     const a = openTab();

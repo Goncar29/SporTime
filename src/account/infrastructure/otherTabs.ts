@@ -23,6 +23,11 @@ export interface OtherTabs extends OtherTabsActivity, OtherTabsGate {
    * `SignedOutElsewhere`, without running it, once the account signed out.
    */
   guard: <T>(write: () => Promise<T>) => Promise<T>;
+  /**
+   * Follows a change made here until the server answers it, which is what it returns. If the
+   * account signs out in another tab before that, this tab says the change was lost.
+   */
+  confirming: <T>(change: Promise<T>) => Promise<T>;
 }
 
 interface Dependencies {
@@ -62,6 +67,11 @@ export function createOtherTabs({
   let queued = 0;
   /** A forced sign-out took the lock while a change here was being stored, so it may erase it. */
   let overruled = false;
+  /**
+   * Changes made here that the server has not answered. A forced sign-out elsewhere ("Sign out
+   * anyway") drops them, for example when one was stored while that tab warned about unsent ones.
+   */
+  let unconfirmed = 0;
   let signedOutElsewhere = false;
   let leaving = false;
 
@@ -108,8 +118,9 @@ export function createOtherTabs({
       reload();
       return;
     }
-    // A waiting change is refused once it gets the lock, and it must not go unexplained.
-    if (waiting > 0 || overruled || status === "lostChange") loseChange();
+    // A waiting change is refused once it gets the lock, and one the server never confirmed was
+    // erased with the account's copy; neither must go unexplained.
+    if (waiting > 0 || unconfirmed > 0 || overruled || status === "lostChange") loseChange();
     else reload();
   });
 
@@ -168,5 +179,15 @@ export function createOtherTabs({
       return lock.takeOver(signOutHere);
     },
     changeWaitingHere: () => queued > 0,
+    confirming(change) {
+      // Without Web Locks a sign-out elsewhere reloads at once, as before.
+      if (!lock.available) return change;
+      unconfirmed += 1;
+      const answered = () => {
+        unconfirmed -= 1;
+      };
+      change.then(answered, answered);
+      return change;
+    },
   };
 }

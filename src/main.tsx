@@ -9,6 +9,7 @@ import {
   createSigningOutSignal,
 } from "./account/infrastructure/signOutSignal";
 import { SignedInApp, type UserStores } from "./app/SignedInApp";
+import { markedForClearing } from "./shared/firebase/clearOnStart";
 import { StoresLoader, createStoresLoad } from "./app/StoresLoader";
 import type { AuthGateway } from "./auth/application/ports";
 import { AccountMenu } from "./auth/ui/AccountMenu";
@@ -104,6 +105,8 @@ async function createStoresFactory(
     const local = {
       sendPending: () => Promise.resolve("sent" as const),
       discardPending: () => undefined,
+      eraseOnNextStart: () => undefined,
+      keepOnNextStart: () => undefined,
       erase: () => Promise.resolve(),
     };
     return (userId) => ({
@@ -115,7 +118,14 @@ async function createStoresFactory(
     });
   }
   const [
-    { accountReady, clearLocalCache, firestore, serverHasWrites },
+    {
+      accountReady,
+      clearLocalCache,
+      firestore,
+      markForClearing,
+      serverHasWrites,
+      unmarkForClearing,
+    },
     { createLocalStorageOutboxStore },
     { createFirestoreWorkoutLibrary },
     { createFirestoreHistoryLog },
@@ -162,16 +172,30 @@ async function createStoresFactory(
       reload: reloadPage,
     });
     reloadsOnSignOutElsewhere = false;
-    const workouts = createFirestoreWorkoutLibrary(firestore(), userId, {
+    // Each change is followed until the server answers: a sign-out elsewhere that drops one
+    // must say so here.
+    const workoutLibrary = createFirestoreWorkoutLibrary(firestore(), userId, {
       store: workoutOutbox,
       whenReady,
       guard: otherTabs.guard,
     });
-    const history = createFirestoreHistoryLog(firestore(), userId, {
+    const workouts = {
+      ...workoutLibrary,
+      save: (draft: SavedWorkoutDraft) => otherTabs.confirming(workoutLibrary.save(draft)),
+      update: (workout: Parameters<typeof workoutLibrary.update>[0]) =>
+        otherTabs.confirming(workoutLibrary.update(workout)),
+      remove: (id: string) => otherTabs.confirming(workoutLibrary.remove(id)),
+    };
+    const historyLog = createFirestoreHistoryLog(firestore(), userId, {
       store: historyOutbox,
       whenReady,
       guard: otherTabs.guard,
     });
+    const history = {
+      ...historyLog,
+      add: (draft: HistoryDraft) => otherTabs.confirming(historyLog.add(draft)),
+      remove: (id: string) => otherTabs.confirming(historyLog.remove(id)),
+    };
     const local = createLocalAccountData({
       outboxes: [workouts, history],
       discardPendingWrites,
@@ -180,18 +204,32 @@ async function createStoresFactory(
       forget: () => {
         stores.delete(userId);
       },
+      clearOnNextStart: { mark: markForClearing, unmark: unmarkForClearing },
     });
+    // Once the account is gone, its other tabs are told, as after a sign-out: a change waiting
+    // there is refused and explained, and the rest go to sign-in.
+    const removing = {
+      isRecentlyConfirmed: () => identity.isRecentlyConfirmed(),
+      confirm: () => identity.confirm(),
+      confirmedByRedirect: () => identity.confirmedByRedirect(),
+      async remove() {
+        await identity.remove();
+        signOutSignal.announce();
+      },
+    };
     const created: UserStores = {
       workouts,
       history,
+      // Holds every change, here and in the other tabs, from erasing until the account is gone.
       deleteAccount: () =>
         deleteAccount({
-          identity,
+          identity: removing,
           data: createFirestoreAccountData({
             db: firestore(),
             userId,
             discardPendingWrites,
           }),
+          otherTabs,
         }),
       deletionConfirmedByRedirect: () => identity.confirmedByRedirect(),
       // Holds the other tabs' changes from the send until erasing ends.
@@ -210,6 +248,12 @@ if (import.meta.env.MODE === "emulator") {
 }
 
 const authGateway = await createAuthGateway();
+
+// A sign-out cut short (page closed, or reloaded) left the account's copy on this device: clear
+// it now, before anyone signs in, rather than on the next sign-in.
+if (import.meta.env.MODE !== "e2e" && markedForClearing()) {
+  void import("./shared/firebase/firestore").then(({ firestore }) => firestore());
+}
 
 // Loaded once someone is signed in, not before the first paint: the sign-in screen needs no Firestore.
 const storesFactory = createStoresLoad(() => createStoresFactory(authGateway));

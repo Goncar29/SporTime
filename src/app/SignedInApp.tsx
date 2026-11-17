@@ -38,10 +38,17 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
   const signOut = useSignOut({ signOut: (options) => stores.signOut(options), reload });
   const otherTabs = useOtherTabs(stores.otherTabs);
   const deleteAccount = () =>
-    stores.deleteAccount().catch((error: unknown) => {
-      if (error instanceof AuthFailure && error.kind === "sessionEnded") reportFailure(error.kind);
-      throw error;
-    });
+    stores.deleteAccount().then(
+      // Its other tabs were told the account is gone, and so was this page, which would refuse
+      // every later change, even of another account signed in here: start afresh.
+      reload,
+      (error: unknown) => {
+        if (error instanceof AuthFailure && error.kind === "sessionEnded") {
+          reportFailure(error.kind);
+        }
+        throw error;
+      },
+    );
   // The key drops everything held in memory when the account changes.
   return (
     <App

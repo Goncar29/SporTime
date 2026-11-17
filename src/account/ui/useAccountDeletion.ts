@@ -19,8 +19,9 @@ const keepIfDataErased = (current: AuthFailureKind | null) =>
   current === "dataErased" ? current : null;
 
 /**
- * The state of deleting the account. It belongs to the whole signed-in app, not to one screen,
- * so a deletion and its failure survive the user moving to another screen meanwhile.
+ * The state of deleting the account. It belongs to the whole signed-in app, not to one screen:
+ * while `deleting`, the app blocks every screen so no change can be made meanwhile, and a
+ * deletion resumed after a redirect, or its failure, still shows wherever the user was.
  */
 export function useAccountDeletion({
   onDelete,
