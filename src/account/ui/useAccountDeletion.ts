@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { AuthFailure, type AuthFailureKind } from "../../auth/domain/user";
+import { ChangeInAnotherTab } from "../application/deleteAccount";
+
+/** Why a deletion failed; "changeInAnotherTab" when it never started, so nothing was deleted. */
+export type AccountDeletionFailure = AuthFailureKind | "changeInAnotherTab";
 
 interface AccountDeletionOptions {
   onDelete: () => Promise<void>;
@@ -11,11 +15,11 @@ interface AccountDeletionOptions {
 
 export interface AccountDeletion {
   deleting: boolean;
-  failure: AuthFailureKind | null;
+  failure: AccountDeletionFailure | null;
   start: () => void;
 }
 
-const keepIfDataErased = (current: AuthFailureKind | null) =>
+const keepIfDataErased = (current: AccountDeletionFailure | null) =>
   current === "dataErased" ? current : null;
 
 /**
@@ -29,14 +33,19 @@ export function useAccountDeletion({
   onResume,
 }: AccountDeletionOptions): AccountDeletion {
   const [deleting, setDeleting] = useState(false);
-  const [failure, setFailure] = useState<AuthFailureKind | null>(null);
+  const [failure, setFailure] = useState<AccountDeletionFailure | null>(null);
 
   const start = () => {
     setDeleting(true);
     setFailure(keepIfDataErased);
     onDelete()
       .catch((error: unknown) => {
-        const kind = error instanceof AuthFailure ? error.kind : "unknown";
+        const kind: AccountDeletionFailure =
+          error instanceof ChangeInAnotherTab
+            ? "changeInAnotherTab"
+            : error instanceof AuthFailure
+              ? error.kind
+              : "unknown";
         if (kind === "unknown") console.error("Deleting the account failed:", error);
         if (kind === "cancelled") return;
         // A wrong account changes nothing about what already happened, and that message covers it.

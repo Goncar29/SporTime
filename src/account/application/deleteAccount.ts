@@ -1,6 +1,19 @@
 import { AuthFailure, type AuthFailureKind } from "../../auth/domain/user";
 import type { AccountData, AccountIdentity, OtherTabsGate } from "./ports";
 
+/**
+ * The deletion did not start: a change in another tab of the account was still being saved when
+ * the wait for it ran out, so nothing was erased and it can simply be tried again.
+ */
+export class ChangeInAnotherTab extends Error {
+  readonly code = "change-in-another-tab";
+
+  constructor() {
+    super("A change in another tab held the deletion up; nothing was deleted");
+    this.name = "ChangeInAnotherTab";
+  }
+}
+
 /** Answers that prove the account is still there, now that its data is already gone. */
 const UNFINISHED: readonly AuthFailureKind[] = ["cancelled", "wrongAccount", "staleSignIn"];
 
@@ -27,8 +40,8 @@ export async function deleteAccount({ identity, data, otherTabs }: Dependencies)
     await run();
     return;
   }
-  // Nothing was erased, so the generic message, which asks to try again, holds.
-  if (!(await otherTabs.holdOff(run))) throw new AuthFailure("unknown");
+  // Nothing was erased, which is exactly what the user must be told.
+  if (!(await otherTabs.holdOff(run, { ending: "deletion" }))) throw new ChangeInAnotherTab();
 }
 
 async function eraseThenRemove({ identity, data }: Dependencies): Promise<void> {

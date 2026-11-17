@@ -1,4 +1,9 @@
-import type { OtherTabsActivity, OtherTabsGate, OtherTabsStatus } from "../application/ports";
+import type {
+  AccountEnding,
+  OtherTabsActivity,
+  OtherTabsGate,
+  OtherTabsStatus,
+} from "../application/ports";
 import type { AccountLock } from "./accountLock";
 import type { SignOutSignal, TabSignal } from "./signOutSignal";
 
@@ -74,6 +79,9 @@ export function createOtherTabs({
   let unconfirmed = 0;
   let signedOutElsewhere = false;
   let leaving = false;
+  /** What another tab last said it was doing: signing out or deleting the account. */
+  let elsewhere: AccountEnding = "signOut";
+  const lost = () => status === "lostChange" || status === "lostChangeAccountDeleted";
 
   const set = (next: OtherTabsStatus) => {
     if (status === next) return;
@@ -84,19 +92,21 @@ export function createOtherTabs({
   };
 
   const loseChange = () => {
-    set("lostChange");
+    set(elsewhere === "deletion" ? "lostChangeAccountDeleted" : "lostChange");
     if (leaving) return;
     leaving = true;
     setTimeout(reload, LOST_CHANGE_RELOAD_MS);
   };
 
   if (lock.available) {
-    signingOut.subscribe(() => {
-      if (status === "lostChange") return;
-      set("signingOut");
+    signingOut.subscribe((ending = "signOut") => {
+      if (lost()) return;
+      elsewhere = ending;
+      const ongoing = ending === "deletion" ? "deletingAccount" : "signingOut";
+      set(ongoing);
       const ended = () => {
         overruled = false;
-        if (status === "signingOut") set("idle");
+        if (status === ongoing) set("idle");
       };
       // Granted once that tab let go: it either reloads everything here, or it did not sign out.
       // Refused only when yet another tab took the lock, which then tells this one again.
@@ -112,15 +122,16 @@ export function createOtherTabs({
     });
   }
 
-  signedOut.subscribe(() => {
+  signedOut.subscribe((ending = "signOut") => {
     signedOutElsewhere = true;
+    elsewhere = ending;
     if (!lock.available) {
       reload();
       return;
     }
     // A waiting change is refused once it gets the lock, and one the server never confirmed was
     // erased with the account's copy; neither must go unexplained.
-    if (waiting > 0 || unconfirmed > 0 || overruled || status === "lostChange") loseChange();
+    if (waiting > 0 || unconfirmed > 0 || overruled || lost()) loseChange();
     else reload();
   });
 
@@ -164,12 +175,12 @@ export function createOtherTabs({
         waiting -= 1;
       }
     },
-    async holdOff(work, { force = false } = {}) {
+    async holdOff(work, { force = false, ending = "signOut" } = {}) {
       if (!lock.available) return { value: await work() };
       const signOutHere = () => {
         // Only once it holds the lock: every change started elsewhere before is stored by now,
         // or, when it was taken, reported lost there if this tab signs out.
-        signingOut.announce();
+        signingOut.announce(ending);
         return work();
       };
       const held = await lock.exclusive(signOutHere, HOLD_OFF_WAIT_MS);

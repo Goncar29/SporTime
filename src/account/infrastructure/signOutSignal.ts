@@ -1,11 +1,18 @@
+import type { AccountEnding } from "../application/ports";
+
 const SIGNED_OUT = "sportime.signedOut";
 const SIGNING_OUT = "sportime.signingOut";
+/** Marks a value written for a deletion; any other value, older ones included, is a sign-out. */
+const DELETION = "deletion:";
 
 export interface TabSignal {
-  /** Tells the app's other tabs. */
-  announce: () => void;
-  /** Calls `listener` when another tab announces. Returns the unsubscribe function. */
-  subscribe: (listener: () => void) => () => void;
+  /** Tells the app's other tabs, for a sign-out unless `ending` says otherwise. */
+  announce: (ending?: AccountEnding) => void;
+  /**
+   * Calls `listener` when another tab announces, with what it announced. Returns the unsubscribe
+   * function.
+   */
+  subscribe: (listener: (ending?: AccountEnding) => void) => () => void;
 }
 
 export interface SignOutSignal extends TabSignal {
@@ -30,17 +37,20 @@ function read(key: string): string | null {
  */
 function createTabSignal(key: string, what: string): TabSignal {
   return {
-    announce() {
+    announce(ending = "signOut") {
       try {
         // Always a new value: an unchanged one would not reach the other tabs.
-        localStorage.setItem(key, `${Date.now()}-${Math.random()}`);
+        const prefix = ending === "deletion" ? DELETION : "";
+        localStorage.setItem(key, `${prefix}${Date.now()}-${Math.random()}`);
       } catch (error) {
         console.warn(`Other tabs could not be told about the ${what}:`, error);
       }
     },
     subscribe(listener) {
       const onStorage = (event: StorageEvent) => {
-        if (event.key === key && event.newValue !== null) listener();
+        if (event.key === key && event.newValue !== null) {
+          listener(event.newValue.startsWith(DELETION) ? "deletion" : "signOut");
+        }
       };
       window.addEventListener("storage", onStorage);
       return () => {

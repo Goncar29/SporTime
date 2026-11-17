@@ -74,6 +74,8 @@ export const es: Messages = {
   signOutFailed: "No pudimos cerrar tu sesión. Inténtalo de nuevo.",
   signingOutElsewhere: "Cerrando sesión en otra pestaña…",
   lostChangeSignedOutElsewhere: "No se pudo guardar: se cerró la sesión en otra pestaña.",
+  deletingAccountElsewhere: "Borrando la cuenta en otra pestaña…",
+  lostChangeAccountDeletedElsewhere: "No se pudo guardar: se borró la cuenta en otra pestaña.",
   unsentChanges: "Cambios sin enviar",
   unsentChangesWarning: "Tienes cambios sin enviar. Si cierras sesión ahora, se perderán.",
   stay: "Quedarme",
@@ -175,6 +177,8 @@ export const es: Messages = {
     "Tus datos ya están borrados, pero tu cuenta sigue existiendo. Presiona el botón otra vez y confirma con la misma cuenta de Google para terminar.",
   deleteAccountErrorSessionEnded:
     "Tu sesión terminó antes de que pudiéramos confirmar la eliminación. Es posible que tu cuenta siga existiendo, y parte o todos tus datos pueden estar ya eliminados. Inicia sesión y elimina tu cuenta otra vez para terminar.",
+  deleteAccountErrorChangeInAnotherTab:
+    "No se borró nada: hay un cambio guardándose en otra pestaña. Prueba de nuevo en unos segundos.",
   accountLoadFailed: "No pudimos cargar tu cuenta. Revisa tu conexión e inténtalo de nuevo.",
   tryAgain: "Reintentar",
 };

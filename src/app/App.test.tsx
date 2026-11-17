@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { deleteAccount as deleteAccountOf } from "../account/application/deleteAccount";
 import type { OtherTabsStatus } from "../account/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import { AuthFailure } from "../auth/domain/user";
@@ -703,6 +704,30 @@ describe("App account data", () => {
       await settledCalls();
       expect(screen.getByRole("alert")).toHaveTextContent(/may already be gone/);
       consoleError.mockRestore();
+    });
+
+    it("says nothing was deleted when a change in another tab held the deletion up", async () => {
+      setup({
+        deleteAccount: () =>
+          deleteAccountOf({
+            identity: {
+              isRecentlyConfirmed: () => Promise.resolve(true),
+              confirm: () => Promise.resolve(),
+              confirmedByRedirect: () => Promise.resolve(false),
+              remove: () => Promise.resolve(),
+            },
+            data: { erase: () => Promise.resolve() },
+            // That tab's change did not let go within the wait.
+            otherTabs: { holdOff: () => Promise.resolve(null), changeWaitingHere: () => false },
+          }),
+      });
+      accept();
+      await settledCalls();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /^Nothing was deleted: a change is still being saved in another tab\. Try again in a few seconds\.$/,
+      );
+      expect(screen.getByRole("button", { name: "Delete account" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Saved" }).closest("[inert]")).toBeNull();
     });
 
     it("stays quiet when the user cancels Google's confirmation", async () => {

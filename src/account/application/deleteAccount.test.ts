@@ -3,8 +3,8 @@ import { AuthFailure } from "../../auth/domain/user";
 import { createAccountLock } from "../infrastructure/accountLock";
 import { createFakeLockManager } from "../infrastructure/fakeLockManager";
 import { SignedOutElsewhere, createOtherTabs } from "../infrastructure/otherTabs";
-import { deleteAccount } from "./deleteAccount";
-import type { OtherTabsGate } from "./ports";
+import { ChangeInAnotherTab, deleteAccount } from "./deleteAccount";
+import type { AccountEnding, OtherTabsGate } from "./ports";
 
 function setup({ recent = true } = {}) {
   const calls: string[] = [];
@@ -134,11 +134,11 @@ describe("deleteAccount", () => {
       expect(calls).toEqual(["holdOff", "letGo"]);
     });
 
-    it("touches nothing, and says it may not have finished, when a change elsewhere does not finish in time", async () => {
+    it("touches nothing, and says so, when a change elsewhere does not finish in time", async () => {
       const { identity, data, calls } = setup();
       await expect(
         deleteAccount({ identity, data, otherTabs: holdingOff(calls, false) }),
-      ).rejects.toMatchObject({ kind: "unknown" });
+      ).rejects.toBeInstanceOf(ChangeInAnotherTab);
       expect(data.erase).not.toHaveBeenCalled();
       expect(identity.remove).not.toHaveBeenCalled();
     });
@@ -152,10 +152,11 @@ describe("deleteAccount", () => {
  */
 function twoTabs() {
   const locks = createFakeLockManager();
-  const listeners = { a: new Set<() => void>(), b: new Set<() => void>() };
-  const signing = { a: new Set<() => void>(), b: new Set<() => void>() };
+  type Listener = (ending?: AccountEnding) => void;
+  const listeners = { a: new Set<Listener>(), b: new Set<Listener>() };
+  const signing = { a: new Set<Listener>(), b: new Set<Listener>() };
   let signOuts = 0;
-  const subscribe = (set: Set<() => void>) => (listener: () => void) => {
+  const subscribe = (set: Set<Listener>) => (listener: Listener) => {
     set.add(listener);
     return () => {
       set.delete(listener);
@@ -164,10 +165,10 @@ function twoTabs() {
   const open = (own: "a" | "b", other: "a" | "b") => {
     const atLoad = signOuts;
     const signedOut = {
-      announce() {
+      announce(ending?: AccountEnding) {
         signOuts += 1;
         listeners[other].forEach((listener) => {
-          listener();
+          listener(ending);
         });
       },
       subscribe: subscribe(listeners[own]),
@@ -178,9 +179,9 @@ function twoTabs() {
       lock: createAccountLock("u1", locks),
       signedOut,
       signingOut: {
-        announce() {
+        announce(ending?: AccountEnding) {
           signing[other].forEach((listener) => {
-            listener();
+            listener(ending);
           });
         },
         subscribe: subscribe(signing[own]),
@@ -220,7 +221,7 @@ describe("deleting the account while another tab of it is open", () => {
       // As the app wires it: once the account is gone, its other tabs are told.
       remove: vi.fn(async () => {
         await removing.promise;
-        a.signedOut.announce();
+        a.signedOut.announce("deletion");
       }),
     };
     const deletion = deleteAccount({ identity, data, otherTabs: a.otherTabs });
@@ -231,7 +232,7 @@ describe("deleting the account while another tab of it is open", () => {
     vi.useFakeTimers();
     const { b, erasing, removing, deletion } = deleting();
     await vi.advanceTimersByTimeAsync(0);
-    expect(b.otherTabs.get()).toBe("signingOut");
+    expect(b.otherTabs.get()).toBe("deletingAccount");
 
     const write = vi.fn(() => Promise.resolve("stored"));
     const saving = b.otherTabs.guard(write);
@@ -245,7 +246,7 @@ describe("deleting the account while another tab of it is open", () => {
     await vi.advanceTimersByTimeAsync(0);
     await refused;
     expect(write).not.toHaveBeenCalled();
-    expect(b.otherTabs.get()).toBe("lostChange");
+    expect(b.otherTabs.get()).toBe("lostChangeAccountDeleted");
     expect(b.reload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(4_000);
     expect(b.reload).toHaveBeenCalledOnce();
@@ -275,7 +276,7 @@ describe("deleting the account while another tab of it is open", () => {
     removing.resolve();
     await deletion;
     expect(b.reload).toHaveBeenCalledOnce();
-    expect(b.otherTabs.get()).not.toBe("lostChange");
+    expect(["lostChange", "lostChangeAccountDeleted"]).not.toContain(b.otherTabs.get());
   });
 
   it("saves the other tab's change after all when erasing fails and the account stays", async () => {

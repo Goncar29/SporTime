@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import type { AccountEnding } from "../application/ports";
 import { createAccountLock, type Locks } from "./accountLock";
 import { createFakeLockManager } from "./fakeLockManager";
 import { SignedOutElsewhere, createOtherTabs } from "./otherTabs";
 
+type Listener = (ending?: AccountEnding) => void;
+
 interface Listeners {
-  signedOut: Set<() => void>;
-  signingOut: Set<() => void>;
+  signedOut: Set<Listener>;
+  signingOut: Set<Listener>;
 }
 
 /**
@@ -21,16 +24,16 @@ function createBrowser(
   return function openTab() {
     const own: Listeners = { signedOut: new Set(), signingOut: new Set() };
     tabs.push(own);
-    const toOthers = (pick: (tab: Listeners) => Set<() => void>) => {
+    const toOthers = (pick: (tab: Listeners) => Set<Listener>, ending?: AccountEnding) => {
       tabs
         .filter((tab) => tab !== own)
         .forEach((tab) => {
           pick(tab).forEach((listener) => {
-            listener();
+            listener(ending);
           });
         });
     };
-    const subscribe = (set: Set<() => void>) => (listener: () => void) => {
+    const subscribe = (set: Set<Listener>) => (listener: Listener) => {
       set.add(listener);
       return () => {
         set.delete(listener);
@@ -38,16 +41,16 @@ function createBrowser(
     };
     const atLoad = signOuts;
     const signedOut = {
-      announce() {
+      announce(ending?: AccountEnding) {
         signOuts += 1;
-        toOthers((tab) => tab.signedOut);
+        toOthers((tab) => tab.signedOut, ending);
       },
       subscribe: subscribe(own.signedOut),
       signedOutSinceLoad: () => signOuts !== atLoad,
     };
     const signingOut = {
-      announce() {
-        toOthers((tab) => tab.signingOut);
+      announce(ending?: AccountEnding) {
+        toOthers((tab) => tab.signingOut, ending);
       },
       subscribe: subscribe(own.signingOut),
     };
@@ -156,6 +159,50 @@ describe("other tabs of the account", () => {
     expect(b.reload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(4_000);
     expect(b.reload).toHaveBeenCalledOnce();
+  });
+
+  describe("when another tab deletes the account", () => {
+    it("shows the other tabs that the account is being deleted, not signed out", async () => {
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      const ending = deferred<string>();
+      const result = a.otherTabs.holdOff(() => ending.promise, { ending: "deletion" });
+      await settle();
+      expect(b.otherTabs.get()).toBe("deletingAccount");
+
+      ending.resolve("kept");
+      await result;
+      await settle();
+      expect(b.otherTabs.get()).toBe("idle");
+    });
+
+    it("says a change waiting there was lost because the account was deleted", async () => {
+      vi.useFakeTimers();
+      const openTab = createBrowser();
+      const a = openTab();
+      const b = openTab();
+      const ending = deferred();
+      void a.otherTabs.holdOff(
+        async () => {
+          await ending.promise;
+          a.signedOut.announce("deletion");
+        },
+        { ending: "deletion" },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      const saving = b.otherTabs.guard(() => Promise.resolve("stored"));
+      const refused = expect(saving).rejects.toBeInstanceOf(SignedOutElsewhere);
+      await vi.advanceTimersByTimeAsync(0);
+      ending.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+
+      await refused;
+      expect(b.otherTabs.get()).toBe("lostChangeAccountDeleted");
+      expect(b.reload).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(b.reload).toHaveBeenCalledOnce();
+    });
   });
 
   it("reloads at once when another tab signs out and nothing was waiting", async () => {

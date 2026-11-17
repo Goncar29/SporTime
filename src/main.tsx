@@ -214,7 +214,7 @@ async function createStoresFactory(
       confirmedByRedirect: () => identity.confirmedByRedirect(),
       async remove() {
         await identity.remove();
-        signOutSignal.announce();
+        signOutSignal.announce("deletion");
       },
     };
     const created: UserStores = {

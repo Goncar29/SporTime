@@ -45,11 +45,20 @@ export interface LocalAccountData {
   erase(): Promise<void>;
 }
 
+/** How the account's session ends in a tab: signing out, or deleting the account. */
+export type AccountEnding = "signOut" | "deletion";
+
 /**
- * What the account's other open tabs are doing: one is signing out, which blocks this one, or it
- * signed out while a change made here was waiting, so that change could not be saved.
+ * What the account's other open tabs are doing: one is signing out or deleting the account, which
+ * blocks this one, or it did so while a change made here was waiting, so that change could not be
+ * saved ("lostChange" after a sign-out, "lostChangeAccountDeleted" after a deletion).
  */
-export type OtherTabsStatus = "idle" | "signingOut" | "lostChange";
+export type OtherTabsStatus =
+  | "idle"
+  | "signingOut"
+  | "deletingAccount"
+  | "lostChange"
+  | "lostChangeAccountDeleted";
 
 export interface OtherTabsActivity {
   get(): OtherTabsStatus;
@@ -57,14 +66,18 @@ export interface OtherTabsActivity {
   subscribe(listener: () => void): () => void;
 }
 
-/** Keeps the other tabs' changes waiting while this tab signs out. */
+/** Keeps the other tabs' changes waiting while this tab signs out or deletes the account. */
 export interface OtherTabsGate {
   /**
    * Runs `work` once no change is being made in another tab, and holds new ones until it ends.
    * Null, without running it, when they did not finish in time. When forced, it then takes over
    * from them instead, and their changes are reported lost there if the account signs out.
+   * `ending` tells the other tabs what is going on; a sign-out by default.
    */
-  holdOff<T>(work: () => Promise<T>, options?: { force?: boolean }): Promise<{ value: T } | null>;
+  holdOff<T>(
+    work: () => Promise<T>,
+    options?: { force?: boolean; ending?: AccountEnding },
+  ): Promise<{ value: T } | null>;
   /** True while a change asked for in this tab waits for `work` to end. */
   changeWaitingHere(): boolean;
 }

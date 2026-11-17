@@ -39,7 +39,9 @@ export function DeleteAccountControl({ deletion, className }: DeleteAccountContr
               ? t.deleteAccountErrorNetwork
               : failure === "wrongAccount"
                 ? t.deleteAccountErrorWrongAccount
-                : t.deleteAccountErrorUnknown}
+                : failure === "changeInAnotherTab"
+                  ? t.deleteAccountErrorChangeInAnotherTab
+                  : t.deleteAccountErrorUnknown}
         </p>
       )}
       {asking && (

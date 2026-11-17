@@ -71,6 +71,25 @@ describe("sign-out signal", () => {
     expect(signedOut).not.toHaveBeenCalled();
   });
 
+  it("tells other tabs whether the account is signing out or being deleted", () => {
+    const started = vi.fn();
+    const ended = vi.fn();
+    unsubscribes.push(createSigningOutSignal().subscribe(started));
+    unsubscribes.push(createSignOutSignal().subscribe(ended));
+
+    createSigningOutSignal().announce();
+    deliverToOtherTabs("sportime.signingOut");
+    createSigningOutSignal().announce("deletion");
+    deliverToOtherTabs("sportime.signingOut");
+    expect(started.mock.calls).toEqual([["signOut"], ["deletion"]]);
+
+    createSignOutSignal().announce("deletion");
+    deliverToOtherTabs("sportime.signedOut");
+    createSignOutSignal().announce();
+    deliverToOtherTabs("sportime.signedOut");
+    expect(ended.mock.calls).toEqual([["deletion"], ["signOut"]]);
+  });
+
   it("stops telling once unsubscribed", () => {
     const listener = vi.fn();
     const unsubscribe = createSignOutSignal().subscribe(listener);

@@ -67,6 +67,8 @@ export const en: Messages = {
   signOutFailed: "We couldn't sign you out. Please try again.",
   signingOutElsewhere: "Signing out in another tab…",
   lostChangeSignedOutElsewhere: "Couldn't save: you signed out in another tab.",
+  deletingAccountElsewhere: "Deleting the account in another tab…",
+  lostChangeAccountDeletedElsewhere: "Couldn't save: the account was deleted in another tab.",
   unsentChanges: "Unsent changes",
   unsentChangesWarning: "You have unsent changes. If you sign out now, they will be lost.",
   stay: "Stay",
@@ -168,6 +170,8 @@ export const en: Messages = {
     "Your data is already erased, but your account still exists. Press the button again and confirm with the same Google account to finish.",
   deleteAccountErrorSessionEnded:
     "Your session ended before we could confirm the deletion finished. Your account may still exist, and part or all of your data may already be gone. Sign in and delete your account again to finish.",
+  deleteAccountErrorChangeInAnotherTab:
+    "Nothing was deleted: a change is still being saved in another tab. Try again in a few seconds.",
   accountLoadFailed: "We couldn't load your account. Check your connection and try again.",
   tryAgain: "Try again",
 };

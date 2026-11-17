@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { deleteAccount as deleteAccountOf } from "../account/application/deleteAccount";
 import type { OtherTabsStatus } from "../account/application/ports";
 import type { SignOutOptions, SignOutResult } from "../account/application/signOut";
 import type { AuthGateway } from "../auth/application/ports";
@@ -343,6 +344,53 @@ describe("signing out", () => {
         "No se pudo guardar: se cerró la sesión en otra pestaña.",
       );
     });
+
+    it("keeps the sign-out texts exactly as they were, never the deletion ones", () => {
+      const otherTabs = createOtherTabsStatus();
+      setup({ otherTabs });
+      otherTabs.set("signingOut");
+      expect(screen.getByText(/^Signing out in another tab…$/)).toHaveAttribute("role", "status");
+      expect(screen.queryByText("Deleting the account in another tab…")).not.toBeInTheDocument();
+      otherTabs.set("lostChange");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /^Couldn't save: you signed out in another tab\.$/,
+      );
+    });
+
+    it("shows that another tab is deleting the account, blocking this one", () => {
+      const otherTabs = createOtherTabsStatus();
+      setup({ otherTabs });
+      otherTabs.set("deletingAccount");
+      const notice = screen.getByText("Deleting the account in another tab…");
+      expect(notice).toHaveAttribute("role", "status");
+      expect(blocked(notice)).toBe(false);
+      expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(true);
+      expect(screen.queryByText("Signing out in another tab…")).not.toBeInTheDocument();
+    });
+
+    it("says a change could not be saved because another tab deleted the account", () => {
+      const otherTabs = createOtherTabsStatus();
+      setup({ otherTabs });
+      otherTabs.set("lostChangeAccountDeleted");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /^Couldn't save: the account was deleted in another tab\.$/,
+      );
+      expect(blocked(screen.getByRole("button", { name: "Saved" }))).toBe(true);
+    });
+
+    it("translates the deletion in another tab", () => {
+      const otherTabs = createOtherTabsStatus();
+      setup({ language: "es", otherTabs });
+      otherTabs.set("deletingAccount");
+      expect(screen.getByText("Borrando la cuenta en otra pestaña…")).toHaveAttribute(
+        "role",
+        "status",
+      );
+      otherTabs.set("lostChangeAccountDeleted");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /^No se pudo guardar: se borró la cuenta en otra pestaña\.$/,
+      );
+    });
   });
 
   it("explains a refused sign-out, keeps the session and does not reload", async () => {
@@ -378,6 +426,34 @@ describe("deleting the account", () => {
     await accept();
     expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("says nothing was deleted when a change in another tab held it up", async () => {
+    const { reload } = setup({
+      language: "es",
+      deleteAccount: () =>
+        deleteAccountOf({
+          identity: {
+            isRecentlyConfirmed: () => Promise.resolve(true),
+            confirm: () => Promise.resolve(),
+            confirmedByRedirect: () => Promise.resolve(false),
+            remove: () => Promise.resolve(),
+          },
+          data: { erase: () => Promise.resolve() },
+          // That tab's change did not let go within the wait.
+          otherTabs: { holdOff: () => Promise.resolve(null), changeWaitingHere: () => false },
+        }),
+    });
+    await click("Perfil");
+    await click("Eliminar cuenta");
+    await click("Eliminar mi cuenta");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /^No se borró nada: hay un cambio guardándose en otra pestaña\. Prueba de nuevo en unos segundos\.$/,
+    );
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("does not reload when the deletion fails, and says why", async () => {

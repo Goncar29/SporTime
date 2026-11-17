@@ -74,8 +74,8 @@ interface AppProps {
    */
   signingOut?: boolean;
   /**
-   * Another tab of the account is signing out, so nothing here can be used until it ends; or it
-   * signed out while a change made here waited, so that change was not saved.
+   * Another tab of the account is signing out or deleting it, so nothing here can be used until
+   * it ends; or it did so while a change made here waited, so that change was not saved.
    */
   otherTabs?: OtherTabsStatus;
 }
@@ -220,17 +220,24 @@ export function App({
   // Outside the blocked part, so it stays visible and announced.
   const overlay = blocked && (
     <div className={styles.signingOut}>
-      {signingOut || deletion.deleting || otherTabs === "signingOut" ? (
+      {signingOut ||
+      deletion.deleting ||
+      otherTabs === "signingOut" ||
+      otherTabs === "deletingAccount" ? (
         <p className={styles.signingOutStatus} role="status">
           {signingOut
             ? t.signingOut
             : deletion.deleting
               ? t.deletingAccount
-              : t.signingOutElsewhere}
+              : otherTabs === "deletingAccount"
+                ? t.deletingAccountElsewhere
+                : t.signingOutElsewhere}
         </p>
       ) : (
         <p className={styles.signingOutStatus} role="alert">
-          {t.lostChangeSignedOutElsewhere}
+          {otherTabs === "lostChangeAccountDeleted"
+            ? t.lostChangeAccountDeletedElsewhere
+            : t.lostChangeSignedOutElsewhere}
         </p>
       )}
     </div>

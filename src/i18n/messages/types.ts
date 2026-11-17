@@ -50,6 +50,10 @@ export interface Messages {
   signingOutElsewhere: string;
   /** A change made here waited for that sign-out, which ended the session, so it was not saved. */
   lostChangeSignedOutElsewhere: string;
+  /** Another tab of the account is deleting it, which blocks this one meanwhile. */
+  deletingAccountElsewhere: string;
+  /** A change made here waited for that deletion, which removed the account, so it was not saved. */
+  lostChangeAccountDeletedElsewhere: string;
   /** The warning before signing out with changes that could not be sent. */
   unsentChanges: string;
   unsentChangesWarning: string;
@@ -120,6 +124,8 @@ export interface Messages {
   deleteAccountErrorWrongAccount: string;
   deleteAccountErrorUnfinished: string;
   deleteAccountErrorSessionEnded: string;
+  /** The deletion never started, because a change in another tab was still being saved. */
+  deleteAccountErrorChangeInAnotherTab: string;
   accountLoadFailed: string;
   tryAgain: string;
 }
