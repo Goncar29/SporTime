@@ -241,7 +241,9 @@ test("another open tab is held while the account is deleted, and nothing it save
   await openDeleteDialog(page);
   await acceptDeletion(page);
   await expect(page.getByText("Deleting…")).toBeVisible();
-  await expect(other.getByText("Signing out in another tab…")).toBeVisible({ timeout: 30_000 });
+  await expect(other.getByText("Deleting the account in another tab…")).toBeVisible({
+    timeout: 30_000,
+  });
 
   hold.release();
   await context.unroute(/\/Write\/channel/);
