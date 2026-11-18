@@ -85,5 +85,14 @@ export default defineConfig({
     globals: true,
     setupFiles: ["src/test-setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // Each test file starts its own worker, which loads jsdom and the setup (about a
+    // second each, mostly module loading). With the default of one worker per core,
+    // those starts swamp this machine: the CPU sits around 20% busy, yet every
+    // process gets a fraction of a core, so App and SignedInApp tests that take
+    // 0.3-1.5 s of CPU ran 5-16 s and hit the 5 s timeout. More workers only made
+    // the whole run slower (the other files alone: 62 s on 1 worker, 71 s on 3,
+    // 106-128 s on 11). With 2, the full run takes about 90 s instead of 142 s and
+    // its slowest test about 1.7 s.
+    maxWorkers: 2,
   },
 });
