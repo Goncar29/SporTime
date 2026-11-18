@@ -7,6 +7,8 @@ overrides:
   rollup: npm:@rollup/wasm-node@^4
   vite@*: "catalog:"
   vitest@*: "catalog:"
+  # tldts-core 7.4.20 is a partial release (remusao/tldts#2735); jsdom reaches it through tough-cookie.
+  tldts: ^7.4.22
 peerDependencyRules:
   allowAny:
     - vite

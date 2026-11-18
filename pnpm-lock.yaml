@@ -20,6 +20,7 @@ overrides:
   rollup: npm:@rollup/wasm-node@^4
   vite@*: npm:@voidzero-dev/vite-plus-core@1.4.0
   vitest@*: 5.0.5
+  tldts: ^7.4.22
 
 importers:
 
@@ -85,7 +86,7 @@ importers:
         version: 1.4.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/ui@5.0.5)(jsdom@27.4.0(supports-color@7.2.0))(playwright@1.65.1)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
 
 packages:
 
@@ -4599,12 +4600,11 @@ packages:
     resolution: {integrity: sha512-LgO3D9yZJjApUiuUfl9iFAwrtaX4+lok3wJIqttGoKCHlWUqHqbQpnxCf82L8FjgKsh4iGo78hqJwgL8F6To2A==}
     engines: {node: '>=14.0.0'}
 
-  tldts-core@7.4.20:
-    resolution: {integrity: sha512-C630TWXZCZmLq0F2bW4QqwnaaxCQ/svpAqvJwnC4JvgEM5ohhBnGsEzTLSOXcN+xjz+kEaHS5uoWIw2klnqd0A==}
-    deprecated: Partial release, see https://github.com/remusao/tldts/issues/2735. Use >=7.4.22.
+  tldts-core@7.5.4:
+    resolution: {integrity: sha512-9+4zWtKEDZ3V3FoZ1B97rv+5z5oqp7yeXGVze3CxgQ+CJro9do9DCPD00wxstYZDXDMXsurkBerFfiB6GYtPbA==}
 
-  tldts@7.4.19:
-    resolution: {integrity: sha512-48dH6aSpQnpbzDUc4vIQZ1VjB8tkK+e8c1yx05/SZK+rkssgjEOlxDd/yU8/a4vGYQ9vRgJr9dwMq9TJ0b3X2Q==}
+  tldts@7.5.4:
+    resolution: {integrity: sha512-Rn2ABgjHZrA+jzqom5zhxA0hLohzYrIgfCPyhpTUxqsUrcsBYuab49LseR9waB9Jr8/MxdodvMHA91oRiGLO3Q==}
     hasBin: true
 
   tmp@0.2.7:
@@ -6699,7 +6699,7 @@ snapshots:
       picocolors: 1.1.1
       redent: 3.0.0
     optionalDependencies:
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
 
   '@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
@@ -6848,7 +6848,7 @@ snapshots:
       '@testing-library/dom': 10.4.2
       '@testing-library/user-event': 14.6.8(@testing-library/dom@10.4.2)
       '@vitest/browser': 5.0.5(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(vitest@5.0.5)
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
     transitivePeerDependencies:
       - bufferutil
       - msw
@@ -6865,7 +6865,7 @@ snapshots:
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
       ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
@@ -6903,7 +6903,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
 
   '@vitest/utils@5.0.5':
     dependencies:
@@ -9972,11 +9972,11 @@ snapshots:
 
   tinyrainbow@3.2.0: {}
 
-  tldts-core@7.4.20: {}
+  tldts-core@7.5.4: {}
 
-  tldts@7.4.19:
+  tldts@7.5.4:
     dependencies:
-      tldts-core: 7.4.20
+      tldts-core: 7.5.4
 
   tmp@0.2.7: {}
 
@@ -9986,7 +9986,7 @@ snapshots:
 
   tough-cookie@6.0.2:
     dependencies:
-      tldts: 7.4.19
+      tldts: 7.5.4
 
   toxic@1.0.1:
     dependencies:
@@ -10183,7 +10183,7 @@ snapshots:
       oxlint: 1.89.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.4.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/ui@5.0.5)(jsdom@27.4.0(supports-color@7.2.0))(playwright@1.65.1)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))
       oxlint-tsgolint: 7.0.2004
       vite: '@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)'
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0))
     optionalDependencies:
       '@voidzero-dev/vite-plus-darwin-arm64': 1.4.0
       '@voidzero-dev/vite-plus-darwin-x64': 1.4.0
@@ -10229,7 +10229,7 @@ snapshots:
       - vue-tsc
       - yaml
 
-  vitest@5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0)):
+  vitest@5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(jsdom@27.4.0(supports-color@7.2.0)):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.0.5(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))
