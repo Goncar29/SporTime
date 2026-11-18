@@ -81,6 +81,8 @@ export default defineConfig({
     }),
   ]),
   test: {
+    // jsdom by default. A test file that touches no browser API starts with
+    // `// @vitest-environment node`, which skips loading jsdom (about a second per file).
     environment: "jsdom",
     globals: true,
     setupFiles: ["src/test-setup.ts"],

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { AccountEnding } from "../application/ports";
 import { createAccountLock, type Locks } from "./accountLock";

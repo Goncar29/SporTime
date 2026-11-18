@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { buildTimeline } from "../../workouts/domain/timeline";
 import { defaultConfig } from "../../workouts/domain/workout";

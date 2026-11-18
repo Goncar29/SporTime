@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { User } from "../domain/user";
 import type { AuthGateway } from "./ports";

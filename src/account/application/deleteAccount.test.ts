@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { AuthFailure } from "../../auth/domain/user";
 import { createAccountLock } from "../infrastructure/accountLock";

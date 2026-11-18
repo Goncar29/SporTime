@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { MODES } from "../../workouts/domain/workout";
 import { MESSAGES } from "./index";

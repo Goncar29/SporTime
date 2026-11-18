@@ -1,3 +1,4 @@
+// @vitest-environment node
 import firebaseConfig from "../../../firebase.json";
 import indexHtml from "../../../index.html?raw";
 import { authDomainFor } from "../firebase/firebaseApp";

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { storeFailureCode, storeFailureKind } from "./storeFailure";
 

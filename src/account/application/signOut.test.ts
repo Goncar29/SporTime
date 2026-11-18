@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { OtherTabsGate, SendResult } from "./ports";
 import { signOut } from "./signOut";
