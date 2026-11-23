@@ -207,6 +207,7 @@ export const es: Messages = {
   exerciseNumber: (position) => `Ejercicio ${position}`,
   exerciseName: "Nombre del ejercicio",
   reps: "Repeticiones",
+  repsShort: "Reps",
   restTime: "Pausa",
   weight: "Peso",
   weightUnit: "Unidad de peso",

@@ -95,7 +95,12 @@
   font-weight: 800;
 }
 
-/* Fits a phone's width: long text wraps inside its cell instead of scrolling the page. */
+/* On the narrowest phones the table scrolls sideways inside its stage, never the page. */
+.tableScroll {
+  overflow-x: auto;
+}
+
+/* Fits a phone's width: a long exercise name wraps inside its cell. */
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -113,14 +118,23 @@
 
 /*
  * The exercise takes the room left; reps, rest, weight and the link button stay as narrow as
- * their content, on the right.
+ * their content, on the right, always on one line ("8 - 10", "62,5 kg"), with room between
+ * them that grows with the screen.
  */
 .table .narrow {
   width: 1%;
-  padding-inline: 4px;
+  padding-inline: clamp(8px, 3vw, 18px);
   overflow-wrap: normal;
   white-space: nowrap;
   text-align: end;
+}
+
+.table .narrow:last-child {
+  padding-inline-end: 0;
+}
+
+.shortLabel {
+  display: none;
 }
 
 .table .linkCell {
@@ -129,10 +143,19 @@
   vertical-align: middle;
 }
 
-/* On a phone they may wrap, only at spaces ("8 - 10", "62,5 kg"), so the page never scrolls sideways. */
+/* A phone too narrow for a long header shows its short form; screen readers keep the full one. */
 @media (max-width: 420px) {
-  .table .narrow {
-    white-space: normal;
+  .fullLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .shortLabel {
+    display: inline;
   }
 }
 

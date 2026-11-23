@@ -157,6 +157,8 @@ export interface Messages {
   exerciseNumber(position: number): string;
   exerciseName: string;
   reps: string;
+  /** The reps column header on a phone too narrow for `reps`. */
+  repsShort: string;
   restTime: string;
   weight: string;
   weightUnit: string;

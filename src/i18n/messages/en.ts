@@ -200,6 +200,7 @@ export const en: Messages = {
   exerciseNumber: (position) => `Exercise ${position}`,
   exerciseName: "Exercise name",
   reps: "Reps",
+  repsShort: "Reps",
   restTime: "Rest",
   weight: "Weight",
   weightUnit: "Weight unit",

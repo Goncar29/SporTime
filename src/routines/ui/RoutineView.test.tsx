@@ -34,11 +34,12 @@ it("shows a stage's table in Spanish, with the weight's decimal comma", () => {
     </I18nProvider>,
   );
   const table = screen.getByRole("table", { name: "Etapa 1" });
-  expect(
-    within(table)
-      .getAllByRole("columnheader")
-      .map((cell) => cell.textContent),
-  ).toEqual(["Ejercicio", "Repeticiones", "Pausa", "Peso"]);
+  for (const name of ["Ejercicio", "Repeticiones", "Pausa", "Peso"]) {
+    expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+  }
+  // A phone too narrow for "Repeticiones" shows "Reps"; screen readers keep the full word.
+  const reps = within(table).getByRole("columnheader", { name: "Repeticiones" });
+  expect(within(reps).getByText("Reps")).toHaveAttribute("aria-hidden", "true");
   expect(
     within(table)
       .getAllByRole("cell")
@@ -46,6 +47,15 @@ it("shows a stage's table in Spanish, with the weight's decimal comma", () => {
   ).toEqual(["Press banca", "8 - 10", "90''", "62,5 kg"]);
   expect(screen.getByRole("button", { name: "Editar Empuje" })).toBeInTheDocument();
 });
+
+/** A cell as screen readers read it, without the short header only narrow phones show. */
+const spokenText = (cell: HTMLElement) => {
+  const copy = cell.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll('[aria-hidden="true"]').forEach((hidden) => {
+    hidden.remove();
+  });
+  return copy.textContent;
+};
 
 const renderSpanish = (stages: Parameters<typeof RoutineView>[0]["routine"]["stages"]) =>
   render(
@@ -70,11 +80,11 @@ it("ends an exercise's row with a Ver button for its link, and leaves the cell e
     },
   ]);
   const table = screen.getByRole("table", { name: "Etapa 1" });
-  expect(
-    within(table)
-      .getAllByRole("columnheader")
-      .map((cell) => cell.textContent),
-  ).toEqual(["Ejercicio", "Repeticiones", "Enlace"]);
+  expect(within(table).getAllByRole("columnheader").map(spokenText)).toEqual([
+    "Ejercicio",
+    "Repeticiones",
+    "Enlace",
+  ]);
   const link = within(table).getByRole("link", { name: "Ver youtube.com (Press banca)" });
   expect(link.textContent).toBe("Ver");
   expect(link).toHaveAttribute("title", "youtube.com");
@@ -83,7 +93,9 @@ it("ends an exercise's row with a Ver button for its link, and leaves the cell e
   expect(link).toHaveAttribute("rel", "noopener noreferrer");
   const rows = within(table).getAllByRole("row");
   // Header, Press banca, Remo, Remo's notes below it.
-  expect(rows.map((row) => [...row.children].map((cell) => cell.textContent))).toEqual([
+  expect(
+    rows.map((row) => [...row.children].map((cell) => spokenText(cell as HTMLElement))),
+  ).toEqual([
     ["Ejercicio", "Repeticiones", "Enlace"],
     ["Press banca", "10", "Ver"],
     ["Remo", "8", ""],
@@ -111,14 +123,13 @@ it("has no link column for a stage where no exercise has a safe link", () => {
   expect(
     within(screen.getByRole("table", { name: "Etapa 1" }))
       .getAllByRole("columnheader")
-      .map((cell) => cell.textContent),
+      .map(spokenText),
   ).toEqual(["Ejercicio", "Enlace"]);
   const second = screen.getByRole("table", { name: "Etapa 2" });
-  expect(
-    within(second)
-      .getAllByRole("columnheader")
-      .map((cell) => cell.textContent),
-  ).toEqual(["Ejercicio", "Repeticiones"]);
+  expect(within(second).getAllByRole("columnheader").map(spokenText)).toEqual([
+    "Ejercicio",
+    "Repeticiones",
+  ]);
   expect(within(second).queryByRole("link")).not.toBeInTheDocument();
   expect(
     within(second)

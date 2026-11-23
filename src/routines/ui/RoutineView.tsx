@@ -113,8 +113,14 @@ function StageTable({ stage, position }: StageTableProps) {
   const headingId = useId();
   const number = new Intl.NumberFormat(language, { maximumFractionDigits: 1, useGrouping: false });
 
-  const columns: { id: Column; label: string; value: (exercise: Exercise) => string }[] = [
-    { id: "reps", label: t.reps, value: (exercise) => formatReps(exercise) },
+  const columns: {
+    id: Column;
+    label: string;
+    /** Shown instead of the label on a phone too narrow for it. */
+    short?: string;
+    value: (exercise: Exercise) => string;
+  }[] = [
+    { id: "reps", label: t.reps, short: t.repsShort, value: (exercise) => formatReps(exercise) },
     {
       id: "rest",
       label: t.restTime,
@@ -141,33 +147,45 @@ function StageTable({ stage, position }: StageTableProps) {
       </h2>
       {stage.notes !== undefined && <p className={styles.stageNotes}>{stage.notes}</p>}
       {stage.exercises.length > 0 && (
-        <table className={styles.table} aria-labelledby={headingId}>
-          <thead>
-            <tr>
-              <th scope="col">{t.exerciseColumn}</th>
-              {shown.map((column) => (
-                <th key={column.id} scope="col" className={styles.narrow}>
-                  {column.label}
-                </th>
+        // On the narrowest phones the table scrolls on its own, never the page.
+        <div className={styles.tableScroll}>
+          <table className={styles.table} aria-labelledby={headingId}>
+            <thead>
+              <tr>
+                <th scope="col">{t.exerciseColumn}</th>
+                {shown.map((column) => (
+                  <th key={column.id} scope="col" className={styles.narrow}>
+                    {column.short === undefined || column.short === column.label ? (
+                      column.label
+                    ) : (
+                      <>
+                        <span className={styles.fullLabel}>{column.label}</span>
+                        <span className={styles.shortLabel} aria-hidden="true">
+                          {column.short}
+                        </span>
+                      </>
+                    )}
+                  </th>
+                ))}
+                {showLinks && (
+                  <th scope="col" className={styles.narrow}>
+                    <span className={styles.visuallyHidden}>{t.exerciseLink}</span>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {stage.exercises.map((exercise, index) => (
+                <ExerciseRows
+                  key={index}
+                  exercise={exercise}
+                  columns={shown}
+                  link={showLinks ? (links[index] ?? null) : undefined}
+                />
               ))}
-              {showLinks && (
-                <th scope="col" className={styles.narrow}>
-                  <span className={styles.visuallyHidden}>{t.exerciseLink}</span>
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {stage.exercises.map((exercise, index) => (
-              <ExerciseRows
-                key={index}
-                exercise={exercise}
-                columns={shown}
-                link={showLinks ? (links[index] ?? null) : undefined}
-              />
-            ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
