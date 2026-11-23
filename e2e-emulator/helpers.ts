@@ -11,6 +11,7 @@ interface StoredValue {
   stringValue?: string;
   integerValue?: string;
   mapValue?: { fields?: Record<string, StoredValue> };
+  arrayValue?: { values?: StoredValue[] };
 }
 
 interface StoredDocument {
@@ -20,7 +21,10 @@ interface StoredDocument {
 }
 
 /** Reads what the server really holds, bypassing the rules and the page. */
-export async function stored(uid: string, kind: "workouts" | "history"): Promise<StoredDocument[]> {
+export async function stored(
+  uid: string,
+  kind: "workouts" | "history" | "routines",
+): Promise<StoredDocument[]> {
   const response = await fetch(`http://${DOCUMENTS}/users/${uid}/${kind}?pageSize=300`, {
     headers: { Authorization: "Bearer owner" },
   });
