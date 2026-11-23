@@ -62,6 +62,78 @@ service cloud.firestore {
         && intBetween(data.marks, 0, 10000);
     }
 
+    // Routine limits mirror ROUTINE_LIMITS in src/routines/domain/routine.ts; firestore/rules.test.ts
+    // keeps them in step. Every field but the routine's name is optional.
+
+    // One line of text with something visible and no control character. One pattern checks both,
+    // which costs fewer of the 1000 expressions a write may evaluate than trim() as well.
+    function isLine(value, max) {
+      return value is string
+        && value.size() <= max
+        && value.matches('[^\\p{Cc}]*[^\\p{Cc}\\p{Z}][^\\p{Cc}]*');
+    }
+
+    // Text that may span lines, with something visible; no other control character.
+    function isNotes(value, max) {
+      return value is string
+        && value.size() <= max
+        && value.matches('[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*[^\\p{Cc}\\p{Z}][^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*');
+    }
+
+    // Exercises are one string, an exercise per line (toStoredRoutine), because rules cannot loop
+    // over a list: name, reps (8 or 8-10, 1 to 999), rest seconds (0 to 3600), weight (0 to 1000,
+    // one decimal, kg or lb) and notes, separated by tabs, each field possibly empty.
+    // The pattern is one literal, written out in full, because Firestore stops a write after
+    // 1000 evaluated expressions and building it from parts costs some for every stage. Per line:
+    //   name   [^\p{Cc}]{0,40}
+    //   reps   ([1-9][0-9]{0,2}(-[1-9][0-9]{0,2})?)?
+    //   rest   (3600|3[0-5][0-9][0-9]|[12][0-9]{3}|[1-9][0-9]{0,2}|0)?
+    //   weight ((1000(\.0)?|([1-9][0-9]{0,2}|0)(\.[0-9])?)(kg|lb))?
+    //   notes  [^\p{Cc}]{0,120}
+    // and then the same again for every further line, after a line break.
+    // Up to 10 stages are checked per write, so each check here is kept to the fewest expressions:
+    // a value of the wrong type makes split() or matches() fail, and a failure refuses the write.
+    function isExercises(value) {
+      return value == ''
+          || (value.split('\n').size() <= 15
+            && value.matches('[^\\p{Cc}]{0,40}\\t([1-9][0-9]{0,2}(-[1-9][0-9]{0,2})?)?\\t(3600|3[0-5][0-9][0-9]|[12][0-9]{3}|[1-9][0-9]{0,2}|0)?\\t((1000(\\.0)?|([1-9][0-9]{0,2}|0)(\\.[0-9])?)(kg|lb))?\\t[^\\p{Cc}]{0,120}(\\n[^\\p{Cc}]{0,40}\\t([1-9][0-9]{0,2}(-[1-9][0-9]{0,2})?)?\\t(3600|3[0-5][0-9][0-9]|[12][0-9]{3}|[1-9][0-9]{0,2}|0)?\\t((1000(\\.0)?|([1-9][0-9]{0,2}|0)(\\.[0-9])?)(kg|lb))?\\t[^\\p{Cc}]{0,120})*'));
+    }
+
+    // A stage name of 1 to 40 characters and notes of 1 to 500, both without control characters
+    // (notes may hold line breaks). A blank one is harmless: the app ignores it when reading.
+    // A missing `exercises` fails to evaluate, which refuses the write.
+    function isStage(stage) {
+      return stage.keys().hasOnly(['name', 'notes', 'exercises'])
+        && (!('name' in stage) || stage.name.matches('[^\\p{Cc}]{1,40}'))
+        && (!('notes' in stage) || stage.notes.matches('[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]{1,500}'))
+        && isExercises(stage.exercises);
+    }
+
+    // Checked one position at a time, up to the limit of 10 stages.
+    function isStages(stages) {
+      return stages is list
+        && stages.size() <= 10
+        && (stages.size() < 1 || isStage(stages[0]))
+        && (stages.size() < 2 || isStage(stages[1]))
+        && (stages.size() < 3 || isStage(stages[2]))
+        && (stages.size() < 4 || isStage(stages[3]))
+        && (stages.size() < 5 || isStage(stages[4]))
+        && (stages.size() < 6 || isStage(stages[5]))
+        && (stages.size() < 7 || isStage(stages[6]))
+        && (stages.size() < 8 || isStage(stages[7]))
+        && (stages.size() < 9 || isStage(stages[8]))
+        && (stages.size() < 10 || isStage(stages[9]));
+    }
+
+    function isRoutine(data) {
+      return data.keys().hasAll(['name', 'stages', 'createdAt'])
+        && data.keys().hasOnly(['name', 'notes', 'stages', 'createdAt'])
+        && isLine(data.name, 40)
+        && (!('notes' in data) || isNotes(data.notes, 500))
+        && isStages(data.stages)
+        && isTimestamp(data.createdAt);
+    }
+
     // The SDK resends a write when its answer was lost, so an identical rewrite must succeed.
     function isUnchanged() {
       return request.resource.data == resource.data;
@@ -75,6 +147,16 @@ service cloud.firestore {
       allow update: if isOwner(uid)
         && (isUnchanged()
           || (isWorkout(request.resource.data)
+            && request.resource.data.createdAt == resource.data.createdAt));
+    }
+
+    match /users/{uid}/routines/{routineId} {
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && isRoutine(request.resource.data);
+      // Editing checks the result like a new routine and keeps createdAt, its place in the list.
+      allow update: if isOwner(uid)
+        && (isUnchanged()
+          || (isRoutine(request.resource.data)
             && request.resource.data.createdAt == resource.data.createdAt));
     }
 

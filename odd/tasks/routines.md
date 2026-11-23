@@ -14,7 +14,7 @@ Branch: feat/routines, from main. Delivery strategy: work-unit commits on the br
 ## Tasks
 
 - [x] T1 (S1, S3, S4) Routine domain: model, limits, normalize/parse, display helpers. Route: inline. Commit: this commit (feat(routines): add routine domain).
-- [ ] T2 (S5) Rules for `users/{uid}/routines`, including a maximum-size routine within Firestore's rule evaluation limits; rules tests. Route: inline. Risk: item 2 (security rules).
+- [x] T2 (S5) Rules for `users/{uid}/routines`, including a maximum-size routine within Firestore's rule evaluation limits; rules tests. Route: inline. Risk: item 2 (security rules). Evidence: RED 9 failing, then rules 65 of 65 on the emulator (Java 21), largest routine accepted. Commit: feat(rules) routines.
 - [ ] T3 (S2, S5) Firestore routine library with outbox + fake. Route: inline. Risk: item 1 (stored data).
 - [ ] T4 (S2, S6) Account deletion and sign-out include routines. Route: inline. Risk: item 1.
 - [ ] T5 (S1-S4) Profile section UI: list, create, edit, delete; i18n en/es. Route: inline.
@@ -30,3 +30,4 @@ Branch: feat/routines, from main. Delivery strategy: work-unit commits on the br
 - L3: "ten en cuenta que los valores a agruegar en esas secciones de ejercicios son opcionales, sin obligacion que se deba de llenar todos los campos"
 - L4: "acepto los limites que dices, crees que no es necesario agruegar ningun tipo de tecnologia o cambios? con lo que tenemos armado es posible=" — answered: possible with the current stack; rule evaluation limit to be checked first.
 - L5: "ok" — start phase 1 on a new branch.
+- L6: Rule evaluation limit measured on the emulator: Firestore refuses a write after 1000 evaluated expressions. First version: 6 full stages fit, 7 did not. Cheaper per-stage checks (literal patterns that bound length, no redundant type/size/trim checks; a wrong type fails evaluation, which refuses) fit 13 full stages, so the limit of 10 keeps about 25% headroom for phase 4. Exercise lines cost little; stage name+notes checks cost most. A blank stage name or notes passes the rules (harmless, dropped when read); the routine name is still fully checked.

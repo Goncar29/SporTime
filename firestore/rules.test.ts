@@ -7,6 +7,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
+import { ROUTINE_LIMITS, toStoredRoutine, type RoutineDraft } from "../src/routines/domain/routine";
 import { MAX_TIMESTAMP_MS } from "../src/shared/domain/timestamp";
 import {
   MAX_ROUND_NAME_LENGTH,
@@ -26,8 +27,34 @@ const config = defaultConfig("tabata");
 const workout = { name: "Leg day", config, createdAt: 1_700_000_000_000 };
 const entry = { config, finishedAt: 1_700_000_000_000, activeMs: 240_000, marks: 0 };
 
+const routineDraft: RoutineDraft = {
+  name: "Empuje",
+  notes: "Calentar bien.\nHombros primero.",
+  createdAt: 1_700_000_000_000,
+  stages: [
+    {
+      name: "Bloque A",
+      exercises: [
+        {
+          name: "Press banca",
+          repsMin: 8,
+          repsMax: 10,
+          restSeconds: 90,
+          weight: 62.5,
+          weightUnit: "kg",
+          notes: "Pausa abajo",
+        },
+        { repsMin: 12 },
+      ],
+    },
+    { exercises: [{ weight: 20, weightUnit: "lb" }] },
+  ],
+};
+const routine = toStoredRoutine(routineDraft);
+
 const workoutPath = (uid: string) => `users/${uid}/workouts/w1`;
 const entryPath = (uid: string) => `users/${uid}/history/h1`;
+const routinePath = (uid: string) => `users/${uid}/routines/r1`;
 
 /** A new document each time: writing twice to one path would be rejected as an update. */
 let nextId = 0;
@@ -58,6 +85,7 @@ describe("ownership", () => {
   for (const [label, path, data] of [
     ["workouts", workoutPath, workout],
     ["history", entryPath, entry],
+    ["routines", routinePath, routine],
   ] as const) {
     describe(label, () => {
       it("lets a user create, read, list and delete their own documents", async () => {
@@ -103,7 +131,7 @@ describe("ownership", () => {
     await assertFails(setDoc(doc(asUser("alice"), entryPath("alice")), changed));
   });
 
-  it("rejects anything outside the two collections", async () => {
+  it("rejects anything outside the user's collections", async () => {
     const db = asUser("alice");
     await assertFails(setDoc(doc(db, "users/alice"), { name: "Alice" }));
     await assertFails(getDoc(doc(db, "users/alice")));
@@ -347,5 +375,134 @@ describe("editing a saved workout", () => {
     await assertFails(setDoc(doc(asUser("mallory"), path), edited));
     await assertFails(updateDoc(doc(asUser("mallory"), path), { name: "Mine now" }));
     await assertFails(setDoc(doc(asGuest(), path), edited));
+  });
+});
+
+describe("routine shape", () => {
+  const save = (data: object) => setDoc(freshDoc("routines"), data);
+  const withStage = (stage: object) => ({ name: "R", createdAt: 1, stages: [stage] });
+  const withLine = (line: string) => withStage({ exercises: line });
+  const L = ROUTINE_LIMITS;
+
+  /** Every stage, exercise and text at its limit: the most a rule ever has to evaluate. */
+  const largest = toStoredRoutine({
+    name: "a".repeat(L.nameLength),
+    notes: "n".repeat(L.notesLength),
+    createdAt: MAX_TIMESTAMP_MS,
+    stages: Array.from({ length: L.stages }, () => ({
+      name: "b".repeat(L.stageNameLength),
+      notes: "m".repeat(L.notesLength),
+      exercises: Array.from({ length: L.exercisesPerStage }, () => ({
+        name: "c".repeat(L.exerciseNameLength),
+        repsMin: L.reps.max - 1,
+        repsMax: L.reps.max,
+        restSeconds: L.restSeconds.max,
+        weight: L.weight.max - 0.5,
+        weightUnit: "lb" as const,
+        notes: "d".repeat(L.exerciseNotesLength),
+      })),
+    })),
+  });
+
+  it("accepts a routine with every optional field, and one with none", async () => {
+    await assertSucceeds(save(routine));
+    await assertSucceeds(save({ name: "Solo", createdAt: 1, stages: [] }));
+    await assertSucceeds(save(withStage({ name: "Solo el nombre", exercises: "" })));
+  });
+
+  it("accepts the largest routine the app can write", async () => {
+    await assertSucceeds(save(largest));
+  });
+
+  it("limits the number of stages and of exercises in each", async () => {
+    await assertFails(save({ ...largest, stages: [...largest.stages, largest.stages[0]] }));
+    const line = "x\t\t\t\t";
+    const lines = (count: number) => Array.from({ length: count }, () => line).join("\n");
+    await assertSucceeds(save(withLine(lines(L.exercisesPerStage))));
+    await assertFails(save(withLine(lines(L.exercisesPerStage + 1))));
+  });
+
+  it("requires a visible name within the limit and a valid creation time", async () => {
+    await assertFails(save({ ...routine, name: "" }));
+    await assertFails(save({ ...routine, name: "   " }));
+    await assertFails(save({ ...routine, name: "a".repeat(L.nameLength + 1) }));
+    await assertFails(save({ ...routine, name: "a\tb" }));
+    await assertFails(save({ ...routine, createdAt: MAX_TIMESTAMP_MS + 1 }));
+    await assertFails(save({ ...routine, createdAt: "today" }));
+  });
+
+  it("rejects extra or missing fields at every level", async () => {
+    await assertFails(save({ ...routine, owner: "mallory" }));
+    await assertFails(save({ name: "R", createdAt: 1 }));
+    await assertFails(save(withStage({ name: "Sin ejercicios" })));
+    await assertFails(save(withStage({ exercises: "", html: "<b>" })));
+    await assertFails(save({ ...routine, stages: "not a list" }));
+  });
+
+  it("checks the length and characters of notes", async () => {
+    await assertSucceeds(save({ ...routine, notes: "línea 1\nlínea 2" }));
+    await assertFails(save({ ...routine, notes: "n".repeat(L.notesLength + 1) }));
+    await assertFails(save({ ...routine, notes: "a\u0000b" }));
+    await assertFails(save(withStage({ notes: "m".repeat(L.notesLength + 1), exercises: "" })));
+    await assertFails(save(withStage({ name: "a\nb", exercises: "" })));
+  });
+
+  it("accepts each exercise field on its own", async () => {
+    for (const line of [
+      "Remo\t\t\t\t",
+      "\t10\t\t\t",
+      "\t8-10\t\t\t",
+      "\t\t90\t\t",
+      "\t\t\t60kg\t",
+      "\t\t\t\tlento",
+    ]) {
+      await assertSucceeds(save(withLine(line)));
+    }
+  });
+
+  it("rejects exercise lines that are malformed", async () => {
+    for (const line of [
+      "Remo\t\t\t",
+      "Remo\t\t\t\t\t",
+      "\t0\t\t\t",
+      "\tdiez\t\t\t",
+      "\t8 - 10\t\t\t",
+      "\t\t1:30\t\t",
+      "\t\t\t60\t",
+      "\t\t\t60st\t",
+      "\t\t\t62.55kg\t",
+      `${"c".repeat(L.exerciseNameLength + 1)}\t\t\t\t`,
+      `\t\t\t\t${"d".repeat(L.exerciseNotesLength + 1)}`,
+      "a\u0007b\t\t\t\t",
+    ]) {
+      await assertFails(save(withLine(line)));
+    }
+  });
+
+  it("mirrors the number limits in ROUTINE_LIMITS", async () => {
+    const reps = (value: number) => withLine(`\t${value}\t\t\t`);
+    const rest = (value: number) => withLine(`\t\t${value}\t\t`);
+    const weight = (value: number) => withLine(`\t\t\t${value}kg\t`);
+    await assertSucceeds(save(reps(L.reps.min)));
+    await assertSucceeds(save(reps(L.reps.max)));
+    await assertFails(save(reps(L.reps.min - 1)));
+    await assertFails(save(reps(L.reps.max + 1)));
+    await assertSucceeds(save(rest(L.restSeconds.min)));
+    await assertSucceeds(save(rest(L.restSeconds.max)));
+    await assertFails(save(rest(L.restSeconds.max + 1)));
+    await assertSucceeds(save(weight(L.weight.min)));
+    await assertSucceeds(save(weight(L.weight.max)));
+    await assertSucceeds(save(weight(62.5)));
+    await assertFails(save(weight(L.weight.max + 0.5)));
+  });
+
+  it("lets the owner edit a routine while it keeps its creation time", async () => {
+    await seed(routinePath("alice"), routine);
+    const path = routinePath("alice");
+    const edited = toStoredRoutine({ ...routineDraft, name: "Empuje B", stages: [] });
+    await assertSucceeds(setDoc(doc(asUser("alice"), path), edited));
+    await assertFails(setDoc(doc(asUser("alice"), path), { ...edited, createdAt: 2 }));
+    await assertFails(setDoc(doc(asUser("alice"), path), { ...edited, name: "" }));
+    await assertFails(setDoc(doc(asUser("mallory"), path), edited));
   });
 });
