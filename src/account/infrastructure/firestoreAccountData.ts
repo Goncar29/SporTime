@@ -66,6 +66,7 @@ export function createFirestoreAccountData({
     // Firestore's listing includes writes still on their way, and sends the deletes after them.
     await eraseCollection(db, collection(db, "users", userId, "workouts"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "history"), isCancelled);
+    await eraseCollection(db, collection(db, "users", userId, "routines"), isCancelled);
   };
 
   return {

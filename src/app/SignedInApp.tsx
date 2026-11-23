@@ -6,12 +6,14 @@ import { useSignOut, type AccountSignOut } from "../account/ui/useSignOut";
 import { AuthFailure } from "../auth/domain/user";
 import { useAuth } from "../auth/ui/AuthGate";
 import type { HistoryLog } from "../history/application/ports";
+import type { RoutineLibrary } from "../routines/application/ports";
 import type { WorkoutLibrary } from "../workouts/application/ports";
 import { App, type TimerDependencies } from "./App";
 
 export interface UserStores {
   workouts: WorkoutLibrary;
   history: HistoryLog;
+  routines: RoutineLibrary;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   /** Sends what is pending, then signs out and erases this device's copy of the account. */

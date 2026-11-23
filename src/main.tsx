@@ -22,6 +22,7 @@ import {
   localStorageInstallDismissals,
 } from "./install/infrastructure/browserInstall";
 import { InstallProvider } from "./install/ui/InstallProvider";
+import type { RoutineDraft } from "./routines/domain/routine";
 import { startBrowserUpdates } from "./update/infrastructure/browserUpdates";
 import { UpdateProvider } from "./update/ui/UpdateProvider";
 import type { SavedWorkoutDraft } from "./workouts/domain/savedWorkout";
@@ -97,10 +98,12 @@ async function createStoresFactory(
     },
   };
   if (import.meta.env.MODE === "e2e") {
-    const [{ createFakeWorkoutLibrary }, { createFakeHistoryLog }] = await Promise.all([
-      import("./workouts/infrastructure/fakeWorkoutLibrary"),
-      import("./history/infrastructure/fakeHistoryLog"),
-    ]);
+    const [{ createFakeWorkoutLibrary }, { createFakeHistoryLog }, { createFakeRoutineLibrary }] =
+      await Promise.all([
+        import("./workouts/infrastructure/fakeWorkoutLibrary"),
+        import("./history/infrastructure/fakeHistoryLog"),
+        import("./routines/infrastructure/fakeRoutineLibrary"),
+      ]);
     // No Firestore here: nothing waits to be sent and nothing is cached, so sign-out stays as it was.
     const local = {
       sendPending: () => Promise.resolve("sent" as const),
@@ -112,6 +115,7 @@ async function createStoresFactory(
     return (userId) => ({
       workouts: createFakeWorkoutLibrary(userId),
       history: createFakeHistoryLog(userId),
+      routines: createFakeRoutineLibrary(userId),
       deleteAccount: () => authGateway.signOut(),
       deletionConfirmedByRedirect: () => Promise.resolve(false),
       signOut: (options) => signOut({ auth, local }, options),
@@ -129,6 +133,7 @@ async function createStoresFactory(
     { createLocalStorageOutboxStore },
     { createFirestoreWorkoutLibrary },
     { createFirestoreHistoryLog },
+    { createFirestoreRoutineLibrary },
     { deleteAccount },
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
@@ -140,6 +145,7 @@ async function createStoresFactory(
     import("./shared/infrastructure/localStorageOutboxStore"),
     import("./workouts/infrastructure/firestoreWorkoutLibrary"),
     import("./history/infrastructure/firestoreHistoryLog"),
+    import("./routines/infrastructure/firestoreRoutineLibrary"),
     import("./account/application/deleteAccount"),
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
@@ -159,9 +165,13 @@ async function createStoresFactory(
     const historyOutbox = createLocalStorageOutboxStore<HistoryDraft>(
       `sportime.outbox.history.${userId}`,
     );
+    const routineOutbox = createLocalStorageOutboxStore<RoutineDraft>(
+      `sportime.outbox.routines.${userId}`,
+    );
     const discardPendingWrites = () => {
       workoutOutbox.save([]);
       historyOutbox.save([]);
+      routineOutbox.save([]);
     };
     const identity = createFirebaseAccountIdentity(userId);
     // Changes wait while another tab signs out, and are refused once it did (or none without Web Locks).
@@ -196,8 +206,20 @@ async function createStoresFactory(
       add: (draft: HistoryDraft) => otherTabs.confirming(historyLog.add(draft)),
       remove: (id: string) => otherTabs.confirming(historyLog.remove(id)),
     };
+    const routineLibrary = createFirestoreRoutineLibrary(firestore(), userId, {
+      store: routineOutbox,
+      whenReady,
+      guard: otherTabs.guard,
+    });
+    const routines = {
+      ...routineLibrary,
+      save: (draft: RoutineDraft) => otherTabs.confirming(routineLibrary.save(draft)),
+      update: (routine: Parameters<typeof routineLibrary.update>[0]) =>
+        otherTabs.confirming(routineLibrary.update(routine)),
+      remove: (id: string) => otherTabs.confirming(routineLibrary.remove(id)),
+    };
     const local = createLocalAccountData({
-      outboxes: [workouts, history],
+      outboxes: [workouts, history, routines],
       discardPendingWrites,
       serverHasWrites,
       clearCache: clearLocalCache,
@@ -220,6 +242,7 @@ async function createStoresFactory(
     const created: UserStores = {
       workouts,
       history,
+      routines,
       // Holds every change, here and in the other tabs, from erasing until the account is gone.
       deleteAccount: () =>
         deleteAccount({

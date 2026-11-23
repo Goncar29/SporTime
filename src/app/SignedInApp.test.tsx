@@ -9,6 +9,7 @@ import { AccountMenu } from "../auth/ui/AccountMenu";
 import { AuthGate } from "../auth/ui/AuthGate";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
+import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
 import { createFakeWorkoutLibrary } from "../workouts/infrastructure/fakeWorkoutLibrary";
 import { SignedInApp } from "./SignedInApp";
 
@@ -82,6 +83,7 @@ function setup({ language = "en", signOut, otherTabs, deleteAccount }: Options =
   const storesFor = (userId: string) => ({
     workouts: createFakeWorkoutLibrary(userId),
     history: createFakeHistoryLog(userId),
+    routines: createFakeRoutineLibrary(userId),
     deleteAccount:
       deleteAccount ??
       (async () => {
