@@ -169,8 +169,10 @@ export interface Messages {
   /** An exercise's optional https link. */
   exerciseLink: string;
   invalidLink: string;
-  /** The visible text of the button that opens a link, by its site. */
-  openLink(host: string): string;
+  /** The visible text of the button that opens an exercise's link. */
+  viewLink: string;
+  /** Its accessible name, by the link's site, when the exercise has no name. */
+  viewLinkTo(host: string): string;
   /** Its accessible name when the exercise has a name. */
-  openExerciseLink(host: string, exercise: string): string;
+  viewExerciseLink(host: string, exercise: string): string;
 }

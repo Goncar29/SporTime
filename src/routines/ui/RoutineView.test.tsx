@@ -46,3 +46,83 @@ it("shows a stage's table in Spanish, with the weight's decimal comma", () => {
   ).toEqual(["Press banca", "8 - 10", "90''", "62,5 kg"]);
   expect(screen.getByRole("button", { name: "Editar Empuje" })).toBeInTheDocument();
 });
+
+const renderSpanish = (stages: Parameters<typeof RoutineView>[0]["routine"]["stages"]) =>
+  render(
+    <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["es-AR"]}>
+      <RoutineView
+        routine={{ id: "r1", name: "Empuje", createdAt: 1_000, stages }}
+        errors={[]}
+        onBack={vi.fn()}
+        onEdit={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    </I18nProvider>,
+  );
+
+it("ends an exercise's row with a Ver button for its link, and leaves the cell empty without one", () => {
+  renderSpanish([
+    {
+      exercises: [
+        { name: "Press banca", repsMin: 10, link: "https://www.youtube.com/watch?v=abc" },
+        { name: "Remo", repsMin: 8, notes: "Lento" },
+      ],
+    },
+  ]);
+  const table = screen.getByRole("table", { name: "Etapa 1" });
+  expect(
+    within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent),
+  ).toEqual(["Ejercicio", "Repeticiones", "Enlace"]);
+  const link = within(table).getByRole("link", { name: "Ver youtube.com (Press banca)" });
+  expect(link.textContent).toBe("Ver");
+  expect(link).toHaveAttribute("title", "youtube.com");
+  expect(link).toHaveAttribute("href", "https://www.youtube.com/watch?v=abc");
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  const rows = within(table).getAllByRole("row");
+  // Header, Press banca, Remo, Remo's notes below it.
+  expect(rows.map((row) => [...row.children].map((cell) => cell.textContent))).toEqual([
+    ["Ejercicio", "Repeticiones", "Enlace"],
+    ["Press banca", "10", "Ver"],
+    ["Remo", "8", ""],
+    ["Lento"],
+  ]);
+  expect(rows[1]).toContainElement(link);
+});
+
+it("names the link without an exercise name by its site only", () => {
+  renderSpanish([{ exercises: [{ repsMin: 10, link: "https://youtu.be/abc" }] }]);
+  const link = screen.getByRole("link", { name: "Ver youtu.be" });
+  expect(link.textContent).toBe("Ver");
+});
+
+it("has no link column for a stage where no exercise has a safe link", () => {
+  renderSpanish([
+    { exercises: [{ name: "Press banca", link: "https://youtu.be/abc" }] },
+    {
+      exercises: [
+        { name: "Remo", repsMin: 8 },
+        { name: "Curl", link: "javascript:alert(1)" },
+      ],
+    },
+  ]);
+  expect(
+    within(screen.getByRole("table", { name: "Etapa 1" }))
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent),
+  ).toEqual(["Ejercicio", "Enlace"]);
+  const second = screen.getByRole("table", { name: "Etapa 2" });
+  expect(
+    within(second)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent),
+  ).toEqual(["Ejercicio", "Repeticiones"]);
+  expect(within(second).queryByRole("link")).not.toBeInTheDocument();
+  expect(
+    within(second)
+      .getAllByRole("row")
+      .map((row) => row.children.length),
+  ).toEqual([2, 2, 2]);
+});

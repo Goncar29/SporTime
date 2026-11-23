@@ -96,6 +96,18 @@ interface StageTableProps {
   position: number;
 }
 
+/** A link safe to open and the site it goes to. */
+interface SafeLink {
+  href: string;
+  host: string;
+}
+
+/** Checked again here: only a safe https link ever becomes something to open. */
+function safeLink({ link }: Exercise): SafeLink | undefined {
+  const href = link === undefined ? undefined : normalizeLink(link);
+  return typeof href === "string" ? { href, host: linkHost(href) } : undefined;
+}
+
 function StageTable({ stage, position }: StageTableProps) {
   const { t, language } = useI18n();
   const headingId = useId();
@@ -119,6 +131,8 @@ function StageTable({ stage, position }: StageTableProps) {
   const shown = columns.filter((column) =>
     stage.exercises.some((exercise) => column.value(exercise) !== ""),
   );
+  const links = stage.exercises.map(safeLink);
+  const showLinks = links.some((link) => link !== undefined);
 
   return (
     <section className={styles.stage}>
@@ -132,15 +146,25 @@ function StageTable({ stage, position }: StageTableProps) {
             <tr>
               <th scope="col">{t.exerciseColumn}</th>
               {shown.map((column) => (
-                <th key={column.id} scope="col">
+                <th key={column.id} scope="col" className={styles.narrow}>
                   {column.label}
                 </th>
               ))}
+              {showLinks && (
+                <th scope="col" className={styles.narrow}>
+                  <span className={styles.visuallyHidden}>{t.exerciseLink}</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {stage.exercises.map((exercise, index) => (
-              <ExerciseRows key={index} exercise={exercise} columns={shown} />
+              <ExerciseRows
+                key={index}
+                exercise={exercise}
+                columns={shown}
+                link={showLinks ? (links[index] ?? null) : undefined}
+              />
             ))}
           </tbody>
         </table>
@@ -152,45 +176,51 @@ function StageTable({ stage, position }: StageTableProps) {
 interface ExerciseRowsProps {
   exercise: Exercise;
   columns: readonly { id: Column; value: (exercise: Exercise) => string }[];
+  /** The exercise's link; `null` leaves its cell empty, `undefined` means the stage has no link column. */
+  link: SafeLink | null | undefined;
 }
 
 /**
- * An exercise's row, and its notes and link on a full-width row right below when it has any,
- * so the table keeps its few narrow columns.
+ * An exercise's row, ending with a button for its link when the stage has a link column,
+ * and its notes on a full-width row right below when it has any.
  */
-function ExerciseRows({ exercise, columns }: ExerciseRowsProps) {
+function ExerciseRows({ exercise, columns, link }: ExerciseRowsProps) {
   const { t } = useI18n();
-  // Checked again here: only a safe https link ever becomes something to open.
-  const link = exercise.link === undefined ? undefined : normalizeLink(exercise.link);
-  const host = typeof link === "string" ? linkHost(link) : undefined;
-  const hasDetails = exercise.notes !== undefined || host !== undefined;
+  const cells = columns.length + 1 + (link === undefined ? 0 : 1);
   return (
     <>
-      <tr className={hasDetails ? styles.withNotes : undefined}>
+      <tr className={exercise.notes === undefined ? undefined : styles.withNotes}>
         <td className={styles.name}>{exercise.name ?? EMPTY}</td>
         {columns.map((column) => (
-          <td key={column.id}>{column.value(exercise) || EMPTY}</td>
+          <td key={column.id} className={styles.narrow}>
+            {column.value(exercise) || EMPTY}
+          </td>
         ))}
-      </tr>
-      {hasDetails && (
-        <tr>
-          <td className={styles.exerciseNotes} colSpan={columns.length + 1}>
-            {exercise.notes}
-            {typeof link === "string" && host !== undefined && (
+        {link !== undefined && (
+          <td className={`${styles.narrow} ${styles.linkCell}`}>
+            {link !== null && (
               <a
                 className={styles.link}
-                href={link}
+                href={link.href}
                 target="_blank"
                 rel="noopener noreferrer"
+                title={link.host}
                 aria-label={
                   exercise.name === undefined
-                    ? t.openLink(host)
-                    : t.openExerciseLink(host, exercise.name)
+                    ? t.viewLinkTo(link.host)
+                    : t.viewExerciseLink(link.host, exercise.name)
                 }
               >
-                {t.openLink(host)} <span aria-hidden="true">↗</span>
+                {t.viewLink}
               </a>
             )}
+          </td>
+        )}
+      </tr>
+      {exercise.notes !== undefined && (
+        <tr>
+          <td className={styles.exerciseNotes} colSpan={cells}>
+            {exercise.notes}
           </td>
         </tr>
       )}

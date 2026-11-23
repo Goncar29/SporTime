@@ -49,7 +49,12 @@ it("Spanish names the routine view and its table columns", () => {
 
 it("Spanish names an exercise's link and its button", () => {
   expect(MESSAGES.es.exerciseLink).toBe("Enlace");
-  expect(MESSAGES.es.openLink("youtube.com")).toBe("Abrir youtube.com");
-  expect(MESSAGES.es.openExerciseLink("youtube.com", "Remo")).toBe("Abrir youtube.com (Remo)");
-  expect(MESSAGES.en.openLink("youtube.com")).toBe("Open youtube.com");
+  expect(MESSAGES.es.viewLink).toBe("Ver");
+  expect(MESSAGES.es.viewLinkTo("youtube.com")).toBe("Ver youtube.com");
+  expect(MESSAGES.es.viewExerciseLink("youtube.com", "Remo")).toBe("Ver youtube.com (Remo)");
+  expect(MESSAGES.en.viewLink).toBe("View");
+  expect(MESSAGES.en.viewLinkTo("youtube.com")).toBe("View youtube.com");
+  expect(MESSAGES.en.viewExerciseLink("youtube.com", "Row")).toBe("View youtube.com (Row)");
+  expect("openLink" in MESSAGES.es).toBe(false);
+  expect("openExerciseLink" in MESSAGES.en).toBe(false);
 });

@@ -111,6 +111,31 @@
   vertical-align: top;
 }
 
+/*
+ * The exercise takes the room left; reps, rest, weight and the link button stay as narrow as
+ * their content, on the right.
+ */
+.table .narrow {
+  width: 1%;
+  padding-inline: 4px;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  text-align: end;
+}
+
+.table .linkCell {
+  padding-block: 4px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* On a phone they may wrap, only at spaces ("8 - 10", "62,5 kg"), so the page never scrolls sideways. */
+@media (max-width: 420px) {
+  .table .narrow {
+    white-space: normal;
+  }
+}
+
 .table th {
   color: var(--muted);
   font-size: 0.875rem;
@@ -131,24 +156,29 @@
   font-size: 0.875rem;
 }
 
-/* A button-like link on its own line, below the notes when there are any. */
+/* A small button-like link ending the exercise's row. */
 .link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: fit-content;
-  max-width: 100%;
-  min-height: 44px;
-  margin-top: 6px;
-  padding: 8px 14px;
+  min-height: 40px;
+  padding: 4px 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--accent);
   font-size: 1rem;
   font-weight: 700;
   text-decoration: none;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .back:focus-visible,

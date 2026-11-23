@@ -218,6 +218,7 @@ export const es: Messages = {
   invalidWeight: "Escribe un número como 62,5.",
   exerciseLink: "Enlace",
   invalidLink: "Usa un enlace completo que empiece con https://.",
-  openLink: (host) => `Abrir ${host}`,
-  openExerciseLink: (host, exercise) => `Abrir ${host} (${exercise})`,
+  viewLink: "Ver",
+  viewLinkTo: (host) => `Ver ${host}`,
+  viewExerciseLink: (host, exercise) => `Ver ${host} (${exercise})`,
 };

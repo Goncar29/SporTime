@@ -1848,7 +1848,7 @@ describe("routines", () => {
     );
   });
 
-  it("saves an exercise's link, and the view opens it in a new tab with a button", async () => {
+  it("saves an exercise's link, and the view opens it with a View button in its row", async () => {
     const routines = await routineLibrary();
     setup({ routines });
     openRoutines();
@@ -1858,7 +1858,8 @@ describe("routines", () => {
     const row = exercise("Stage 1", 1);
     const input = within(row).getByRole("textbox", { name: "Link" });
     expect(input).toHaveAttribute("type", "url");
-    expect(input).toHaveAttribute("maxLength", "300");
+    // A longer pasted link is shown as invalid instead of being silently cut.
+    expect(input).not.toHaveAttribute("maxLength");
     type("Exercise name", "Bench press", row);
     type("Link", " https://www.youtube.com/watch?v=abc ", row);
     click("Save routine");
@@ -1871,12 +1872,23 @@ describe("routines", () => {
     );
 
     click("Open Push");
-    const link = screen.getByRole("link", { name: "Open youtube.com (Bench press)" });
-    expect(link).toHaveTextContent("Open youtube.com ↗");
+    const link = screen.getByRole("link", { name: "View youtube.com (Bench press)" });
+    expect(link.textContent).toBe("View");
+    expect(link).toHaveAttribute("title", "youtube.com");
     expect(link).toHaveAttribute("href", "https://www.youtube.com/watch?v=abc");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    expect(within(screen.getByRole("table", { name: "Stage 1" })).getByRole("link")).toBe(link);
+    const table = screen.getByRole("table", { name: "Stage 1" });
+    // The button ends the exercise's own row, in a column with an accessible name.
+    const exerciseRow = within(table).getByRole("cell", { name: "Bench press" }).closest("tr");
+    expect(link.closest("tr")).toBe(exerciseRow);
+    expect(exerciseRow?.lastElementChild).toContainElement(link);
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["Exercise", "Link"]);
 
     click("Edit Push");
     expect(within(exercise("Stage 1", 1)).getByRole("textbox", { name: "Link" })).toHaveValue(
@@ -1909,6 +1921,33 @@ describe("routines", () => {
     click("Save routine");
     expect(routines.save).toHaveBeenCalledWith(
       expect.objectContaining({ stages: [{ exercises: [{ link: "https://youtu.be/abc" }] }] }),
+    );
+  });
+
+  it("shows an error for a link longer than 300 characters and saves nothing", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Arms");
+    click("Add stage");
+    const row = exercise("Stage 1", 1);
+    const long = `https://x.com/${"a".repeat(301 - "https://x.com/".length)}`;
+    expect(long).toHaveLength(301);
+    type("Link", long, row);
+    const input = within(row).getByRole("textbox", { name: "Link" });
+    expect(input).toHaveValue(long);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(within(row).getByText("Use a full link that starts with https://.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save routine" })).toBeDisabled();
+    click("Save routine");
+    expect(routines.save).not.toHaveBeenCalled();
+
+    type("Link", long.slice(0, 300), row);
+    expect(within(row).queryByText(/^Use /)).not.toBeInTheDocument();
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith(
+      expect.objectContaining({ stages: [{ exercises: [{ link: long.slice(0, 300) }] }] }),
     );
   });
 

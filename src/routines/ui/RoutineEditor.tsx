@@ -417,7 +417,6 @@ function ExerciseRow({ position, exercise, onChange, onRemove }: ExerciseRowProp
           inputMode="url"
           autoComplete="off"
           placeholder="https://…"
-          maxLength={ROUTINE_LIMITS.linkLength}
           value={exercise.link}
           aria-invalid={errors.link}
           aria-describedby={errors.link ? `${id}-link` : undefined}
