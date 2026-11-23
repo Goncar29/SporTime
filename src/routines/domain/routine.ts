@@ -74,6 +74,12 @@ type Range = { readonly min: number; readonly max: number };
 
 const hasVisibleCharacter = (text: string) => /[^\p{C}\p{Z}]/u.test(text);
 
+/**
+ * Drops half of a broken character (a lone surrogate). Firestore refuses such text with an error
+ * the SDK retries forever, so a write holding it would never leave the outbox.
+ */
+const wellFormed = (text: string) => text.replace(/\p{Cs}/gu, "");
+
 function intIn(value: unknown, { min, max }: Range): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
 }
@@ -94,14 +100,16 @@ function isWeight(value: unknown): value is number {
 /** Text on one line: control characters become spaces. Undefined when blank or too long. */
 function singleLine(raw: unknown, maxLength: number): string | undefined {
   if (typeof raw !== "string") return undefined;
-  const text = raw.replace(/\p{Cc}/gu, " ").trim();
+  const text = wellFormed(raw)
+    .replace(/\p{Cc}/gu, " ")
+    .trim();
   return hasVisibleCharacter(text) && text.length <= maxLength ? text : undefined;
 }
 
 /** Text that may span lines; any other control character becomes a space. */
 function multiLine(raw: unknown, maxLength: number): string | undefined {
   if (typeof raw !== "string") return undefined;
-  const text = raw
+  const text = wellFormed(raw)
     .replace(/\r\n?/g, "\n")
     .replace(/[^\P{Cc}\n]/gu, " ")
     .trim();

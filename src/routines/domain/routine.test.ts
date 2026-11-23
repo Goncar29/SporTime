@@ -138,6 +138,18 @@ describe("sanitizeExercise", () => {
     ).toEqual({ name: "Press" });
   });
 
+  it("drops half of a broken character, which Firestore would refuse forever", () => {
+    expect(sanitizeExercise({ name: "Remo\uD800", notes: "\uDC00lento" })).toEqual({
+      name: "Remo",
+      notes: "lento",
+    });
+    expect(normalizeRoutineName("Pierna\uD83D")).toBe("Pierna");
+    expect(
+      parseRoutine("r", { name: "R", notes: "a\uDFFFb", createdAt: 1, stages: [] })?.notes,
+    ).toBe("ab");
+    expect(normalizeRoutineName("Pecho 💪")).toBe("Pecho 💪");
+  });
+
   it("turns control characters into spaces so text stays on one line", () => {
     expect(sanitizeExercise({ name: "Press\tbanca\nplano" })).toEqual({
       name: "Press banca plano",
