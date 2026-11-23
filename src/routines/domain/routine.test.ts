@@ -108,6 +108,47 @@ describe("parseWeightInput", () => {
 });
 
 describe("normalizeLink", () => {
+  it("rejects a link whose button would name no visible site", () => {
+    expect(normalizeLink("https://www.")).toBeNull();
+    expect(normalizeLink("https://\u3164.com")).toBeNull();
+    expect(normalizeLink("https://.com")).toBeNull();
+  });
+
+  it("names the host the browser actually opens", () => {
+    expect(linkHost(normalizeLink("https://youtube.com\\@evil.com")!)).toBe("youtube.com");
+    expect(linkHost(normalizeLink("https://evil.com\\youtube.com")!)).toBe("evil.com");
+    expect(linkHost(normalizeLink("https://\u0430pple.com")!)).toBe("xn--pple-43d.com");
+    expect(linkHost(normalizeLink("https://youtube\u3002com")!)).toBe("youtube.com");
+  });
+
+  it("rejects slash and credential tricks and invisible characters", () => {
+    for (const text of [
+      "https:\\\\evil.com",
+      "https:/\\evil.com",
+      "https://\\evil.com",
+      "//evil.com",
+      "https://youtube.com%40evil.com",
+      "https://youtube.com%2Fevil.com",
+      "https://youtube.com\uff0fevil.com",
+      "https://you\u00adtube.com",
+      "https://\u202emoc.live",
+      "https://x.com/\ue000",
+      "https://" + "a".repeat(100_000),
+    ]) {
+      expect(normalizeLink(text), text).toBeNull();
+    }
+  });
+
+  it("reads a line with a seventh field as nothing", () => {
+    expect(
+      parseRoutine("r", {
+        name: "Ok",
+        createdAt: 1,
+        stages: [{ exercises: "Remo\t\t\t\tn\thttps://x.com\tx" }],
+      })?.stages,
+    ).toEqual([]);
+  });
+
   it("is undefined when empty", () => {
     expect(normalizeLink("")).toBeUndefined();
     expect(normalizeLink("   ")).toBeUndefined();

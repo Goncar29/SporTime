@@ -191,8 +191,19 @@ export function normalizeLink(raw: string): string | null | undefined {
     return null;
   }
   const safe =
-    url.protocol === "https:" && url.username === "" && url.password === "" && url.hostname !== "";
+    url.protocol === "https:" &&
+    url.username === "" &&
+    url.password === "" &&
+    namesVisibleSite(url.hostname.replace(/^www\./, ""));
   return safe ? text : null;
+}
+
+/**
+ * True when a host can name a link's button: it starts with a letter or digit and holds no
+ * Hangul filler, which the URL parser keeps but no one can see (`https://www.` would name nothing).
+ */
+function namesVisibleSite(host: string): boolean {
+  return /^[\p{L}\p{N}]/u.test(host) && !/[\u115F\u1160\u3164\uFFA0]/u.test(host);
 }
 
 /** The site a link opens, like youtube.com, to name its button. */
