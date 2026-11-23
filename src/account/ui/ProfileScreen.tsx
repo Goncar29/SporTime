@@ -13,6 +13,8 @@ interface ProfileScreenProps {
   deletion: AccountDeletion;
   onOpenSettings: () => void;
   onOpenPrivacy: () => void;
+  /** Without it, the Routines section is not offered. */
+  onOpenRoutines?: () => void;
 }
 
 /** Everything about the user and the app itself, kept off the timer so it stays uncluttered. */
@@ -21,6 +23,7 @@ export function ProfileScreen({
   deletion,
   onOpenSettings,
   onOpenPrivacy,
+  onOpenRoutines,
 }: ProfileScreenProps) {
   const { t } = useI18n();
 
@@ -38,6 +41,12 @@ export function ProfileScreen({
       </div>
 
       <div className={profile.menu}>
+        {onOpenRoutines && (
+          <button className={profile.item} onClick={onOpenRoutines}>
+            {t.routines}
+            <Chevron />
+          </button>
+        )}
         <button className={profile.item} onClick={onOpenSettings}>
           {t.settings}
           <Chevron />

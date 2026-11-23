@@ -8,6 +8,11 @@ import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
 import { useI18n } from "../i18n/ui/I18nProvider";
+import type { RoutineLibrary } from "../routines/application/ports";
+import type { Routine } from "../routines/domain/routine";
+import { RoutineEditor } from "../routines/ui/RoutineEditor";
+import { RoutinesScreen } from "../routines/ui/RoutinesScreen";
+import type { SubscribeToList } from "../shared/application/liveList";
 import type { StoreFailureKind } from "../shared/domain/storeFailure";
 import { reportStoreFailure, storeFailureMessage } from "../shared/ui/storeFailure";
 import { useLiveList } from "../shared/ui/useLiveList";
@@ -65,6 +70,8 @@ interface AppProps {
   timer: TimerDependencies;
   workouts: WorkoutLibrary;
   history: HistoryLog;
+  /** Without it, Profile offers no Routines section. */
+  routines?: RoutineLibrary;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -80,16 +87,28 @@ interface AppProps {
   otherTabs?: OtherTabsStatus;
 }
 
-/** Settings and Privacy open from Profile, so its tab stays marked while they are shown. */
-type Screen = Tab | "settings" | "privacy";
+/**
+ * Settings, Privacy and Routines, with its editor, open from Profile, so its tab stays marked
+ * while they are shown.
+ */
+type Screen = Tab | "settings" | "privacy" | "routines" | "routineEditor";
 
 const tabOf = (screen: Screen): Tab =>
-  screen === "settings" || screen === "privacy" ? "profile" : screen;
+  screen === "settings" ||
+  screen === "privacy" ||
+  screen === "routines" ||
+  screen === "routineEditor"
+    ? "profile"
+    : screen;
+
+/** Stands in for a missing routine library: it never answers, and nothing reads it. */
+const noRoutines: SubscribeToList<Routine> = () => () => undefined;
 
 export function App({
   timer,
   workouts,
   history,
+  routines,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -107,6 +126,13 @@ export function App({
     kind: StoreFailureKind;
   } | null>(null);
   const library = useLiveList(workouts.subscribe, "Loading saved workouts");
+  const routineList = useLiveList(routines?.subscribe ?? noRoutines, "Loading routines");
+  /** The routine open in the editor, or null for a new one. */
+  const [editedRoutine, setEditedRoutine] = useState<Routine | null>(null);
+  const [routineFailure, setRoutineFailure] = useState<{
+    what: "save" | "delete";
+    kind: StoreFailureKind;
+  } | null>(null);
   const [editing, setEditing] = useState<SavedWorkout | null>(null);
   // Deleted meanwhile, here or on another device: there is nothing left to save changes to.
   const editingWorkout =
@@ -278,6 +304,34 @@ export function App({
     setScreen("profile");
   };
 
+  const routineErrors = [
+    ...(routineFailure
+      ? [
+          // The shared message names a workout, so a routine says it in its own words.
+          routineFailure.kind === "notFound"
+            ? t.routineNotFound
+            : storeFailureMessage(
+                t,
+                routineFailure.kind,
+                routineFailure.what === "save" ? t.saveFailed : t.deleteRoutineFailed,
+              ),
+        ]
+      : []),
+    ...(routineList.failed
+      ? [storeFailureMessage(t, routineList.failure ?? "unknown", t.loadRoutinesFailed)]
+      : []),
+  ];
+
+  /** Returns the handler for one operation, so the developer's log names what failed. */
+  const reportRoutineFailure = (what: "save" | "delete", operation: string) => (error: unknown) => {
+    setRoutineFailure({ what, kind: reportStoreFailure(operation, error) });
+  };
+
+  const openRoutineEditor = (routine: Routine | null) => {
+    setEditedRoutine(routine);
+    setScreen("routineEditor");
+  };
+
   const content = (() => {
     switch (screen) {
       case "saved":
@@ -310,7 +364,58 @@ export function App({
             onOpenPrivacy={() => {
               setScreen("privacy");
             }}
+            onOpenRoutines={
+              routines &&
+              (() => {
+                setScreen("routines");
+              })
+            }
           />
+        );
+      case "routines":
+        return (
+          routines && (
+            <RoutinesScreen
+              routines={routineList.failed ? (routineList.items ?? []) : routineList.items}
+              errors={routineErrors}
+              onBack={openProfile}
+              onNew={() => {
+                openRoutineEditor(null);
+              }}
+              onEdit={openRoutineEditor}
+              onRemove={({ id }) => {
+                setRoutineFailure(null);
+                // Not awaited: the server never answers offline, and the write is already queued.
+                routines.remove(id).catch(reportRoutineFailure("delete", "Deleting a routine"));
+              }}
+            />
+          )
+        );
+      case "routineEditor":
+        return (
+          routines && (
+            <RoutineEditor
+              key={editedRoutine?.id ?? "new"}
+              routine={editedRoutine}
+              onSave={(draft) => {
+                setRoutineFailure(null);
+                // Not awaited: the server never answers offline, and the write is already queued.
+                if (editedRoutine) {
+                  routines
+                    .update({ ...draft, id: editedRoutine.id })
+                    .catch(reportRoutineFailure("save", "Updating a routine"));
+                } else {
+                  routines.save(draft).catch(reportRoutineFailure("save", "Saving a routine"));
+                }
+                setEditedRoutine(null);
+                setScreen("routines");
+              }}
+              onCancel={() => {
+                setEditedRoutine(null);
+                setScreen("routines");
+              }}
+            />
+          )
         );
       case "settings":
         return (

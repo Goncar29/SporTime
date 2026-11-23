@@ -7,6 +7,9 @@ import { AuthFailure } from "../auth/domain/user";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { InstallProvider } from "../install/ui/InstallProvider";
+import type { RoutineLibrary } from "../routines/application/ports";
+import type { Routine, RoutineDraft } from "../routines/domain/routine";
+import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
 import { createAppUpdater, type AppUpdater } from "../update/application/appUpdater";
 import { UpdateProvider } from "../update/ui/UpdateProvider";
 import type { WorkoutLibrary } from "../workouts/application/ports";
@@ -16,6 +19,8 @@ import { App } from "./App";
 interface Stores {
   workouts?: WorkoutLibrary;
   history?: HistoryLog;
+  /** Without it, Profile offers no Routines section. */
+  routines?: RoutineLibrary;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
@@ -26,6 +31,7 @@ interface Stores {
 function setup({
   workouts = createFakeWorkoutLibrary("test"),
   history = createFakeHistoryLog("test"),
+  routines,
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
   updater = createAppUpdater(() => undefined),
@@ -47,6 +53,7 @@ function setup({
           timer={timer}
           workouts={workouts}
           history={history}
+          routines={routines}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
@@ -1591,5 +1598,352 @@ describe("sound settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Timer" }));
     fireEvent.click(screen.getByRole("button", { name: /^Start/ }));
     expect(timer.voice.say).toHaveBeenLastCalledWith("Get ready", "en");
+  });
+});
+
+describe("routines", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  /** A fake library whose writes are spied on, already holding `existing`. */
+  const routineLibrary = async (existing: { name: string; createdAt: number }[] = []) => {
+    const fake = createFakeRoutineLibrary("test");
+    for (const routine of existing) await fake.save({ ...routine, stages: [] });
+    return {
+      ...fake,
+      save: vi.fn((draft: RoutineDraft) => fake.save(draft)),
+      update: vi.fn((routine: Routine) => fake.update(routine)),
+      remove: vi.fn((id: string) => fake.remove(id)),
+    };
+  };
+  const openRoutines = () => {
+    click("Profile");
+    click("Routines");
+  };
+  const type = (name: string, value: string, within_: HTMLElement = document.body) => {
+    fireEvent.change(within(within_).getByRole("textbox", { name }), { target: { value } });
+  };
+  const items = () =>
+    within(screen.getByRole("list", { name: "Routines" })).getAllByRole("listitem");
+  const stage = (label: string) => screen.getByRole("group", { name: label });
+  const exercise = (stageLabel: string, number: number) =>
+    within(stage(stageLabel)).getByRole("group", { name: `Exercise ${number}` });
+  const settle = () => act(() => Promise.resolve());
+
+  it("is not offered on Profile without a routine library", () => {
+    setup();
+    click("Profile");
+    expect(screen.queryByRole("button", { name: "Routines" })).not.toBeInTheDocument();
+  });
+
+  it("opens from Profile, says there are none yet and goes back", async () => {
+    setup({ routines: await routineLibrary() });
+    openRoutines();
+    expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Profile" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText(/No routines yet/)).toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("heading", { level: 1, name: "Profile" })).toBeInTheDocument();
+  });
+
+  it("shows loading until the library answers", () => {
+    setup({
+      routines: { ...createFakeRoutineLibrary("test"), subscribe: () => () => undefined },
+    });
+    openRoutines();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByText(/No routines yet/)).not.toBeInTheDocument();
+  });
+
+  it("says when the routines cannot be read", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setup({
+      routines: {
+        ...createFakeRoutineLibrary("test"),
+        subscribe(_onData, onError) {
+          onError(new Error("boom"));
+          return () => undefined;
+        },
+      },
+    });
+    openRoutines();
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your routines.");
+    consoleError.mockRestore();
+  });
+
+  it("lists routines newest first with their number of stages", async () => {
+    setup({
+      routines: await routineLibrary([
+        { name: "Older", createdAt: 1_000 },
+        { name: "Newer", createdAt: 2_000 },
+      ]),
+    });
+    openRoutines();
+    const [first, second] = items();
+    expect(first).toHaveTextContent("Newer");
+    expect(first).toHaveTextContent("No stages");
+    expect(second).toHaveTextContent("Older");
+  });
+
+  it("creates a routine with only a name, and needs one", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    expect(screen.getByRole("heading", { level: 1, name: "New routine" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Routine name" })).toHaveAttribute(
+      "maxLength",
+      "40",
+    );
+    expect(screen.getByRole("button", { name: "Save routine" })).toBeDisabled();
+    type("Routine name", "   ");
+    expect(screen.getByRole("button", { name: "Save routine" })).toBeDisabled();
+
+    type("Routine name", "  Leg day ");
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith({
+      name: "Leg day",
+      stages: [],
+      createdAt: expect.any(Number) as number,
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
+    expect(items()[0]).toHaveTextContent("Leg day");
+  });
+
+  it("saves a stage with an exercise's reps, rest and weight, and shows them when editing", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Push");
+    type("Notes", "Warm up first");
+    click("Add stage");
+    expect(stage("Stage 1")).toBeInTheDocument();
+    const row = exercise("Stage 1", 1);
+    type("Exercise name", "Bench press", row);
+    type("Reps", "8 - 10", row);
+    type("Rest", "90", row);
+    type("Weight", "62,5", row);
+    expect(within(row).getByRole("button", { name: "kg" })).toHaveAttribute("aria-pressed", "true");
+    click("Save routine");
+
+    expect(routines.save).toHaveBeenCalledWith({
+      name: "Push",
+      notes: "Warm up first",
+      createdAt: expect.any(Number) as number,
+      stages: [
+        {
+          exercises: [
+            {
+              name: "Bench press",
+              repsMin: 8,
+              repsMax: 10,
+              restSeconds: 90,
+              weight: 62.5,
+              weightUnit: "kg",
+            },
+          ],
+        },
+      ],
+    });
+    expect(items()[0]).toHaveTextContent("Push");
+    expect(items()[0]).toHaveTextContent("1 stage");
+
+    click("Edit Push");
+    const edited = exercise("Stage 1", 1);
+    expect(within(edited).getByRole("textbox", { name: "Reps" })).toHaveValue("8 - 10");
+    expect(within(edited).getByRole("textbox", { name: "Rest" })).toHaveValue("90''");
+    expect(within(edited).getByRole("textbox", { name: "Weight" })).toHaveValue("62.5");
+  });
+
+  it("names a stage, and stores a weight in pounds when chosen", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Pull");
+    click("Add stage");
+    type("Stage name", "Warm-up", stage("Stage 1"));
+    const row = exercise("Warm-up", 1);
+    type("Weight", "20", row);
+    fireEvent.click(within(row).getByRole("button", { name: "lb" }));
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stages: [{ name: "Warm-up", exercises: [{ weight: 20, weightUnit: "lb" }] }],
+      }),
+    );
+  });
+
+  it("keeps an exercise with a single field and drops empty exercises and stages", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Core");
+    click("Add stage");
+    type("Rest", "60", exercise("Stage 1", 1));
+    fireEvent.click(within(stage("Stage 1")).getByRole("button", { name: "Add exercise" }));
+    expect(exercise("Stage 1", 2)).toBeInTheDocument();
+    click("Add stage");
+    expect(stage("Stage 2")).toBeInTheDocument();
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith({
+      name: "Core",
+      createdAt: expect.any(Number) as number,
+      stages: [{ exercises: [{ restSeconds: 60 }] }],
+    });
+  });
+
+  it("removes stages and exercises", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Core");
+    click("Add stage");
+    type("Exercise name", "Plank", exercise("Stage 1", 1));
+    click("Add stage");
+    type("Exercise name", "Crunch", exercise("Stage 2", 1));
+    fireEvent.click(within(stage("Stage 1")).getByRole("button", { name: "Remove exercise 1" }));
+    click("Remove Stage 1");
+    expect(screen.queryByRole("group", { name: "Stage 2" })).not.toBeInTheDocument();
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith(
+      expect.objectContaining({ stages: [{ exercises: [{ name: "Crunch" }] }] }),
+    );
+  });
+
+  it("shows an error for reps it cannot read and saves nothing until fixed", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Arms");
+    click("Add stage");
+    const row = exercise("Stage 1", 1);
+    type("Reps", "diez", row);
+    expect(within(row).getByRole("textbox", { name: "Reps" })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(within(row).getByText("Use a number like 10 or a range like 8 - 10.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save routine" })).toBeDisabled();
+
+    type("Rest", "soon", row);
+    type("Weight", "heavy", row);
+    expect(within(row).getByText("Use seconds like 90 or minutes like 1:30.")).toBeVisible();
+    expect(within(row).getByText("Use a number like 62.5.")).toBeVisible();
+
+    type("Reps", "10", row);
+    type("Rest", "1:30", row);
+    type("Weight", "", row);
+    expect(within(row).queryByText(/^Use /)).not.toBeInTheDocument();
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith(
+      expect.objectContaining({ stages: [{ exercises: [{ repsMin: 10, restSeconds: 90 }] }] }),
+    );
+  });
+
+  it("edits a routine keeping its id and creation time", async () => {
+    const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
+    let id = "";
+    routines.subscribe(
+      ([stored]) => {
+        id = stored?.id ?? "";
+      },
+      () => undefined,
+    )();
+    setup({ routines });
+    openRoutines();
+    click("Edit Old");
+    expect(screen.getByRole("heading", { level: 1, name: "Edit routine" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Routine name" })).toHaveValue("Old");
+    type("Routine name", "New");
+    click("Save changes");
+    expect(routines.update).toHaveBeenCalledWith(
+      expect.objectContaining({ id, name: "New", createdAt: 1_000 }),
+    );
+    expect(routines.save).not.toHaveBeenCalled();
+    expect(items()).toHaveLength(1);
+    expect(items()[0]).toHaveTextContent("New");
+  });
+
+  it("changes nothing when editing is cancelled", async () => {
+    const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
+    setup({ routines });
+    openRoutines();
+    click("Edit Old");
+    type("Routine name", "Something else");
+    click("Cancel");
+    expect(routines.update).not.toHaveBeenCalled();
+    expect(items()[0]).toHaveTextContent("Old");
+  });
+
+  it("deletes a routine only after confirming", async () => {
+    const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
+    setup({ routines });
+    openRoutines();
+    click("Delete Old");
+    const dialog = screen.getByRole("alertdialog", { name: 'Delete "Old"?' });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(routines.remove).not.toHaveBeenCalled();
+    expect(items()).toHaveLength(1);
+
+    click("Delete Old");
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+    );
+    expect(routines.remove).toHaveBeenCalledOnce();
+    expect(screen.getByText(/No routines yet/)).toBeInTheDocument();
+  });
+
+  it("does not wait for the server, and reports a refused save", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const routines = await routineLibrary();
+    routines.save.mockImplementation(() => Promise.reject(refusal("permission-denied")));
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Leg day");
+    click("Save routine");
+    expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent("The server refused the change.");
+    expect(consoleError).toHaveBeenCalledWith("Saving a routine failed:", "permission-denied");
+    consoleError.mockRestore();
+  });
+
+  it("says a routine edited here was deleted on another device", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
+    routines.update.mockImplementation(() => Promise.reject(refusal("not-found")));
+    setup({ routines });
+    openRoutines();
+    click("Edit Old");
+    type("Routine name", "New");
+    click("Save changes");
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That routine no longer exists: it was deleted on another device.",
+    );
+    consoleError.mockRestore();
+  });
+
+  it("reports a refused deletion", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
+    routines.remove.mockImplementation(() => Promise.reject(new Error("boom")));
+    setup({ routines });
+    openRoutines();
+    click("Delete Old");
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+    );
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't delete that routine.");
+    expect(consoleError).toHaveBeenCalledWith("Deleting a routine failed:", "no code");
+    consoleError.mockRestore();
   });
 });

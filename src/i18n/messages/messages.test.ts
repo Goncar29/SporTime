@@ -27,3 +27,13 @@ it("Spanish is actually translated", () => {
   expect(MESSAGES.es.round(1, 8)).toBe("Ronda 1/8");
   expect(MESSAGES.es.phases.setRest).toBe("Descanso entre series");
 });
+
+it("Spanish names routines and their stages", () => {
+  expect(MESSAGES.es.routines).toBe("Rutinas");
+  expect(MESSAGES.es.newRoutine).toBe("Nueva rutina");
+  expect(MESSAGES.es.stageNumber(1)).toBe("Etapa 1");
+  expect(MESSAGES.es.stageCount(1)).toBe("1 etapa");
+  expect(MESSAGES.es.stageCount(3)).toBe("3 etapas");
+  expect(MESSAGES.en.stageCount(1)).toBe("1 stage");
+  expect(MESSAGES.en.stageCount(0)).toBe("No stages");
+});

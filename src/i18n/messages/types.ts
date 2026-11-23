@@ -128,4 +128,37 @@ export interface Messages {
   deleteAccountErrorChangeInAnotherTab: string;
   accountLoadFailed: string;
   tryAgain: string;
+  /** The Routines section of Profile, and its editor. */
+  routines: string;
+  newRoutine: string;
+  editRoutineTitle: string;
+  noRoutines: string;
+  loadRoutinesFailed: string;
+  routineNotFound: string;
+  deleteRoutineFailed: string;
+  stageCount(total: number): string;
+  editRoutine(name: string): string;
+  deleteRoutine(name: string): string;
+  confirmDeleteRoutine(name: string): string;
+  routineName: string;
+  routineNotes: string;
+  saveRoutine: string;
+  /** How a stage without a name is shown, by its position. */
+  stageNumber(position: number): string;
+  stageName: string;
+  stageNotes: string;
+  addStage: string;
+  removeStage(stage: string): string;
+  exerciseNumber(position: number): string;
+  exerciseName: string;
+  reps: string;
+  restTime: string;
+  weight: string;
+  weightUnit: string;
+  exerciseNotes: string;
+  addExercise: string;
+  removeExercise(position: number): string;
+  invalidReps: string;
+  invalidRest: string;
+  invalidWeight: string;
 }

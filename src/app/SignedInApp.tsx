@@ -61,6 +61,7 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
       otherTabs={otherTabs}
       workouts={stores.workouts}
       history={stores.history}
+      routines={stores.routines}
       deleteAccount={deleteAccount}
       deletionConfirmedByRedirect={stores.deletionConfirmedByRedirect}
     />

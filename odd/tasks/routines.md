@@ -17,7 +17,7 @@ Branch: feat/routines, from main. Delivery strategy: work-unit commits on the br
 - [x] T2 (S5) Rules for `users/{uid}/routines`, including a maximum-size routine within Firestore's rule evaluation limits; rules tests. Route: inline. Risk: item 2 (security rules). Evidence: RED 9 failing, then rules 65 of 65 on the emulator (Java 21), largest routine accepted. Commit: feat(rules) routines.
 - [x] T3 (S2, S5) Firestore routine library with outbox + fake. Route: gentle-ai-worker (context backstop). Risk: item 1 (stored data). Evidence: RED (missing adapter, then missing notes deletion), routines 44 of 44, typecheck 0. Pending: a rules test that an update deleting `notes` (deleteField) is accepted, to run with T6 on the emulator. Commit: feat(routines) library.
 - [x] T4 (S2, S6) Account deletion and sign-out include routines. Route: gentle-ai-worker (context backstop). Risk: item 1. Evidence: RED (routines left after erase), then account + SignedInApp 123 of 123, full suite 595 of 595, typecheck 0. Commit: feat(account) routines.
-- [ ] T5 (S1-S4) Profile section UI: list, create, edit, delete; i18n en/es. Route: inline.
+- [x] T5 (S1-S4) Profile section UI: list, create, edit, delete; i18n en/es. Route: gentle-ai-worker (context backstop) + inline fix (routine-specific not-found message, SignedInApp passes routines). Evidence: RED 16, then App + messages 119 of 119; fix RED 1 then full suite 613 of 613, typecheck 0. Lint: worker run exit 0; parent re-run hit out of memory (errno 1455) while the verifier emulator ran. Commit: feat(routines) profile UI.
 - [ ] T6 (S2, S5) Emulator end-to-end: create, edit, delete reach the server. Route: inline.
 - [ ] T7 (S7) Phase 2: contacts and email directory. Not started.
 - [ ] T8 (S7) Phase 3: share. Not started.
