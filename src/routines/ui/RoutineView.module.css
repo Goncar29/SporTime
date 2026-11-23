@@ -131,8 +131,29 @@
   font-size: 0.875rem;
 }
 
+/* A button-like link on its own line, below the notes when there are any. */
+.link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
 .back:focus-visible,
-.action:focus-visible {
+.action:focus-visible,
+.link:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }

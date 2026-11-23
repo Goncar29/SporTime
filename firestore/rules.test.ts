@@ -394,6 +394,8 @@ describe("routine shape", () => {
   const withLine = (line: string) => withStage({ exercises: line });
   const L = ROUTINE_LIMITS;
 
+  const longestLink = `https://x.com/${"e".repeat(L.linkLength - 14)}`;
+
   /** Every stage, exercise and text at its limit: the most a rule ever has to evaluate. */
   const largest = toStoredRoutine({
     name: "a".repeat(L.nameLength),
@@ -410,6 +412,7 @@ describe("routine shape", () => {
         weight: L.weight.max - 0.5,
         weightUnit: "lb" as const,
         notes: "d".repeat(L.exerciseNotesLength),
+        link: longestLink,
       })),
     })),
   });
@@ -421,12 +424,49 @@ describe("routine shape", () => {
   });
 
   it("accepts the largest routine the app can write", async () => {
+    expect(longestLink).toHaveLength(L.linkLength);
+    expect(largest.stages[0]!.exercises).toContain(`\t${longestLink}\n`);
     await assertSucceeds(save(largest));
+  });
+
+  it("accepts an https link on an exercise, alone or with other fields", async () => {
+    for (const line of [
+      "\t\t\t\t\thttps://youtu.be/abc",
+      "Remo\t10\t90\t60kg\tlento\thttps://www.youtube.com/watch?v=abc&t=1s",
+      "\t\t\t\t\thttps://www.youtube.com/@canal",
+      `\t\t\t\t\t${longestLink}`,
+    ]) {
+      await assertSucceeds(save(withLine(line)));
+    }
+  });
+
+  it("refuses a link that is not https, holds credentials or spaces, or is too long", async () => {
+    for (const link of [
+      "http://x.com",
+      "javascript:alert(1)",
+      "data:text/html,<b>x</b>",
+      "HTTPS://X.COM",
+      "https://user:pw@x.com",
+      "https://user@x.com/a",
+      "https://@x.com",
+      "https:// x.com",
+      "https://x.com/a b",
+      "https://x.com/a\u00a0b",
+      "https://x.com/a\u0085b",
+      "https://",
+      "https:///x",
+      // The host part, and the rest after it, each within the 292 characters after https://.
+      // A link of 300 to 592 characters split across both still passes: the app drops it on read.
+      `https://${"e".repeat(L.linkLength - 7)}`,
+      `https://x.com/${"e".repeat(L.linkLength - 8)}`,
+    ]) {
+      await assertFails(save(withLine(`\t\t\t\t\t${link}`)));
+    }
   });
 
   it("limits the number of stages and of exercises in each", async () => {
     await assertFails(save({ ...largest, stages: [...largest.stages, largest.stages[0]] }));
-    const line = "x\t\t\t\t";
+    const line = "x\t\t\t\t\t";
     const lines = (count: number) => Array.from({ length: count }, () => line).join("\n");
     await assertSucceeds(save(withLine(lines(L.exercisesPerStage))));
     await assertFails(save(withLine(lines(L.exercisesPerStage + 1))));
@@ -459,12 +499,12 @@ describe("routine shape", () => {
 
   it("accepts each exercise field on its own", async () => {
     for (const line of [
-      "Remo\t\t\t\t",
-      "\t10\t\t\t",
-      "\t8-10\t\t\t",
-      "\t\t90\t\t",
-      "\t\t\t60kg\t",
-      "\t\t\t\tlento",
+      "Remo\t\t\t\t\t",
+      "\t10\t\t\t\t",
+      "\t8-10\t\t\t\t",
+      "\t\t90\t\t\t",
+      "\t\t\t60kg\t\t",
+      "\t\t\t\tlento\t",
     ]) {
       await assertSucceeds(save(withLine(line)));
     }
@@ -472,27 +512,28 @@ describe("routine shape", () => {
 
   it("rejects exercise lines that are malformed", async () => {
     for (const line of [
-      "Remo\t\t\t",
-      "Remo\t\t\t\t\t",
-      "\t0\t\t\t",
-      "\tdiez\t\t\t",
-      "\t8 - 10\t\t\t",
-      "\t\t1:30\t\t",
-      "\t\t\t60\t",
-      "\t\t\t60st\t",
-      "\t\t\t62.55kg\t",
-      `${"c".repeat(L.exerciseNameLength + 1)}\t\t\t\t`,
-      `\t\t\t\t${"d".repeat(L.exerciseNotesLength + 1)}`,
-      "a\u0007b\t\t\t\t",
+      // Lines written before links had five fields; nothing with them was ever published.
+      "Remo\t\t\t\t",
+      "Remo\t\t\t\t\t\t",
+      "\t0\t\t\t\t",
+      "\tdiez\t\t\t\t",
+      "\t8 - 10\t\t\t\t",
+      "\t\t1:30\t\t\t",
+      "\t\t\t60\t\t",
+      "\t\t\t60st\t\t",
+      "\t\t\t62.55kg\t\t",
+      `${"c".repeat(L.exerciseNameLength + 1)}\t\t\t\t\t`,
+      `\t\t\t\t${"d".repeat(L.exerciseNotesLength + 1)}\t`,
+      "a\u0007b\t\t\t\t\t",
     ]) {
       await assertFails(save(withLine(line)));
     }
   });
 
   it("mirrors the number limits in ROUTINE_LIMITS", async () => {
-    const reps = (value: number) => withLine(`\t${value}\t\t\t`);
-    const rest = (value: number) => withLine(`\t\t${value}\t\t`);
-    const weight = (value: number) => withLine(`\t\t\t${value}kg\t`);
+    const reps = (value: number) => withLine(`\t${value}\t\t\t\t`);
+    const rest = (value: number) => withLine(`\t\t${value}\t\t\t`);
+    const weight = (value: number) => withLine(`\t\t\t${value}kg\t\t`);
     await assertSucceeds(save(reps(L.reps.min)));
     await assertSucceeds(save(reps(L.reps.max)));
     await assertFails(save(reps(L.reps.min - 1)));
@@ -510,7 +551,7 @@ describe("routine shape", () => {
     for (const data of [
       withStage({ exercises: 5 }),
       withStage({ exercises: null }),
-      withStage({ exercises: ["x\t\t\t\t"] }),
+      withStage({ exercises: ["x\t\t\t\t\t"] }),
       withStage({ name: 5, exercises: "" }),
       withStage({ notes: ["a"], exercises: "" }),
       { name: "R", createdAt: 1, stages: ["x"] },
@@ -525,18 +566,20 @@ describe("routine shape", () => {
 
   it("cannot sneak a field or line past the exercise pattern", async () => {
     for (const line of [
-      "a\t\t\t\t\n",
-      "\na\t\t\t\t",
-      "a\t\t\t\t\n\nb\t\t\t\t",
-      "a\t\t\t\t\r\nb\t\t\t\t",
-      "a\t\t\t\t\nb\t\t\t\t\tc",
-      "\t\t3601\t\t",
-      "\t\t0900\t\t",
-      "\t\t\t1000.5kg\t",
-      "\t\t\t1e3kg\t",
-      "\t\t\t62.5kgkg\t",
-      "\t010\t\t\t",
-      "a\u0085\t\t\t\t",
+      "a\t\t\t\t\t\n",
+      "\na\t\t\t\t\t",
+      "a\t\t\t\t\t\n\nb\t\t\t\t\t",
+      "a\t\t\t\t\t\r\nb\t\t\t\t\t",
+      "a\t\t\t\t\t\nb\t\t\t\t\t\tc",
+      "a\t\t\t\t\thttps://x.com\nb\t\t\t\t\thttps://u@x.com",
+      "a\t\t\t\t\thttps://x.com\r\nb\t\t\t\t\t",
+      "\t\t3601\t\t\t",
+      "\t\t0900\t\t\t",
+      "\t\t\t1000.5kg\t\t",
+      "\t\t\t1e3kg\t\t",
+      "\t\t\t62.5kgkg\t\t",
+      "\t010\t\t\t\t",
+      "a\u0085\t\t\t\t\t",
     ]) {
       await assertFails(save(withLine(line)));
     }

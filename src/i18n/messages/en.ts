@@ -209,4 +209,8 @@ export const en: Messages = {
   invalidReps: "Use a number like 10 or a range like 8 - 10.",
   invalidRest: "Use seconds like 90 or minutes like 1:30.",
   invalidWeight: "Use a number like 62.5.",
+  exerciseLink: "Link",
+  invalidLink: "Use a full link that starts with https://.",
+  openLink: (host) => `Open ${host}`,
+  openExerciseLink: (host, exercise) => `Open ${host} (${exercise})`,
 };

@@ -216,4 +216,8 @@ export const es: Messages = {
   invalidReps: "Escribe un número como 10 o un rango como 8 - 10.",
   invalidRest: "Escribe segundos como 90 o minutos como 1:30.",
   invalidWeight: "Escribe un número como 62,5.",
+  exerciseLink: "Enlace",
+  invalidLink: "Usa un enlace completo que empiece con https://.",
+  openLink: (host) => `Abrir ${host}`,
+  openExerciseLink: (host, exercise) => `Abrir ${host} (${exercise})`,
 };

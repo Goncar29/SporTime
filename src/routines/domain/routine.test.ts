@@ -3,6 +3,8 @@ import {
   ROUTINE_LIMITS,
   formatReps,
   formatRest,
+  linkHost,
+  normalizeLink,
   normalizeRoutineName,
   parseRepsInput,
   parseRestInput,
@@ -105,6 +107,57 @@ describe("parseWeightInput", () => {
   });
 });
 
+describe("normalizeLink", () => {
+  it("is undefined when empty", () => {
+    expect(normalizeLink("")).toBeUndefined();
+    expect(normalizeLink("   ")).toBeUndefined();
+  });
+
+  it("keeps an https link trimmed, as typed", () => {
+    expect(normalizeLink("  https://www.youtube.com/watch?v=abc  ")).toBe(
+      "https://www.youtube.com/watch?v=abc",
+    );
+    expect(normalizeLink("https://youtu.be/abc")).toBe("https://youtu.be/abc");
+    expect(normalizeLink("https://www.youtube.com/@canal")).toBe("https://www.youtube.com/@canal");
+  });
+
+  it("accepts up to 300 characters", () => {
+    const at = (length: number) => `https://x.com/${"a".repeat(length - 14)}`;
+    expect(normalizeLink(at(ROUTINE_LIMITS.linkLength))).toBe(at(ROUTINE_LIMITS.linkLength));
+    expect(normalizeLink(at(ROUTINE_LIMITS.linkLength + 1))).toBeNull();
+  });
+
+  it("rejects every other scheme, credentials, spaces and broken links", () => {
+    for (const text of [
+      "http://x.com",
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "https://user:pw@x.com",
+      "https://user@x.com/a",
+      "https://@x.com",
+      "https:// x.com",
+      "https://x.com/a b",
+      "https://x.com/a\tb",
+      "https://x.com/\u200bb",
+      // Only the lowercase scheme, as stored and as the rules check.
+      "HTTPS://X.COM",
+      "https:x.com",
+      "https://",
+      "https:///x",
+      "https://x.com:99999",
+      "youtube.com/watch",
+      " https://x .com",
+    ]) {
+      expect(normalizeLink(text), text).toBeNull();
+    }
+  });
+
+  it("shows the host without www.", () => {
+    expect(linkHost("https://www.youtube.com/watch?v=abc")).toBe("youtube.com");
+    expect(linkHost("https://youtu.be/abc")).toBe("youtu.be");
+  });
+});
+
 describe("sanitizeExercise", () => {
   it("discards an exercise with no field filled", () => {
     expect(sanitizeExercise({})).toBeNull();
@@ -115,6 +168,15 @@ describe("sanitizeExercise", () => {
     expect(sanitizeExercise({ name: "Sentadilla" })).toEqual({ name: "Sentadilla" });
     expect(sanitizeExercise({ repsMin: 8, repsMax: 10 })).toEqual({ repsMin: 8, repsMax: 10 });
     expect(sanitizeExercise({ restSeconds: 90 })).toEqual({ restSeconds: 90 });
+    expect(sanitizeExercise({ link: " https://youtu.be/abc " })).toEqual({
+      link: "https://youtu.be/abc",
+    });
+  });
+
+  it("drops a link that is not a safe https link", () => {
+    expect(sanitizeExercise({ name: "Remo", link: "http://x.com" })).toEqual({ name: "Remo" });
+    expect(sanitizeExercise({ link: "javascript:alert(1)" })).toBeNull();
+    expect(sanitizeExercise({ link: 5 })).toBeNull();
   });
 
   it("gives a weight kg unless it says lb, and drops a unit without a weight", () => {
@@ -174,6 +236,7 @@ const sample: RoutineDraft = {
           weight: 62.5,
           weightUnit: "kg",
           notes: "Pausa abajo",
+          link: "https://youtu.be/abc",
         },
         { repsMin: 12 },
       ],
@@ -194,9 +257,9 @@ describe("stored routines", () => {
   it("store each stage's exercises as one line each, which the rules can check", () => {
     const stored = toStoredRoutine(sample);
     expect(stored.stages[0]!.exercises).toBe(
-      "Press banca\t8-10\t90\t62.5kg\tPausa abajo\n\t12\t\t\t",
+      "Press banca\t8-10\t90\t62.5kg\tPausa abajo\thttps://youtu.be/abc\n\t12\t\t\t\t",
     );
-    expect(stored.stages[1]).toEqual({ exercises: "\t\t\t20lb\t" });
+    expect(stored.stages[1]).toEqual({ exercises: "\t\t\t20lb\t\t" });
   });
 
   it("leave empty optional fields out instead of storing them empty", () => {
@@ -210,7 +273,7 @@ describe("stored routines", () => {
       createdAt: 1,
       stages: [{ exercises: [{}, { name: "Dominadas" }] }, { name: " ", exercises: [{}] }],
     });
-    expect(stored.stages).toEqual([{ exercises: "Dominadas\t\t\t\t" }]);
+    expect(stored.stages).toEqual([{ exercises: "Dominadas\t\t\t\t\t" }]);
   });
 
   it("keep at most the stage and exercise limits", () => {
@@ -228,6 +291,23 @@ describe("stored routines", () => {
     expect(parseRoutine("r", { name: " ", createdAt: 1, stages: [] })).toBeNull();
     expect(parseRoutine("r", { name: "Ok", createdAt: "ayer", stages: [] })).toBeNull();
     expect(parseRoutine("r", null)).toBeNull();
+  });
+
+  it("still read lines written before links, with five fields", () => {
+    expect(
+      parseRoutine("r", { name: "Ok", createdAt: 1, stages: [{ exercises: "Remo\t10\t\t\t" }] })
+        ?.stages,
+    ).toEqual([{ exercises: [{ name: "Remo", repsMin: 10 }] }]);
+  });
+
+  it("drop a stored link that is not a safe https link", () => {
+    expect(
+      parseRoutine("r", {
+        name: "Ok",
+        createdAt: 1,
+        stages: [{ exercises: "Remo\t\t\t\t\tjavascript:alert(1)" }],
+      })?.stages,
+    ).toEqual([{ exercises: [{ name: "Remo" }] }]);
   });
 
   it("read malformed stages as no stages rather than failing", () => {

@@ -1,7 +1,15 @@
 import { useId, useState } from "react";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
-import { formatReps, formatRest, type Exercise, type Routine, type Stage } from "../domain/routine";
+import {
+  formatReps,
+  formatRest,
+  linkHost,
+  normalizeLink,
+  type Exercise,
+  type Routine,
+  type Stage,
+} from "../domain/routine";
 import styles from "./RoutineView.module.css";
 
 interface RoutineViewProps {
@@ -146,20 +154,43 @@ interface ExerciseRowsProps {
   columns: readonly { id: Column; value: (exercise: Exercise) => string }[];
 }
 
-/** An exercise's row, and its notes on a full-width row right below when it has any. */
+/**
+ * An exercise's row, and its notes and link on a full-width row right below when it has any,
+ * so the table keeps its few narrow columns.
+ */
 function ExerciseRows({ exercise, columns }: ExerciseRowsProps) {
+  const { t } = useI18n();
+  // Checked again here: only a safe https link ever becomes something to open.
+  const link = exercise.link === undefined ? undefined : normalizeLink(exercise.link);
+  const host = typeof link === "string" ? linkHost(link) : undefined;
+  const hasDetails = exercise.notes !== undefined || host !== undefined;
   return (
     <>
-      <tr className={exercise.notes === undefined ? undefined : styles.withNotes}>
+      <tr className={hasDetails ? styles.withNotes : undefined}>
         <td className={styles.name}>{exercise.name ?? EMPTY}</td>
         {columns.map((column) => (
           <td key={column.id}>{column.value(exercise) || EMPTY}</td>
         ))}
       </tr>
-      {exercise.notes !== undefined && (
+      {hasDetails && (
         <tr>
           <td className={styles.exerciseNotes} colSpan={columns.length + 1}>
             {exercise.notes}
+            {typeof link === "string" && host !== undefined && (
+              <a
+                className={styles.link}
+                href={link}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={
+                  exercise.name === undefined
+                    ? t.openLink(host)
+                    : t.openExerciseLink(host, exercise.name)
+                }
+              >
+                {t.openLink(host)} <span aria-hidden="true">↗</span>
+              </a>
+            )}
           </td>
         </tr>
       )}

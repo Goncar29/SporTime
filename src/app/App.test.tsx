@@ -1848,6 +1848,85 @@ describe("routines", () => {
     );
   });
 
+  it("saves an exercise's link, and the view opens it in a new tab with a button", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Push");
+    click("Add stage");
+    const row = exercise("Stage 1", 1);
+    const input = within(row).getByRole("textbox", { name: "Link" });
+    expect(input).toHaveAttribute("type", "url");
+    expect(input).toHaveAttribute("maxLength", "300");
+    type("Exercise name", "Bench press", row);
+    type("Link", " https://www.youtube.com/watch?v=abc ", row);
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stages: [
+          { exercises: [{ name: "Bench press", link: "https://www.youtube.com/watch?v=abc" }] },
+        ],
+      }),
+    );
+
+    click("Open Push");
+    const link = screen.getByRole("link", { name: "Open youtube.com (Bench press)" });
+    expect(link).toHaveTextContent("Open youtube.com ↗");
+    expect(link).toHaveAttribute("href", "https://www.youtube.com/watch?v=abc");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(within(screen.getByRole("table", { name: "Stage 1" })).getByRole("link")).toBe(link);
+
+    click("Edit Push");
+    expect(within(exercise("Stage 1", 1)).getByRole("textbox", { name: "Link" })).toHaveValue(
+      "https://www.youtube.com/watch?v=abc",
+    );
+  });
+
+  it("shows an error for a link that is not https and saves nothing until fixed", async () => {
+    const routines = await routineLibrary();
+    setup({ routines });
+    openRoutines();
+    click("New routine");
+    type("Routine name", "Arms");
+    click("Add stage");
+    const row = exercise("Stage 1", 1);
+    for (const link of ["http://x.com", "javascript:alert(1)", "youtube.com/watch"]) {
+      type("Link", link, row);
+      expect(within(row).getByRole("textbox", { name: "Link" })).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      expect(within(row).getByText("Use a full link that starts with https://.")).toBeVisible();
+      expect(screen.getByRole("button", { name: "Save routine" })).toBeDisabled();
+    }
+    click("Save routine");
+    expect(routines.save).not.toHaveBeenCalled();
+
+    type("Link", "https://youtu.be/abc", row);
+    expect(within(row).queryByText(/^Use /)).not.toBeInTheDocument();
+    click("Save routine");
+    expect(routines.save).toHaveBeenCalledWith(
+      expect.objectContaining({ stages: [{ exercises: [{ link: "https://youtu.be/abc" }] }] }),
+    );
+  });
+
+  it("never shows a stored link that is not a safe https link", async () => {
+    const routines = await routineLibrary([
+      {
+        name: "Old",
+        createdAt: 1_000,
+        stages: [{ exercises: [{ name: "Row", link: "javascript:alert(1)" }] }],
+      },
+    ]);
+    setup({ routines });
+    openRoutines();
+    click("Open Old");
+    expect(screen.getByRole("table", { name: "Stage 1" })).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("edits a routine keeping its id and creation time", async () => {
     const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
     let id = "";

@@ -9,6 +9,7 @@ export const ROUTINE_LIMITS = {
   exercisesPerStage: 15,
   exerciseNameLength: 40,
   exerciseNotesLength: 120,
+  linkLength: 300,
   reps: { min: 1, max: 999 },
   restSeconds: { min: 0, max: 3_600 },
   weight: { min: 0, max: 1_000 },
@@ -28,6 +29,8 @@ export interface Exercise {
   /** Present exactly when `weight` is. */
   weightUnit?: WeightUnit;
   notes?: string;
+  /** An https link, checked by `normalizeLink`, opened from the routine's view. */
+  link?: string;
 }
 
 export interface Stage {
@@ -51,8 +54,9 @@ export interface Routine extends RoutineDraft {
 /**
  * A stage as Firestore stores it. Rules cannot loop over a list, so its exercises are one
  * string, an exercise per line and its fields separated by tabs, which one pattern can check:
- * `name \t reps \t rest \t weight \t notes`, where reps is `8` or `8-10`, rest is seconds and
- * weight is like `62.5kg`. Text fields never hold a control character, so never a tab or line.
+ * `name \t reps \t rest \t weight \t notes \t link`, where reps is `8` or `8-10`, rest is seconds,
+ * weight is like `62.5kg` and link is empty or an https link. Text fields never hold a control
+ * character, so never a tab or line. Lines written before links, with five fields, still read.
  */
 export interface StoredStage {
   name?: string;
@@ -167,6 +171,35 @@ export function parseWeightInput(text: string): number | null | undefined {
   return isWeight(weight) ? weight : null;
 }
 
+/**
+ * The link part after `https://`: a host without `@` (so no user or password), then optionally
+ * a path, query or fragment. No space, separator or invisible character anywhere. Only the
+ * lowercase scheme is accepted, as typed, so what is stored, checked by the rules and opened
+ * is the same text.
+ */
+const SAFE_LINK = /^https:\/\/[^@/?#\\\p{C}\p{Z}]+(?:[/?#\\][^\p{C}\p{Z}]*)?$/u;
+
+/** Reads a typed link: undefined when empty, null when it is not a safe https link. */
+export function normalizeLink(raw: string): string | null | undefined {
+  const text = wellFormed(raw).trim();
+  if (text === "") return undefined;
+  if (text.length > ROUTINE_LIMITS.linkLength || !SAFE_LINK.test(text)) return null;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  const safe =
+    url.protocol === "https:" && url.username === "" && url.password === "" && url.hostname !== "";
+  return safe ? text : null;
+}
+
+/** The site a link opens, like youtube.com, to name its button. */
+export function linkHost(link: string): string {
+  return new URL(link).hostname.replace(/^www\./, "");
+}
+
 /** Keeps only valid fields of untrusted data; null when none is left. */
 export function sanitizeExercise(raw: unknown): Exercise | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -189,13 +222,23 @@ export function sanitizeExercise(raw: unknown): Exercise | null {
   }
   const notes = singleLine(source.notes, ROUTINE_LIMITS.exerciseNotesLength);
   if (notes !== undefined) exercise.notes = notes;
+  const link = typeof source.link === "string" ? normalizeLink(source.link) : undefined;
+  if (typeof link === "string") exercise.link = link;
   return Object.keys(exercise).length > 0 ? exercise : null;
 }
 
 function exerciseFromLine(line: string): Exercise | null {
   const fields = line.split(FIELD_SEPARATOR);
-  if (fields.length !== 5) return null;
-  const [name, reps, rest, weight, notes] = fields as [string, string, string, string, string];
+  // Five fields: a line written before links existed.
+  if (fields.length !== 5 && fields.length !== 6) return null;
+  const [name, reps, rest, weight, notes, link] = fields as [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string?,
+  ];
   const parsedReps = /^\d+(-\d+)?$/.test(reps) ? parseRepsInput(reps) : {};
   const parsedRest = /^\d+$/.test(rest) ? parseRestInput(rest) : undefined;
   const parsedWeight = /^(\d+(?:\.\d)?)(kg|lb)$/.exec(weight);
@@ -206,6 +249,7 @@ function exerciseFromLine(line: string): Exercise | null {
     weight: parsedWeight ? Number(parsedWeight[1]) : undefined,
     weightUnit: parsedWeight?.[2],
     notes,
+    link,
   });
 }
 
@@ -224,6 +268,7 @@ function exerciseToLine(exercise: Exercise): string {
     exercise.restSeconds === undefined ? "" : String(exercise.restSeconds),
     weight,
     exercise.notes ?? "",
+    exercise.link ?? "",
   ].join(FIELD_SEPARATOR);
 }
 

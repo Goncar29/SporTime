@@ -166,4 +166,11 @@ export interface Messages {
   invalidReps: string;
   invalidRest: string;
   invalidWeight: string;
+  /** An exercise's optional https link. */
+  exerciseLink: string;
+  invalidLink: string;
+  /** The visible text of the button that opens a link, by its site. */
+  openLink(host: string): string;
+  /** Its accessible name when the exercise has a name. */
+  openExerciseLink(host: string, exercise: string): string;
 }

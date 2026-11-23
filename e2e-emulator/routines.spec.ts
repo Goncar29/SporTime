@@ -43,7 +43,7 @@ async function createRoutine(page: Page, name: string) {
 const listed = (page: Page, name: string) =>
   page.getByRole("list", { name: "Routines" }).getByRole("button", { name: `Edit ${name}` });
 
-const BENCH_PRESS = "Press banca\t8-10\t90\t62.5kg\t";
+const BENCH_PRESS = "Press banca\t8-10\t90\t62.5kg\t\t";
 
 test("a routine created, edited and deleted reaches the server", async ({ page }) => {
   const uid = await signIn(page, "alice");

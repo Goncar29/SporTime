@@ -5,6 +5,7 @@ import {
   WEIGHT_UNITS,
   formatReps,
   formatRest,
+  normalizeLink,
   normalizeRoutineName,
   parseRepsInput,
   parseRestInput,
@@ -26,6 +27,7 @@ interface ExerciseForm {
   weight: string;
   unit: WeightUnit;
   notes: string;
+  link: string;
 }
 
 interface StageForm {
@@ -51,12 +53,14 @@ const exerciseForm = (key: number, exercise?: Exercise): ExerciseForm => ({
   weight: exercise?.weight === undefined ? "" : String(exercise.weight),
   unit: exercise?.weightUnit ?? "kg",
   notes: exercise?.notes ?? "",
+  link: exercise?.link ?? "",
 });
 
 const fieldErrors = (exercise: ExerciseForm) => ({
   reps: parseRepsInput(exercise.reps) === null,
   rest: parseRestInput(exercise.rest) === null,
   weight: parseWeightInput(exercise.weight) === null,
+  link: normalizeLink(exercise.link) === null,
 });
 
 /** The typed exercise in the routine's shape; only called once every field reads. */
@@ -69,6 +73,7 @@ function toExercise(form: ExerciseForm): Exercise {
     weight,
     weightUnit: weight === undefined ? undefined : form.unit,
     notes: form.notes,
+    link: normalizeLink(form.link) ?? undefined,
   };
 }
 
@@ -404,6 +409,28 @@ function ExerciseRow({ position, exercise, onChange, onRemove }: ExerciseRowProp
           }}
         />
       </label>
+      <label className={styles.field}>
+        <span className={styles.label}>{t.exerciseLink}</span>
+        <input
+          className={styles.input}
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          placeholder="https://…"
+          maxLength={ROUTINE_LIMITS.linkLength}
+          value={exercise.link}
+          aria-invalid={errors.link}
+          aria-describedby={errors.link ? `${id}-link` : undefined}
+          onChange={(event) => {
+            onChange({ link: event.target.value });
+          }}
+        />
+      </label>
+      {errors.link && (
+        <p id={`${id}-link`} className={styles.fieldError}>
+          {t.invalidLink}
+        </p>
+      )}
     </fieldset>
   );
 }

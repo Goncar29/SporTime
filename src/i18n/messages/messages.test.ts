@@ -46,3 +46,10 @@ it("Spanish names the routine view and its table columns", () => {
   expect(MESSAGES.es.restTime).toBe("Pausa");
   expect(MESSAGES.es.weight).toBe("Peso");
 });
+
+it("Spanish names an exercise's link and its button", () => {
+  expect(MESSAGES.es.exerciseLink).toBe("Enlace");
+  expect(MESSAGES.es.openLink("youtube.com")).toBe("Abrir youtube.com");
+  expect(MESSAGES.es.openExerciseLink("youtube.com", "Remo")).toBe("Abrir youtube.com (Remo)");
+  expect(MESSAGES.en.openLink("youtube.com")).toBe("Open youtube.com");
+});
