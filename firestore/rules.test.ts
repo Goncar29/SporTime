@@ -5,7 +5,17 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  collectionGroup,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { ROUTINE_LIMITS, toStoredRoutine, type RoutineDraft } from "../src/routines/domain/routine";
 import { MAX_TIMESTAMP_MS } from "../src/shared/domain/timestamp";
@@ -494,6 +504,82 @@ describe("routine shape", () => {
     await assertSucceeds(save(weight(L.weight.max)));
     await assertSucceeds(save(weight(62.5)));
     await assertFails(save(weight(L.weight.max + 0.5)));
+  });
+
+  it("refuses every wrong type at each level", async () => {
+    for (const data of [
+      withStage({ exercises: 5 }),
+      withStage({ exercises: null }),
+      withStage({ exercises: ["x\t\t\t\t"] }),
+      withStage({ name: 5, exercises: "" }),
+      withStage({ notes: ["a"], exercises: "" }),
+      { name: "R", createdAt: 1, stages: ["x"] },
+      { name: "R", createdAt: 1, stages: [null] },
+      { name: "R", createdAt: 1, stages: [...Array(9).fill({ exercises: "" }), { exercises: 5 }] },
+      { ...routine, notes: 5 },
+      { ...routine, createdAt: 1.5 },
+    ]) {
+      await assertFails(save(data));
+    }
+  });
+
+  it("cannot sneak a field or line past the exercise pattern", async () => {
+    for (const line of [
+      "a\t\t\t\t\n",
+      "\na\t\t\t\t",
+      "a\t\t\t\t\n\nb\t\t\t\t",
+      "a\t\t\t\t\r\nb\t\t\t\t",
+      "a\t\t\t\t\nb\t\t\t\t\tc",
+      "\t\t3601\t\t",
+      "\t\t0900\t\t",
+      "\t\t\t1000.5kg\t",
+      "\t\t\t1e3kg\t",
+      "\t\t\t62.5kgkg\t",
+      "\t010\t\t\t",
+      "a\u0085\t\t\t\t",
+    ]) {
+      await assertFails(save(withLine(line)));
+    }
+  });
+
+  it("accepts multibyte text the app writes, and edits of the largest routine", async () => {
+    const e = "\u{1F4AA}";
+    await assertSucceeds(
+      save(
+        toStoredRoutine({
+          name: e.repeat(20),
+          notes: e.repeat(250),
+          createdAt: 1,
+          stages: [
+            {
+              name: e.repeat(20),
+              notes: e.repeat(250),
+              exercises: [{ name: e.repeat(20), notes: e.repeat(60), weight: 0 }],
+            },
+          ],
+        }),
+      ),
+    );
+    const path = routinePath("alice");
+    await seed(path, largest);
+    await assertSucceeds(
+      setDoc(doc(asUser("alice"), path), { ...largest, name: "b".repeat(L.nameLength) }),
+    );
+  });
+
+  it("denies collection-group reads of routines", async () => {
+    await assertFails(getDocs(collectionGroup(asUser("mallory"), "routines")));
+  });
+
+  it("lets an edit remove the routine's notes, as the app sends it", async () => {
+    await seed(routinePath("alice"), routine);
+    const { notes: _removed, ...withoutNotes } = routine;
+    await assertSucceeds(
+      updateDoc(doc(asUser("alice"), routinePath("alice")), {
+        ...withoutNotes,
+        notes: deleteField(),
+      }),
+    );
   });
 
   it("lets the owner edit a routine while it keeps its creation time", async () => {
