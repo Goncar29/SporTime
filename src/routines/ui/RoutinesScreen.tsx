@@ -10,16 +10,20 @@ interface RoutinesScreenProps {
   errors: readonly string[];
   onBack: () => void;
   onNew: () => void;
+  onOpen: (routine: Routine) => void;
   onEdit: (routine: Routine) => void;
   onRemove: (routine: Routine) => void;
 }
 
-/** The Routines section of Profile: every routine, to edit or delete, and a way to add one. */
+/**
+ * The Routines section of Profile: every routine, to open, edit or delete, and a way to add one.
+ */
 export function RoutinesScreen({
   routines,
   errors,
   onBack,
   onNew,
+  onOpen,
   onEdit,
   onRemove,
 }: RoutinesScreenProps) {
@@ -51,10 +55,17 @@ export function RoutinesScreen({
         <ul className={styles.list} aria-label={t.routines}>
           {routines.map((routine) => (
             <li key={routine.id} className={styles.item}>
-              <div className={styles.summary}>
+              <button
+                type="button"
+                className={styles.summary}
+                aria-label={t.openRoutine(routine.name)}
+                onClick={() => {
+                  onOpen(routine);
+                }}
+              >
                 <span className={styles.name}>{routine.name}</span>
                 <span className={styles.detail}>{t.stageCount(routine.stages.length)}</span>
-              </div>
+              </button>
               <button
                 type="button"
                 className={styles.iconButton}

@@ -11,6 +11,7 @@ import { useI18n } from "../i18n/ui/I18nProvider";
 import type { RoutineLibrary } from "../routines/application/ports";
 import type { Routine } from "../routines/domain/routine";
 import { RoutineEditor } from "../routines/ui/RoutineEditor";
+import { RoutineView } from "../routines/ui/RoutineView";
 import { RoutinesScreen } from "../routines/ui/RoutinesScreen";
 import type { SubscribeToList } from "../shared/application/liveList";
 import type { StoreFailureKind } from "../shared/domain/storeFailure";
@@ -88,15 +89,16 @@ interface AppProps {
 }
 
 /**
- * Settings, Privacy and Routines, with its editor, open from Profile, so its tab stays marked
- * while they are shown.
+ * Settings, Privacy and Routines, with its view and editor, open from Profile, so its tab stays
+ * marked while they are shown.
  */
-type Screen = Tab | "settings" | "privacy" | "routines" | "routineEditor";
+type Screen = Tab | "settings" | "privacy" | "routines" | "routineView" | "routineEditor";
 
 const tabOf = (screen: Screen): Tab =>
   screen === "settings" ||
   screen === "privacy" ||
   screen === "routines" ||
+  screen === "routineView" ||
   screen === "routineEditor"
     ? "profile"
     : screen;
@@ -129,6 +131,21 @@ export function App({
   const routineList = useLiveList(routines?.subscribe ?? noRoutines, "Loading routines");
   /** The routine open in the editor, or null for a new one. */
   const [editedRoutine, setEditedRoutine] = useState<Routine | null>(null);
+  /** The routine open to read, which the editor goes back to; null when opened from the list. */
+  const [viewedRoutineId, setViewedRoutineId] = useState<string | null>(null);
+  // Read from the live list, so an edit shows when coming back from the editor.
+  const viewedRoutine =
+    viewedRoutineId === null
+      ? null
+      : (routineList.items?.find(({ id }) => id === viewedRoutineId) ?? null);
+  // Deleted meanwhile, here or on another device: there is nothing left to show.
+  const viewedRoutineGone =
+    screen === "routineView" && routineList.items !== null && viewedRoutine === null;
+  useEffect(() => {
+    if (!viewedRoutineGone) return;
+    setViewedRoutineId(null);
+    setScreen("routines");
+  }, [viewedRoutineGone]);
   const [routineFailure, setRoutineFailure] = useState<{
     what: "save" | "delete";
     kind: StoreFailureKind;
@@ -332,6 +349,23 @@ export function App({
     setScreen("routineEditor");
   };
 
+  const openRoutineList = () => {
+    setViewedRoutineId(null);
+    setScreen("routines");
+  };
+
+  /** Where the editor goes back to: the routine it was opened from, or the list. */
+  const closeRoutineEditor = () => {
+    setEditedRoutine(null);
+    setScreen(viewedRoutineId === null ? "routines" : "routineView");
+  };
+
+  const removeRoutine = ({ id }: Routine) => {
+    setRoutineFailure(null);
+    // Not awaited: the server never answers offline, and the write is already queued.
+    routines?.remove(id).catch(reportRoutineFailure("delete", "Deleting a routine"));
+  };
+
   const content = (() => {
     switch (screen) {
       case "saved":
@@ -380,13 +414,34 @@ export function App({
               errors={routineErrors}
               onBack={openProfile}
               onNew={() => {
+                setViewedRoutineId(null);
                 openRoutineEditor(null);
               }}
+              onOpen={({ id }) => {
+                setViewedRoutineId(id);
+                setScreen("routineView");
+              }}
+              onEdit={(routine) => {
+                setViewedRoutineId(null);
+                openRoutineEditor(routine);
+              }}
+              onRemove={removeRoutine}
+            />
+          )
+        );
+      case "routineView":
+        return (
+          routines &&
+          viewedRoutine && (
+            <RoutineView
+              key={viewedRoutine.id}
+              routine={viewedRoutine}
+              errors={routineErrors}
+              onBack={openRoutineList}
               onEdit={openRoutineEditor}
-              onRemove={({ id }) => {
-                setRoutineFailure(null);
-                // Not awaited: the server never answers offline, and the write is already queued.
-                routines.remove(id).catch(reportRoutineFailure("delete", "Deleting a routine"));
+              onRemove={(routine) => {
+                removeRoutine(routine);
+                openRoutineList();
               }}
             />
           )
@@ -407,13 +462,9 @@ export function App({
                 } else {
                   routines.save(draft).catch(reportRoutineFailure("save", "Saving a routine"));
                 }
-                setEditedRoutine(null);
-                setScreen("routines");
+                closeRoutineEditor();
               }}
-              onCancel={() => {
-                setEditedRoutine(null);
-                setScreen("routines");
-              }}
+              onCancel={closeRoutineEditor}
             />
           )
         );

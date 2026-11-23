@@ -139,6 +139,11 @@ export interface Messages {
   stageCount(total: number): string;
   editRoutine(name: string): string;
   deleteRoutine(name: string): string;
+  /** The read-only view of a routine, a table per stage. */
+  openRoutine(name: string): string;
+  edit: string;
+  noStagesYet: string;
+  exerciseColumn: string;
   confirmDeleteRoutine(name: string): string;
   routineName: string;
   routineNotes: string;

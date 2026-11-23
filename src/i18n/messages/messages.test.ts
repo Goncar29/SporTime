@@ -37,3 +37,12 @@ it("Spanish names routines and their stages", () => {
   expect(MESSAGES.en.stageCount(1)).toBe("1 stage");
   expect(MESSAGES.en.stageCount(0)).toBe("No stages");
 });
+
+it("Spanish names the routine view and its table columns", () => {
+  expect(MESSAGES.es.openRoutine("Push")).toBe("Ver Push");
+  expect(MESSAGES.es.noStagesYet).toBe("Sin etapas");
+  expect(MESSAGES.es.exerciseColumn).toBe("Ejercicio");
+  expect(MESSAGES.es.reps).toBe("Repeticiones");
+  expect(MESSAGES.es.restTime).toBe("Pausa");
+  expect(MESSAGES.es.weight).toBe("Peso");
+});

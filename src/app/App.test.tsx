@@ -1607,9 +1607,11 @@ describe("routines", () => {
   });
 
   /** A fake library whose writes are spied on, already holding `existing`. */
-  const routineLibrary = async (existing: { name: string; createdAt: number }[] = []) => {
+  const routineLibrary = async (
+    existing: (Partial<RoutineDraft> & { name: string; createdAt: number })[] = [],
+  ) => {
     const fake = createFakeRoutineLibrary("test");
-    for (const routine of existing) await fake.save({ ...routine, stages: [] });
+    for (const routine of existing) await fake.save({ stages: [], ...routine });
     return {
       ...fake,
       save: vi.fn((draft: RoutineDraft) => fake.save(draft)),
@@ -1929,6 +1931,154 @@ describe("routines", () => {
       "That routine no longer exists: it was deleted on another device.",
     );
     consoleError.mockRestore();
+  });
+
+  describe("viewed as tables", () => {
+    const push = {
+      name: "Push",
+      notes: "Warm up first\nThen stretch",
+      createdAt: 1_000,
+      stages: [
+        {
+          exercises: [
+            {
+              name: "Press banca",
+              repsMin: 8,
+              repsMax: 10,
+              restSeconds: 90,
+              weight: 62.5,
+              weightUnit: "kg" as const,
+              notes: "Slow on the way down",
+            },
+            { name: "Fondos", repsMin: 12 },
+          ],
+        },
+        {
+          name: "Core",
+          notes: "Finish strong\nNo rest",
+          exercises: [{ name: "Plank" }, { restSeconds: 60 }],
+        },
+        { name: "Stretch", notes: "Five minutes", exercises: [] },
+      ],
+    };
+    const cells = (row: HTMLElement) =>
+      within(row)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent);
+    const headers = (table: HTMLElement) =>
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent);
+    const idOf = (routines: RoutineLibrary) => {
+      let id = "";
+      routines.subscribe(
+        ([stored]) => {
+          id = stored?.id ?? "";
+        },
+        () => undefined,
+      )();
+      return id;
+    };
+
+    it("opens from the list with the routine's notes and a table per stage", async () => {
+      setup({ routines: await routineLibrary([push]) });
+      openRoutines();
+      click("Open Push");
+
+      expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Profile" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.getByText(/^Warm up first/).textContent).toBe("Warm up first\nThen stretch");
+      expect(screen.getAllByRole("table")).toHaveLength(2);
+
+      expect(screen.getByRole("heading", { level: 2, name: "Stage 1" })).toBeInTheDocument();
+      const first = screen.getByRole("table", { name: "Stage 1" });
+      expect(headers(first)).toEqual(["Exercise", "Reps", "Rest", "Weight"]);
+      const [, bench, benchNotes, dips] = within(first).getAllByRole("row");
+      expect(cells(bench!)).toEqual(["Press banca", "8 - 10", "90''", "62.5 kg"]);
+      expect(cells(benchNotes!)).toEqual(["Slow on the way down"]);
+      expect(within(benchNotes!).getByRole("cell")).toHaveAttribute("colspan", "4");
+      expect(cells(dips!)).toEqual(["Fondos", "12", "—", "—"]);
+
+      const core = screen.getByRole("table", { name: "Core" });
+      expect(screen.getByText(/^Finish strong/).textContent).toBe("Finish strong\nNo rest");
+      expect(headers(core)).toEqual(["Exercise", "Rest"]);
+      const [, plank, last] = within(core).getAllByRole("row");
+      expect(within(core).getAllByRole("row")).toHaveLength(3);
+      expect(cells(plank!)).toEqual(["Plank", "—"]);
+      expect(cells(last!)).toEqual(["—", "60''"]);
+
+      expect(screen.getByRole("heading", { level: 2, name: "Stretch" })).toBeInTheDocument();
+      expect(screen.queryByRole("table", { name: "Stretch" })).not.toBeInTheDocument();
+      expect(screen.getByText("Five minutes")).toBeInTheDocument();
+
+      click("Back");
+      expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
+    });
+
+    it("says when a routine has no stages", async () => {
+      setup({ routines: await routineLibrary([{ name: "Old", createdAt: 1_000 }]) });
+      openRoutines();
+      click("Open Old");
+      expect(screen.getByRole("heading", { level: 1, name: "Old" })).toBeInTheDocument();
+      expect(screen.getByText("No stages yet")).toBeInTheDocument();
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    });
+
+    it("edits from the view and comes back to it, saved or cancelled", async () => {
+      const routines = await routineLibrary([push]);
+      setup({ routines });
+      openRoutines();
+      click("Open Push");
+      click("Edit Push");
+      expect(screen.getByRole("heading", { level: 1, name: "Edit routine" })).toBeInTheDocument();
+      type("Routine name", "Something else");
+      click("Cancel");
+      expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
+      expect(routines.update).not.toHaveBeenCalled();
+
+      click("Edit Push");
+      type("Routine name", "Push day");
+      click("Save changes");
+      await settle();
+      expect(routines.update).toHaveBeenCalledOnce();
+      expect(screen.getByRole("heading", { level: 1, name: "Push day" })).toBeInTheDocument();
+      expect(screen.getByRole("table", { name: "Stage 1" })).toBeInTheDocument();
+    });
+
+    it("deletes from the view only after confirming, then shows the list", async () => {
+      const routines = await routineLibrary([push]);
+      const id = idOf(routines);
+      setup({ routines });
+      openRoutines();
+      click("Open Push");
+      click("Delete Push");
+      const dialog = screen.getByRole("alertdialog", { name: 'Delete "Push"?' });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(routines.remove).not.toHaveBeenCalled();
+      expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
+
+      click("Delete Push");
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+      );
+      expect(routines.remove).toHaveBeenCalledWith(id);
+      expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
+      expect(screen.getByText(/No routines yet/)).toBeInTheDocument();
+    });
+
+    it("goes back to the list when the routine is deleted elsewhere", async () => {
+      const routines = await routineLibrary([push]);
+      const id = idOf(routines);
+      setup({ routines });
+      openRoutines();
+      click("Open Push");
+      await act(() => routines.remove(id));
+      expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
+      expect(screen.getByText(/No routines yet/)).toBeInTheDocument();
+    });
   });
 
   it("reports a refused deletion", async () => {

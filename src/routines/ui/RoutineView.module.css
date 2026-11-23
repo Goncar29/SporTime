@@ -1,0 +1,138 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(100%, 720px);
+  margin-inline: auto;
+  padding: max(20px, env(safe-area-inset-top)) 16px 32px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--accent);
+  font-size: clamp(2.25rem, 9vw, 3.5rem);
+  font-style: italic;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.back,
+.action {
+  flex-shrink: 0;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action {
+  flex: 1;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: var(--ink);
+  background: #ffb4a8;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.notes,
+.stageNotes {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  font-size: 1.125rem;
+}
+
+.stageNotes {
+  color: var(--muted);
+}
+
+.empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.125rem;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.stageTitle {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--accent);
+  font-size: 1.375rem;
+  font-weight: 800;
+}
+
+/* Fits a phone's width: long text wraps inside its cell instead of scrolling the page. */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.table th,
+.table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.table .withNotes td {
+  border-bottom: 0;
+}
+
+.name {
+  font-weight: 600;
+}
+
+.table .exerciseNotes {
+  padding-top: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.back:focus-visible,
+.action:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
