@@ -15,7 +15,7 @@ Branch: feat/routines, from main. Delivery strategy: work-unit commits on the br
 
 - [x] T1 (S1, S3, S4) Routine domain: model, limits, normalize/parse, display helpers. Route: inline. Commit: this commit (feat(routines): add routine domain).
 - [x] T2 (S5) Rules for `users/{uid}/routines`, including a maximum-size routine within Firestore's rule evaluation limits; rules tests. Route: inline. Risk: item 2 (security rules). Evidence: RED 9 failing, then rules 65 of 65 on the emulator (Java 21), largest routine accepted. Commit: feat(rules) routines.
-- [ ] T3 (S2, S5) Firestore routine library with outbox + fake. Route: inline. Risk: item 1 (stored data).
+- [x] T3 (S2, S5) Firestore routine library with outbox + fake. Route: gentle-ai-worker (context backstop). Risk: item 1 (stored data). Evidence: RED (missing adapter, then missing notes deletion), routines 44 of 44, typecheck 0. Pending: a rules test that an update deleting `notes` (deleteField) is accepted, to run with T6 on the emulator. Commit: feat(routines) library.
 - [ ] T4 (S2, S6) Account deletion and sign-out include routines. Route: inline. Risk: item 1.
 - [ ] T5 (S1-S4) Profile section UI: list, create, edit, delete; i18n en/es. Route: inline.
 - [ ] T6 (S2, S5) Emulator end-to-end: create, edit, delete reach the server. Route: inline.
