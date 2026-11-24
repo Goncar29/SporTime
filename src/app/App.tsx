@@ -8,6 +8,7 @@ import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
 import type { ContactList } from "../contacts/application/ports";
+import type { Contact } from "../contacts/domain/contact";
 import { ContactsScreen } from "../contacts/ui/ContactsScreen";
 import type { DirectoryListing } from "../directory/application/ports";
 import { FindByEmailSwitch } from "../directory/ui/FindByEmailSwitch";
@@ -121,6 +122,8 @@ const tabOf = (screen: Screen): Tab =>
 
 /** Stands in for a missing routine library: it never answers, and nothing reads it. */
 const noRoutines: SubscribeToList<Routine> = () => () => undefined;
+/** Stands in for a missing contact list the same way. */
+const noContacts: SubscribeToList<Contact> = () => () => undefined;
 
 export function App({
   timer,
@@ -147,6 +150,10 @@ export function App({
   } | null>(null);
   const library = useLiveList(workouts.subscribe, "Loading saved workouts");
   const routineList = useLiveList(routines?.subscribe ?? noRoutines, "Loading routines");
+  // Read here, so Profile can count them; unknown while loading or after a failed read.
+  const contactList = useLiveList(contacts?.subscribe ?? noContacts, "Loading contacts");
+  const contactCount =
+    contactList.failed || contactList.items === null ? null : contactList.items.length;
   /** The routine open in the editor, or null for a new one. */
   const [editedRoutine, setEditedRoutine] = useState<Routine | null>(null);
   /** The routine open to read, which the editor goes back to; null when opened from the list. */
@@ -428,11 +435,25 @@ export function App({
                 setScreen("contacts");
               })
             }
+            contactCount={contactCount}
             findByEmail={directory && <FindByEmailSwitch listing={directory} />}
           />
         );
       case "contacts":
-        return contacts && <ContactsScreen list={contacts} onBack={openProfile} />;
+        return (
+          contacts && (
+            <ContactsScreen
+              list={contacts}
+              contacts={contactList}
+              findByEmail={
+                directory && (
+                  <FindByEmailSwitch listing={directory} note={t.findByEmailContactsHint} />
+                )
+              }
+              onBack={openProfile}
+            />
+          )
+        );
       case "routines":
         return (
           routines && (

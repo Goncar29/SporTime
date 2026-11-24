@@ -219,9 +219,12 @@ export const en: Messages = {
   findByEmail: "Let people find me by email",
   findByEmailHint:
     "Anyone signed in who enters your exact email will see your Google name and photo.",
+  findByEmailContactsHint: "Turn it on so others can add you as a contact.",
   findByEmailChangeFailed: "We couldn't change whether people can find you by email.",
   findByEmailLoadFailed: "We couldn't check whether people can find you by email.",
   contacts: "Contacts",
+  contactsMenuItem: (total) => `Contacts · ${total}`,
+  contactsMenuLabel: (total) => `Contacts, ${total} ${total === 1 ? "contact" : "contacts"}`,
   noContacts:
     "No contacts yet. Add someone by the email they use here; they must first turn on “Let people find me by email” in their Profile.",
   contactCount: (total, max) => `${total} of ${max} contacts`,
@@ -241,6 +244,10 @@ export const en: Messages = {
   addContactFailed: "We couldn't add that contact. Try again.",
   loadContactsFailed: "We couldn't load your contacts.",
   removeContactFailed: "We couldn't remove that contact.",
+  contactNotSaved: (name, stillListed) =>
+    stillListed
+      ? `We couldn't save ${name} on the server; they still show in your list for now.`
+      : `We couldn't save ${name} on the server, so they are not in your list.`,
   removeContact: (name) => `Remove ${name}`,
   confirmRemoveContact: (name) => `Remove ${name} from your contacts?`,
   removeContactNote: "You can add them again by their email while they let people find them.",

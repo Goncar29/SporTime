@@ -182,10 +182,16 @@ export interface Messages {
   findByEmail: string;
   /** What turning it on shows, and to whom. */
   findByEmailHint: string;
+  /** Shown above that hint on the Contacts screen: turning it on lets others add you. */
+  findByEmailContactsHint: string;
   findByEmailChangeFailed: string;
   findByEmailLoadFailed: string;
   /** The Contacts section of Profile: people found by the exact email they let others use. */
   contacts: string;
+  /** The Profile menu item with how many contacts there are, such as "Contacts · 3". */
+  contactsMenuItem(total: number): string;
+  /** Its accessible name, starting with `contacts`, with the count in words. */
+  contactsMenuLabel(total: number): string;
   /** What there is to do with no contacts yet, naming the switch they must turn on. */
   noContacts: string;
   /** How many contacts are kept, out of the most allowed. */
@@ -201,6 +207,11 @@ export interface Messages {
   addContactFailed: string;
   loadContactsFailed: string;
   removeContactFailed: string;
+  /**
+   * The server refused a contact added on this device; `name` arrives isolated, and
+   * `stillListed` says whether this device still shows them.
+   */
+  contactNotSaved(name: string, stillListed: boolean): string;
   /** `name` arrives isolated, so its direction cannot reorder the words around it. */
   removeContact(name: string): string;
   confirmRemoveContact(name: string): string;

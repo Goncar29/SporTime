@@ -226,9 +226,12 @@ export const es: Messages = {
   findByEmail: "Permitir que me encuentren por email",
   findByEmailHint:
     "Quien haya iniciado sesión y escriba tu email exacto verá tu nombre y foto de Google.",
+  findByEmailContactsHint: "Actívalo para que otros puedan agregarte como contacto.",
   findByEmailChangeFailed: "No pudimos cambiar si te pueden encontrar por email.",
   findByEmailLoadFailed: "No pudimos comprobar si te pueden encontrar por email.",
   contacts: "Contactos",
+  contactsMenuItem: (total) => `Contactos · ${total}`,
+  contactsMenuLabel: (total) => `Contactos, ${total} ${total === 1 ? "contacto" : "contactos"}`,
   noContacts:
     "Todavía no tienes contactos. Agrega a alguien con el email que usa aquí; antes debe activar «Permitir que me encuentren por email» en su Perfil.",
   contactCount: (total, max) => `${total} de ${max} contactos`,
@@ -249,6 +252,10 @@ export const es: Messages = {
   addContactFailed: "No pudimos agregar ese contacto. Inténtalo de nuevo.",
   loadContactsFailed: "No pudimos cargar tus contactos.",
   removeContactFailed: "No pudimos quitar ese contacto.",
+  contactNotSaved: (name, stillListed) =>
+    stillListed
+      ? `No pudimos guardar a ${name} en el servidor; por ahora sigue en tu lista.`
+      : `No pudimos guardar a ${name} en el servidor, así que no está en tu lista.`,
   removeContact: (name) => `Quitar ${name}`,
   confirmRemoveContact: (name) => `¿Quitar a ${name} de tus contactos?`,
   removeContactNote: "Puedes volver a agregarlo con su email mientras permita que lo encuentren.",

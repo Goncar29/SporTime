@@ -1,15 +1,20 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { isGooglePhoto } from "../../directory/domain/directory";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { reportStoreFailure, storeFailureMessage } from "../../shared/ui/storeFailure";
-import { useLiveList } from "../../shared/ui/useLiveList";
+import type { StoreFailureKind } from "../../shared/domain/storeFailure";
+import type { LiveList } from "../../shared/ui/useLiveList";
 import type { ContactList } from "../application/ports";
 import { CONTACT_LIMITS, ContactRefused, type Contact } from "../domain/contact";
 import styles from "./ContactsScreen.module.css";
 
 interface ContactsScreenProps {
   list: ContactList;
+  /** The contacts as read from `list`, which the caller keeps so Profile can count them. */
+  contacts: LiveList<Contact>;
+  /** The switch to be found by email, shown at the top; without it, none is offered. */
+  findByEmail?: ReactNode;
   onBack: () => void;
 }
 
@@ -33,20 +38,32 @@ function initialOf({ name, email }: Contact): string {
 
 type Feedback = { kind: "added" } | { kind: "error"; message: string } | null;
 
+/** A contact added on this device that the server later refused, by the add that kept it. */
+interface SaveFailure {
+  attempt: number;
+  contact: Contact;
+  kind: StoreFailureKind;
+}
+
 /**
  * The Contacts section of Profile: people added by the exact email they let others find them by,
  * shown with their Google photo or initial, and removed after confirming.
  */
-export function ContactsScreen({ list, onBack }: ContactsScreenProps) {
+export function ContactsScreen({ list, contacts: live, findByEmail, onBack }: ContactsScreenProps) {
   const { t } = useI18n();
   const inputId = useId();
-  const { items, failed } = useLiveList(list.subscribe, "Loading contacts");
-  const contacts = failed ? (items ?? []) : items;
+  // Null until read: a failed first read is unknown, not empty, so it shows no count.
+  const { items: contacts, failed } = live;
   const [email, setEmail] = useState("");
   const [adding, setAdding] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [removeFailed, setRemoveFailed] = useState(false);
   const [pending, setPending] = useState<Contact | null>(null);
+  /** Kept apart from `feedback`, which belongs to the latest add, until this screen is left. */
+  const [saveFailures, setSaveFailures] = useState<SaveFailure[]>([]);
+  const attempts = useRef(0);
+  /** The latest add that kept each contact, so an older add's late refusal is not told. */
+  const latestAdd = useRef(new Map<string, number>());
 
   /** Anything but a refusal is told in general terms; only its code is logged, never its text. */
   const failureMessage = (operation: string, error: unknown) => {
@@ -64,12 +81,24 @@ export function ContactsScreen({ list, onBack }: ContactsScreenProps) {
     list
       .add(email)
       .then(
-        ({ saved }) => {
+        ({ contact, saved }) => {
           setEmail("");
           setFeedback({ kind: "added" });
+          attempts.current += 1;
+          const attempt = attempts.current;
+          latestAdd.current.set(contact.uid, attempt);
+          setSaveFailures((current) =>
+            current.filter((failure) => failure.contact.uid !== contact.uid),
+          );
           // Not awaited: the server never answers offline, and the contact is already kept here.
+          // If this screen was left meanwhile, the refusal is only logged.
           saved.catch((error: unknown) => {
-            setFeedback({ kind: "error", message: failureMessage("Saving a contact", error) });
+            const kind = reportStoreFailure("Saving a contact", error);
+            if (latestAdd.current.get(contact.uid) !== attempt) return;
+            setSaveFailures((current) => [
+              ...current.filter((failure) => failure.contact.uid !== contact.uid),
+              { attempt, contact, kind },
+            ]);
           });
         },
         (error: unknown) => {
@@ -97,10 +126,24 @@ export function ContactsScreen({ list, onBack }: ContactsScreenProps) {
     });
   };
 
+  /** Names the contact and says whether this device still shows them, as the list now does. */
+  const saveFailureMessage = ({ contact, kind }: SaveFailure) => {
+    const stillListed = contacts?.some(({ uid }) => uid === contact.uid) ?? false;
+    const said = t.contactNotSaved(isolate(shownName(contact)), stillListed);
+    // The shared not-found message names a workout; an unexplained failure needs no more words.
+    return kind === "unknown" || kind === "notFound"
+      ? said
+      : `${said} ${storeFailureMessage(t, kind, "")}`;
+  };
+
   const errors = [
-    ...(feedback?.kind === "error" ? [feedback.message] : []),
-    ...(removeFailed ? [t.removeContactFailed] : []),
-    ...(failed ? [t.loadContactsFailed] : []),
+    ...(feedback?.kind === "error" ? [{ key: "add", message: feedback.message }] : []),
+    ...saveFailures.map((failure) => ({
+      key: `saved-${String(failure.attempt)}`,
+      message: saveFailureMessage(failure),
+    })),
+    ...(removeFailed ? [{ key: "remove", message: t.removeContactFailed }] : []),
+    ...(failed ? [{ key: "load", message: t.loadContactsFailed }] : []),
   ];
 
   return (
@@ -111,6 +154,8 @@ export function ContactsScreen({ list, onBack }: ContactsScreenProps) {
           {t.back}
         </button>
       </header>
+
+      {findByEmail}
 
       <form className={styles.add} noValidate onSubmit={submit}>
         <label className={styles.label} htmlFor={inputId}>
@@ -137,9 +182,9 @@ export function ContactsScreen({ list, onBack }: ContactsScreenProps) {
         </div>
       </form>
 
-      {errors.map((error) => (
-        <p key={error} className={styles.error} role="alert">
-          {error}
+      {errors.map(({ key, message }) => (
+        <p key={key} className={styles.error} role="alert">
+          {message}
         </p>
       ))}
       {feedback?.kind === "added" && (
@@ -148,7 +193,7 @@ export function ContactsScreen({ list, onBack }: ContactsScreenProps) {
         </p>
       )}
 
-      {contacts === null && <p className={styles.empty}>{t.loading}</p>}
+      {contacts === null && !failed && <p className={styles.empty}>{t.loading}</p>}
       {contacts && (
         <p className={styles.count}>{t.contactCount(contacts.length, CONTACT_LIMITS.contacts)}</p>
       )}

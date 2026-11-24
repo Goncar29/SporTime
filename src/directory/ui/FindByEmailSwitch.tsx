@@ -6,15 +6,18 @@ import styles from "./FindByEmailSwitch.module.css";
 
 interface FindByEmailSwitchProps {
   listing: DirectoryListing;
+  /** Said first, with the hint, where the switch is shown for a reason of its own. */
+  note?: string;
 }
 
 /**
  * Off by default: it shows whether this account's entry exists under its email, so it follows
  * a change made on another device, and a refused change shows as the entry staying as it was.
  */
-export function FindByEmailSwitch({ listing }: FindByEmailSwitchProps) {
+export function FindByEmailSwitch({ listing, note }: FindByEmailSwitchProps) {
   const { t } = useI18n();
   const hintId = useId();
+  const noteId = useId();
   /** Null until the directory answers. */
   const [listed, setListed] = useState<boolean | null>(null);
   const [failure, setFailure] = useState<"change" | "load" | null>(null);
@@ -53,12 +56,17 @@ export function FindByEmailSwitch({ listing }: FindByEmailSwitchProps) {
           role="switch"
           checked={listed === true}
           disabled={listed === null}
-          aria-describedby={hintId}
+          aria-describedby={note ? `${noteId} ${hintId}` : hintId}
           onChange={(event) => {
             change(event.target.checked);
           }}
         />
       </label>
+      {note && (
+        <p id={noteId} className={styles.hint}>
+          {note}
+        </p>
+      )}
       <p id={hintId} className={styles.hint}>
         {t.findByEmailHint}
       </p>

@@ -124,7 +124,7 @@ function setup({ language = "en", signOut, otherTabs, deleteAccount, directoryFo
   };
 }
 
-const click = async (name: string) => {
+const click = async (name: string | RegExp) => {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name }));
     await Promise.resolve();
@@ -532,7 +532,7 @@ describe("contacts", () => {
     await createFakeDirectoryListing(person("bob")).list();
     const { switchTo } = setup();
     await click("Profile");
-    await click("Contacts");
+    await click("Contacts, 0 contacts");
     fireEvent.change(screen.getByRole("textbox", { name: "Contact's email" }), {
       target: { value: "bob@example.com" },
     });
@@ -540,12 +540,33 @@ describe("contacts", () => {
     await settle();
     expect(within(list() ?? document.body).getAllByRole("listitem")).toHaveLength(1);
     expect(list()).toHaveTextContent("bob@example.com");
+    await click("Back");
+    expect(screen.getByRole("button", { name: "Contacts, 1 contact" })).toHaveTextContent(
+      "Contacts · 1",
+    );
 
     // Another account signed in here sees its own contacts.
     switchTo("carol");
     await click("Profile");
-    await click("Contacts");
+    await click("Contacts, 0 contacts");
     expect(list()).not.toBeInTheDocument();
     expect(screen.getByText(/No contacts yet/)).toBeInTheDocument();
+  });
+
+  it("offers the signed-in user's own switch to be found by email on the Contacts screen", async () => {
+    setup({ directoryFor: (user) => createFakeDirectoryListing(user) });
+    await click("Profile");
+    await click(/^Contacts\b/);
+    const toggle = () => screen.getByRole("switch", { name: "Let people find me by email" });
+    await act(async () => {
+      fireEvent.click(toggle());
+      await Promise.resolve();
+    });
+    expect(toggle()).toBeChecked();
+    expect(
+      JSON.parse(localStorage.getItem("sportime.fakeDirectory.alice@example.com") ?? "null"),
+    ).toMatchObject({ uid: "alice" });
+    await click("Back");
+    expect(toggle()).toBeChecked();
   });
 });

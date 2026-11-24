@@ -17,6 +17,8 @@ interface ProfileScreenProps {
   onOpenRoutines?: () => void;
   /** Without it, the Contacts section is not offered. */
   onOpenContacts?: () => void;
+  /** How many contacts there are; null while unknown, so none is shown. */
+  contactCount?: number | null;
   /** The switch to be found by email; without it, none is offered. */
   findByEmail?: ReactNode;
 }
@@ -29,6 +31,7 @@ export function ProfileScreen({
   onOpenPrivacy,
   onOpenRoutines,
   onOpenContacts,
+  contactCount = null,
   findByEmail,
 }: ProfileScreenProps) {
   const { t } = useI18n();
@@ -56,8 +59,12 @@ export function ProfileScreen({
           </button>
         )}
         {onOpenContacts && (
-          <button className={profile.item} onClick={onOpenContacts}>
-            {t.contacts}
+          <button
+            className={profile.item}
+            onClick={onOpenContacts}
+            aria-label={contactCount === null ? undefined : t.contactsMenuLabel(contactCount)}
+          >
+            {contactCount === null ? t.contacts : t.contactsMenuItem(contactCount)}
             <Chevron />
           </button>
         )}

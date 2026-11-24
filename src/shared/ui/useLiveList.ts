@@ -3,7 +3,7 @@ import type { SubscribeToList } from "../application/liveList";
 import type { StoreFailureKind } from "../domain/storeFailure";
 import { reportStoreFailure } from "./storeFailure";
 
-interface LiveList<T> {
+export interface LiveList<T> {
   /** Null until the first answer arrives. */
   items: T[] | null;
   failed: boolean;
