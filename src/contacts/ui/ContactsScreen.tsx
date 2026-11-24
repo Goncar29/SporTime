@@ -8,14 +8,14 @@ import {
   storeFailureReason,
 } from "../../shared/ui/storeFailure";
 import type { LiveList } from "../../shared/ui/useLiveList";
-import type { ContactList } from "../application/ports";
+import type { ContactStore } from "../application/ports";
 import { CONTACT_LIMITS, ContactRefused, type Contact } from "../domain/contact";
 import styles from "./ContactsScreen.module.css";
 import type { ContactSaveFailure, ContactSaveFailures } from "./useContactSaveFailures";
 
 interface ContactsScreenProps {
   /** Where contacts are added and removed. */
-  contactStore: ContactList;
+  contactStore: ContactStore;
   /** The contacts as read from `contactStore`, which the caller keeps so Profile can count them. */
   liveContacts: LiveList<Contact>;
   /** Late server refusals of adds, which the caller keeps so leaving this screen does not lose them. */

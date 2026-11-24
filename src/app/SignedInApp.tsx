@@ -5,7 +5,7 @@ import { useOtherTabs } from "../account/ui/useOtherTabs";
 import { useSignOut, type AccountSignOut } from "../account/ui/useSignOut";
 import { AuthFailure, type User } from "../auth/domain/user";
 import { useAuth } from "../auth/ui/AuthGate";
-import type { ContactList } from "../contacts/application/ports";
+import type { ContactStore } from "../contacts/application/ports";
 import type { DirectoryListing } from "../directory/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import type { RoutineLibrary } from "../routines/application/ports";
@@ -17,7 +17,7 @@ export interface UserStores {
   history: HistoryLog;
   routines: RoutineLibrary;
   /** Who the user keeps as contacts; erased with the account and from this device on sign-out. */
-  contacts: ContactList;
+  contacts: ContactStore;
   /**
    * Whether the signed-in user can be found by email, which needs their Google profile; none
    * where the directory is not offered.
@@ -77,7 +77,7 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
       history={stores.history}
       routines={stores.routines}
       directory={directory}
-      contacts={stores.contacts}
+      contactStore={stores.contacts}
       deleteAccount={deleteAccount}
       deletionConfirmedByRedirect={stores.deletionConfirmedByRedirect}
     />

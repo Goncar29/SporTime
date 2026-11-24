@@ -13,7 +13,7 @@ import { withOutbox, type HeldWrites, type OutboxStore } from "../../shared/appl
 import { storeFailureKind } from "../../shared/domain/storeFailure";
 import { isInLocalCache } from "../../shared/firebase/localCache";
 import { findContact, oneAtATime } from "../application/findContact";
-import type { ContactList } from "../application/ports";
+import type { ContactStore } from "../application/ports";
 import {
   ContactRefused,
   byName,
@@ -61,7 +61,7 @@ export function createFirestoreContactList(
   db: Firestore,
   userId: string,
   { store, whenReady, guard = runAtOnce }: Durability,
-): ContactList & HeldWrites {
+): ContactStore & HeldWrites {
   const contacts = collection(db, "users", userId, "contacts");
   /** Firestore answers in order, so once this read answers, the change before it is in the cache. */
   const inLocalCache = (ref: DocumentReference) => getDocFromCache(ref).catch(() => undefined);
@@ -90,7 +90,7 @@ export function createFirestoreContactList(
     },
   });
 
-  const subscribe: ContactList["subscribe"] = (onData, onError) =>
+  const subscribe: ContactStore["subscribe"] = (onData, onError) =>
     outbox.subscribe((items) => {
       onData(withoutId(items));
     }, onError);

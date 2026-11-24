@@ -11,7 +11,7 @@ export interface AddedContact {
  * The signed-in user's contacts, by name. Writes apply on this device right away and sync when
  * online; finding someone to add needs the server.
  */
-export interface ContactList {
+export interface ContactStore {
   subscribe: SubscribeToList<Contact>;
   /**
    * Looks the email up in the directory and keeps whoever chose to be found by it. Resolves once

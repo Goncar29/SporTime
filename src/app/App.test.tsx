@@ -4,7 +4,7 @@ import { deleteAccount as deleteAccountOf } from "../account/application/deleteA
 import type { OtherTabsStatus } from "../account/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import { AuthFailure } from "../auth/domain/user";
-import type { AddedContact, ContactList } from "../contacts/application/ports";
+import type { AddedContact, ContactStore } from "../contacts/application/ports";
 import { CONTACT_LIMITS, type Contact } from "../contacts/domain/contact";
 import { createFakeContactList } from "../contacts/infrastructure/fakeContactList";
 import type { DirectoryListing } from "../directory/application/ports";
@@ -29,7 +29,7 @@ interface Stores {
   /** Without it, Profile offers no switch to be found by email. */
   directory?: DirectoryListing;
   /** Without it, Profile offers no Contacts section. */
-  contacts?: ContactList;
+  contacts?: ContactStore;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
@@ -66,7 +66,7 @@ function setup({
           history={history}
           routines={routines}
           directory={directory}
-          contacts={contacts}
+          contactStore={contacts}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
@@ -2953,6 +2953,46 @@ describe("contacts", () => {
     expect(reads).toBe(readsBefore + 1);
   });
 
+  it("shows loading, not the old failure, while the read again has not answered", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let answer: (contacts: Contact[]) => void = () => undefined;
+    let fail: (error: Error) => void = () => undefined;
+    // Answers later, as the server does.
+    setup({
+      contacts: {
+        ...contactList(),
+        subscribe(onData, onError) {
+          answer = onData;
+          fail = onError;
+          return () => undefined;
+        },
+      },
+    });
+    openContacts();
+    act(() => {
+      fail(new Error("boom"));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your contacts.");
+    click("Back");
+    click(/^Contacts\b/);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByText(anyCount)).not.toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName("Contacts");
+    click(/^Contacts\b/);
+    act(() => {
+      answer([bob]);
+    });
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(items()).toHaveLength(1);
+    expect(screen.getByText(countOf(1))).toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName(
+      "Contacts, 1 contact",
+    );
+  });
+
   describe("count on the Profile menu", () => {
     const menuItem = () => screen.getByRole("button", { name: /^Contacts\b/ });
 
@@ -3060,7 +3100,7 @@ describe("contacts", () => {
             }}
             workouts={createFakeWorkoutLibrary("test")}
             history={createFakeHistoryLog("test")}
-            contacts={contactList()}
+            contactStore={contactList()}
             deleteAccount={() => Promise.resolve()}
             deletionConfirmedByRedirect={() => Promise.resolve(false)}
           />

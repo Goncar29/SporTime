@@ -7,7 +7,7 @@ import { SettingsScreen } from "../settings/ui/SettingsScreen";
 import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
-import type { ContactList } from "../contacts/application/ports";
+import type { ContactStore } from "../contacts/application/ports";
 import type { Contact } from "../contacts/domain/contact";
 import { ContactsScreen } from "../contacts/ui/ContactsScreen";
 import { useContactSaveFailures } from "../contacts/ui/useContactSaveFailures";
@@ -82,7 +82,7 @@ interface AppProps {
   /** Without it, Profile offers no switch to be found by email. */
   directory?: DirectoryListing;
   /** Without it, Profile offers no Contacts section. */
-  contacts?: ContactList;
+  contactStore?: ContactStore;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -132,7 +132,7 @@ export function App({
   history,
   routines,
   directory,
-  contacts: contactStore,
+  contactStore,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -158,10 +158,11 @@ export function App({
   const contactSaveFailures = useContactSaveFailures();
   // Refusals shown on Contacts are let go once it is left; one arriving later waits for it.
   const shownScreen = useRef<Screen>(screen);
+  const { clear: clearContactSaveFailures } = contactSaveFailures;
   useEffect(() => {
-    if (shownScreen.current === "contacts" && screen !== "contacts") contactSaveFailures.clear();
+    if (shownScreen.current === "contacts" && screen !== "contacts") clearContactSaveFailures();
     shownScreen.current = screen;
-  }, [screen, contactSaveFailures]);
+  }, [screen, clearContactSaveFailures]);
   /** The routine open in the editor, or null for a new one. */
   const [editedRoutine, setEditedRoutine] = useState<Routine | null>(null);
   /** The routine open to read, which the editor goes back to; null when opened from the list. */

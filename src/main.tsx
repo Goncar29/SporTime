@@ -237,20 +237,20 @@ async function createStoresFactory(
         otherTabs.confirming(routineLibrary.update(routine)),
       remove: (id: string) => otherTabs.confirming(routineLibrary.remove(id)),
     };
-    const contactList = createFirestoreContactList(firestore(), userId, {
+    const contactStore = createFirestoreContactList(firestore(), userId, {
       store: contactOutbox,
       whenReady,
       guard: otherTabs.guard,
     });
     const contacts = {
-      ...contactList,
+      ...contactStore,
       add(email: string) {
-        const added = contactList.add(email);
+        const added = contactStore.add(email);
         // Followed, like every other change, until the server answers the write.
         otherTabs.confirming(added.then(({ saved }) => saved)).catch(() => undefined);
         return added;
       },
-      remove: (uid: string) => otherTabs.confirming(contactList.remove(uid)),
+      remove: (uid: string) => otherTabs.confirming(contactStore.remove(uid)),
     };
     // One document, set or deleted, which Firestore's own cache queues offline; no outbox. A
     // sign-out waits for it like any other write, and leaves the entry on the server.

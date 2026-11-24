@@ -1,13 +1,13 @@
 import { fakeDirectoryEntry } from "../../directory/infrastructure/fakeDirectoryListing";
 import { findContact, oneAtATime } from "../application/findContact";
-import type { ContactList } from "../application/ports";
+import type { ContactStore } from "../application/ports";
 import { ContactRefused, byName, parseContact, type Contact } from "../domain/contact";
 
 /**
  * Tests only: keeps contacts in localStorage and finds them in the fake directory, refusing like
  * the real list. Never part of a production build.
  */
-export function createFakeContactList(userId: string): ContactList {
+export function createFakeContactList(userId: string): ContactStore {
   const key = `sportime.fakeContacts.${userId}`;
   const listeners = new Set<(items: Contact[]) => void>();
   const serial = oneAtATime();

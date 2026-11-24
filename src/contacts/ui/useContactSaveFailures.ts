@@ -19,7 +19,7 @@ export interface ContactSaveFailures {
    * again; a new add of a contact drops that contact's earlier refusal.
    */
   track: (added: AddedContact) => void;
-  /** Lets go of the refusals shown so far. */
+  /** Lets go of the refusals shown so far. The same function on every render. */
   clear: () => void;
 }
 
