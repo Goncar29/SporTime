@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { SubscribeToList } from "../application/liveList";
 import type { StoreFailureKind } from "../domain/storeFailure";
 import { reportStoreFailure } from "./storeFailure";
@@ -11,9 +11,21 @@ export interface LiveList<T> {
   failure: StoreFailureKind | null;
 }
 
+export interface RetryableLiveList<T> extends LiveList<T> {
+  /**
+   * Subscribes again. A store's listener stops for good after an error, so a failed read only
+   * recovers this way; what was read before stays shown until the new answer.
+   */
+  retry: () => void;
+}
+
 /** `operation` names the read in the developer's log, such as "Loading the history". */
-export function useLiveList<T>(subscribe: SubscribeToList<T>, operation: string): LiveList<T> {
+export function useLiveList<T>(
+  subscribe: SubscribeToList<T>,
+  operation: string,
+): RetryableLiveList<T> {
   const [state, setState] = useState<LiveList<T>>({ items: null, failed: false, failure: null });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(
     () =>
@@ -26,8 +38,12 @@ export function useLiveList<T>(subscribe: SubscribeToList<T>, operation: string)
           setState((current) => ({ ...current, failed: true, failure }));
         },
       ),
-    [subscribe, operation],
+    [subscribe, operation, attempt],
   );
 
-  return state;
+  const retry = useCallback(() => {
+    setAttempt((current) => current + 1);
+  }, []);
+
+  return { ...state, retry };
 }

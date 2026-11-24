@@ -1,18 +1,25 @@
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { isGooglePhoto } from "../../directory/domain/directory";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
-import { reportStoreFailure, storeFailureMessage } from "../../shared/ui/storeFailure";
-import type { StoreFailureKind } from "../../shared/domain/storeFailure";
+import {
+  reportStoreFailure,
+  storeFailureMessage,
+  storeFailureReason,
+} from "../../shared/ui/storeFailure";
 import type { LiveList } from "../../shared/ui/useLiveList";
 import type { ContactList } from "../application/ports";
 import { CONTACT_LIMITS, ContactRefused, type Contact } from "../domain/contact";
 import styles from "./ContactsScreen.module.css";
+import type { ContactSaveFailure, ContactSaveFailures } from "./useContactSaveFailures";
 
 interface ContactsScreenProps {
-  list: ContactList;
-  /** The contacts as read from `list`, which the caller keeps so Profile can count them. */
-  contacts: LiveList<Contact>;
+  /** Where contacts are added and removed. */
+  contactStore: ContactList;
+  /** The contacts as read from `contactStore`, which the caller keeps so Profile can count them. */
+  liveContacts: LiveList<Contact>;
+  /** Late server refusals of adds, which the caller keeps so leaving this screen does not lose them. */
+  saveFailures: ContactSaveFailures;
   /** The switch to be found by email, shown at the top; without it, none is offered. */
   findByEmail?: ReactNode;
   onBack: () => void;
@@ -38,32 +45,26 @@ function initialOf({ name, email }: Contact): string {
 
 type Feedback = { kind: "added" } | { kind: "error"; message: string } | null;
 
-/** A contact added on this device that the server later refused, by the add that kept it. */
-interface SaveFailure {
-  attempt: number;
-  contact: Contact;
-  kind: StoreFailureKind;
-}
-
 /**
  * The Contacts section of Profile: people added by the exact email they let others find them by,
  * shown with their Google photo or initial, and removed after confirming.
  */
-export function ContactsScreen({ list, contacts: live, findByEmail, onBack }: ContactsScreenProps) {
+export function ContactsScreen({
+  contactStore,
+  liveContacts,
+  saveFailures,
+  findByEmail,
+  onBack,
+}: ContactsScreenProps) {
   const { t } = useI18n();
   const inputId = useId();
   // Null until read: a failed first read is unknown, not empty, so it shows no count.
-  const { items: contacts, failed } = live;
+  const { items: contacts, failed } = liveContacts;
   const [email, setEmail] = useState("");
   const [adding, setAdding] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [removeFailed, setRemoveFailed] = useState(false);
   const [pending, setPending] = useState<Contact | null>(null);
-  /** Kept apart from `feedback`, which belongs to the latest add, until this screen is left. */
-  const [saveFailures, setSaveFailures] = useState<SaveFailure[]>([]);
-  const attempts = useRef(0);
-  /** The latest add that kept each contact, so an older add's late refusal is not told. */
-  const latestAdd = useRef(new Map<string, number>());
 
   /** Anything but a refusal is told in general terms; only its code is logged, never its text. */
   const failureMessage = (operation: string, error: unknown) => {
@@ -78,27 +79,18 @@ export function ContactsScreen({ list, contacts: live, findByEmail, onBack }: Co
     setAdding(true);
     setFeedback(null);
     setRemoveFailed(false);
-    list
+    contactStore
       .add(email)
       .then(
-        ({ contact, saved }) => {
+        (added) => {
           setEmail("");
-          setFeedback({ kind: "added" });
-          attempts.current += 1;
-          const attempt = attempts.current;
-          latestAdd.current.set(contact.uid, attempt);
-          setSaveFailures((current) =>
-            current.filter((failure) => failure.contact.uid !== contact.uid),
-          );
-          // Not awaited: the server never answers offline, and the contact is already kept here.
-          // If this screen was left meanwhile, the refusal is only logged.
-          saved.catch((error: unknown) => {
-            const kind = reportStoreFailure("Saving a contact", error);
-            if (latestAdd.current.get(contact.uid) !== attempt) return;
-            setSaveFailures((current) => [
-              ...current.filter((failure) => failure.contact.uid !== contact.uid),
-              { attempt, contact, kind },
-            ]);
+          const addedFeedback: Feedback = { kind: "added" };
+          setFeedback(addedFeedback);
+          // Kept by the caller, so a refusal that arrives after leaving this screen is not lost.
+          saveFailures.track(added);
+          // A refusal of this add tells what became of it, so it no longer says it was added.
+          added.saved.catch(() => {
+            setFeedback((current) => (current === addedFeedback ? null : current));
           });
         },
         (error: unknown) => {
@@ -120,25 +112,24 @@ export function ContactsScreen({ list, contacts: live, findByEmail, onBack }: Co
     setFeedback(null);
     setRemoveFailed(false);
     // Not awaited: the server never answers offline, and the removal already shows here.
-    list.remove(uid).catch((error: unknown) => {
+    contactStore.remove(uid).catch((error: unknown) => {
       reportStoreFailure("Removing a contact", error);
       setRemoveFailed(true);
     });
   };
 
   /** Names the contact and says whether this device still shows them, as the list now does. */
-  const saveFailureMessage = ({ contact, kind }: SaveFailure) => {
+  const saveFailureMessage = ({ contact, kind }: ContactSaveFailure) => {
     const stillListed = contacts?.some(({ uid }) => uid === contact.uid) ?? false;
     const said = t.contactNotSaved(isolate(shownName(contact)), stillListed);
     // The shared not-found message names a workout; an unexplained failure needs no more words.
-    return kind === "unknown" || kind === "notFound"
-      ? said
-      : `${said} ${storeFailureMessage(t, kind, "")}`;
+    const reason = kind === "notFound" ? null : storeFailureReason(t, kind);
+    return reason === null ? said : `${said} ${reason}`;
   };
 
   const errors = [
     ...(feedback?.kind === "error" ? [{ key: "add", message: feedback.message }] : []),
-    ...saveFailures.map((failure) => ({
+    ...saveFailures.failures.map((failure) => ({
       key: `saved-${String(failure.attempt)}`,
       message: saveFailureMessage(failure),
     })),

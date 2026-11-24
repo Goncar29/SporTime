@@ -2620,6 +2620,61 @@ describe("contacts", () => {
     expect(consoleError).toHaveBeenCalledWith("Saving a contact failed:", "permission-denied");
   });
 
+  describe("when the server later refuses the only add", () => {
+    /** A list whose add's server answer the test settles by hand. */
+    const heldSave = () => {
+      let refuse: (error: unknown) => void = () => undefined;
+      const saved = new Promise<void>((_resolve, reject) => {
+        refuse = reject;
+      });
+      const contacts = contactList();
+      contacts.add.mockImplementation(() => Promise.resolve<AddedContact>({ contact: bob, saved }));
+      return { contacts, refuse: (error: unknown) => refuse(error) };
+    };
+
+    it("no longer says the contact was added", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { contacts, refuse } = heldSave();
+      setup({ contacts });
+      openContacts();
+      add("bob@example.com");
+      await settle();
+      expect(screen.getByRole("status")).toHaveTextContent("Contact added.");
+      refuse(refusal("permission-denied"));
+      await settle();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.queryByText("Contact added.")).not.toBeInTheDocument();
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toHaveTextContent(isolated("Bob Stone"));
+    });
+
+    it("keeps a refusal that arrives after leaving Contacts, and shows it there once", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { contacts, refuse } = heldSave();
+      setup({ contacts });
+      openContacts();
+      add("bob@example.com");
+      await settle();
+      click("Back");
+      refuse(refusal("permission-denied"));
+      await settle();
+      expect(consoleError).toHaveBeenCalledWith("Saving a contact failed:", "permission-denied");
+      click(/^Contacts\b/);
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toHaveTextContent(
+        `We couldn't save ${isolated("Bob Stone")} on the server, so they are not in your list.`,
+      );
+      expect(alerts[0]).toHaveTextContent("The server refused the change.");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      // Seen once; leaving Contacts again lets it go.
+      click("Back");
+      click(/^Contacts\b/);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
+
   describe("when the server refuses an earlier add after a later one succeeded", () => {
     /** A list whose first add's server answer the test settles by hand. */
     const overlapping = () => {
@@ -2855,6 +2910,47 @@ describe("contacts", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your contacts.");
     expect(items()).toHaveLength(1);
     expect(screen.getByText(countOf(1))).toBeInTheDocument();
+  });
+
+  it("reads the contacts again when Contacts opens after a failed read, with the count on Profile", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    keep([bob]);
+    const fake = contactList();
+    let fail: (error: Error) => void = () => undefined;
+    let reads = 0;
+    setup({
+      contacts: {
+        ...fake,
+        subscribe(onData, onError) {
+          reads += 1;
+          fail = onError;
+          return fake.subscribe(onData, onError);
+        },
+      },
+    });
+    openContacts();
+    expect(items()).toHaveLength(1);
+    // The listener stops for good after an error, as Firestore's does.
+    act(() => {
+      fail(new Error("boom"));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your contacts.");
+    expect(consoleError).toHaveBeenCalledWith("Loading contacts failed:", "no code");
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName("Contacts");
+    const readsBefore = reads;
+    click(/^Contacts\b/);
+    expect(reads).toBe(readsBefore + 1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(items()).toHaveLength(1);
+    expect(screen.getByText(countOf(1))).toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName(
+      "Contacts, 1 contact",
+    );
+    // A list that reads fine is not read again on every visit.
+    click(/^Contacts\b/);
+    expect(reads).toBe(readsBefore + 1);
   });
 
   describe("count on the Profile menu", () => {

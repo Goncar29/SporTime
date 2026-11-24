@@ -6,6 +6,7 @@ import {
   clearEmulatorData,
   eventually,
   googleButton,
+  holdWrites,
   markPage,
   openTab,
   reloaded,
@@ -216,20 +217,20 @@ test("signing out sends a pending contact, erases this device's copy and keeps t
   const alice = await newAccount(page, "alice");
   await openContacts(page);
 
-  // Slows the channel writes travel on, so the contact is still pending when sign-out starts.
-  await context.route(/\/Write\/channel/, async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-    await route.fallback().catch(() => undefined);
-  });
+  // The contact waits for the server until the test lets it through, after sign-out starts.
+  const writes = await holdWrites(context);
   await addContact(page, bob.email);
   await expect(contactRow(page, bob)).toHaveCount(1);
-  expect(await storedContacts(alice.uid)).toEqual([]);
   // Proves the checks of the device below can fail: the contact is held here now.
   await expect.poll(() => cacheContains(page, bob.email)).toBe(true);
 
   await openTab(page, "Profile");
   await markPage(page);
   await signOutButton(page).click();
+  await expect(page.getByRole("status").filter({ hasText: "Signing out…" })).toBeVisible();
+  // Still unsent when sign-out started, so sign-out is what sends it.
+  expect(await storedContacts(alice.uid)).toEqual([]);
+  await writes.release();
   await reloaded(page);
   await expect(googleButton(page)).toBeVisible();
 
@@ -244,7 +245,6 @@ test("signing out sends a pending contact, erases this device's copy and keeps t
   // Signing out never takes anyone out of the directory.
   expect(await directoryEntry(bob.email)).toEqual(entryOf(bob));
 
-  await context.unroute(/\/Write\/channel/);
   await signInAs(page, alice.name);
   await openTab(page, "Profile");
   await expect(contactsItem(page)).toHaveAccessibleName("Contacts, 1 contact", {
@@ -354,10 +354,11 @@ test("a switch change the server never answered is reported lost when another ta
   await markPage(page);
   await markPage(other);
   // Watched from before the press: the message shows only until the other tab reloads, which
-  // may come before the press returns, as a click waits for this tab's own reload.
+  // may come before the press returns, as a click waits for this tab's own reload. Under load
+  // the sign-out can take longer than the default 5 s to reach the other tab.
   const lost = expect(
     other.getByRole("alert").filter({ hasText: "Couldn't save: you signed out in another tab." }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
   await warning.getByRole("button", { name: "Sign out anyway" }).click();
   await lost;
   await reloaded(page);
@@ -365,8 +366,18 @@ test("a switch change the server never answered is reported lost when another ta
   await reloaded(other);
   await expect(googleButton(other)).toBeVisible();
 
-  await context.setOffline(false);
-  await other.waitForTimeout(3_000);
-  expect(await directoryEntry(bob.email)).toBeNull();
+  // Nothing of bob's is left on the device, the dropped change included.
   expect(await cacheContains(other, bob.uid)).toBe(false);
+
+  // Pending writes belong to their account, so a kept one would be sent once bob is back.
+  await context.setOffline(false);
+  expect(await signInAs(other, bob.name)).toBe(bob.uid);
+  // Writes reach the server in the order they were made, so once this one is there, a kept
+  // switch change would be there too.
+  await saveWorkout(other, "After");
+  await eventually(() => storedNames(bob.uid)).toEqual(["After"]);
+  expect(await directoryEntry(bob.email)).toBeNull();
+  await openTab(other, "Profile");
+  await expect(findMe(other)).toBeEnabled();
+  await expect(findMe(other)).not.toBeChecked();
 });
