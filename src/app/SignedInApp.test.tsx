@@ -11,6 +11,7 @@ import type { DirectoryListing } from "../directory/application/ports";
 import { createFakeDirectoryListing } from "../directory/infrastructure/fakeDirectoryListing";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
+import { createFakeContactList } from "../contacts/infrastructure/fakeContactList";
 import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
 import { createFakeWorkoutLibrary } from "../workouts/infrastructure/fakeWorkoutLibrary";
 import { SignedInApp } from "./SignedInApp";
@@ -88,6 +89,7 @@ function setup({ language = "en", signOut, otherTabs, deleteAccount, directoryFo
     workouts: createFakeWorkoutLibrary(userId),
     history: createFakeHistoryLog(userId),
     routines: createFakeRoutineLibrary(userId),
+    contacts: createFakeContactList(userId),
     deleteAccount:
       deleteAccount ??
       (async () => {

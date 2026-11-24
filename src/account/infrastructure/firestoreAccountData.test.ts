@@ -8,7 +8,9 @@ const server = vi.hoisted(() => new Map<string, string[]>());
 const directory = vi.hoisted(() => ({
   entries: new Map<string, { uid: string }>(),
   signedIn: "u1",
-  /** Every write, in order. */
+  /** Whether the server can be asked; when not, a read fails at once, as Firestore does offline. */
+  reachable: true,
+  /** Every server read and write, in order. */
   calls: [] as string[],
 }));
 
@@ -17,6 +19,10 @@ vi.mock("firebase/firestore", () => ({
   doc: (_db: unknown, ...segments: string[]) => ({ path: segments.join("/") }),
   getDocFromCache: () => Promise.resolve({ exists: () => false }),
   getDocFromServer: ({ path }: { path: string }) => {
+    directory.calls.push(`read ${path}`);
+    if (!directory.reachable) {
+      return Promise.reject(Object.assign(new Error("offline"), { code: "unavailable" }));
+    }
     const entry = directory.entries.get(path);
     return Promise.resolve({ exists: () => entry !== undefined, data: () => entry });
   },
@@ -72,6 +78,7 @@ describe("createFirestoreAccountData", () => {
     server.clear();
     directory.entries.clear();
     directory.calls.length = 0;
+    directory.reachable = true;
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
   });
 
@@ -100,18 +107,22 @@ describe("createFirestoreAccountData", () => {
     expect(localStorage.getItem("sportime.outbox.routines.u1")).toBeNull();
   });
 
-  it("erases the account's workouts, history and routines, and no other account's", async () => {
+  it("erases the account's workouts, history, routines and contacts, and no other account's", async () => {
     server.set("users/u1/workouts", ["w1", "w2"]);
     server.set("users/u1/history", ["h1"]);
     server.set("users/u1/routines", ["r1", "r2"]);
+    server.set("users/u1/contacts", ["u2", "u3"]);
     server.set("users/u2/routines", ["r3"]);
+    server.set("users/u2/contacts", ["u1"]);
 
     await accountData("u1@example.com").erase();
 
     expect(server.get("users/u1/workouts")).toEqual([]);
     expect(server.get("users/u1/history")).toEqual([]);
     expect(server.get("users/u1/routines")).toEqual([]);
+    expect(server.get("users/u1/contacts")).toEqual([]);
     expect(server.get("users/u2/routines")).toEqual(["r3"]);
+    expect(server.get("users/u2/contacts")).toEqual(["u1"]);
   });
 
   it("removes the account's directory entry first, under its normalized email", async () => {
@@ -123,24 +134,52 @@ describe("createFirestoreAccountData", () => {
 
     expect(directory.entries.has("directory/u1@example.com")).toBe(false);
     expect(directory.entries.has("directory/u2@example.com")).toBe(true);
-    expect(directory.calls[0]).toBe("delete directory/u1@example.com");
+    // Read from the server first, and deleted only because it holds this account.
+    expect(directory.calls.slice(0, 2)).toEqual([
+      "read directory/u1@example.com",
+      "delete directory/u1@example.com",
+    ]);
     expect(server.get("users/u1/routines")).toEqual([]);
   });
 
-  it("erases the rest when the account was never listed", async () => {
+  it("issues no delete for an account that was never listed, and erases the rest", async () => {
     server.set("users/u1/routines", ["r1"]);
 
     await accountData("u1@example.com").erase();
 
+    expect(directory.calls.filter((call) => call.startsWith("delete"))).toEqual([]);
     expect(server.get("users/u1/routines")).toEqual([]);
   });
 
-  it("leaves an entry another account holds under the same email", async () => {
+  it("leaves an entry another account holds under the same email, without trying to delete it", async () => {
     directory.entries.set("directory/u1@example.com", { uid: "u9" });
+    server.set("users/u1/routines", ["r1"]);
 
     await accountData("u1@example.com").erase();
 
     expect(directory.entries.get("directory/u1@example.com")).toEqual({ uid: "u9" });
+    expect(directory.calls.filter((call) => call.startsWith("delete"))).toEqual([]);
+    expect(server.get("users/u1/routines")).toEqual([]);
+  });
+
+  it("fails at once, as a network failure, when the entry cannot be read, queuing no delete", async () => {
+    vi.useFakeTimers();
+    directory.entries.set("directory/u1@example.com", { uid: "u1" });
+    directory.reachable = false;
+    server.set("users/u1/routines", ["r1"]);
+
+    try {
+      // No timer is advanced: it must not wait for the erase timeout.
+      await expect(accountData("u1@example.com").erase()).rejects.toMatchObject({
+        kind: "network",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(directory.calls).toEqual(["read directory/u1@example.com"]);
+    expect(directory.entries.has("directory/u1@example.com")).toBe(true);
+    expect(server.get("users/u1/routines")).toEqual(["r1"]);
   });
 
   it("erases the rest for an account without an email", async () => {

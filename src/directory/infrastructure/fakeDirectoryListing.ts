@@ -3,6 +3,16 @@ import { directoryEntryFor, normalizeEmail } from "../domain/directory";
 
 const keyOf = (email: string) => `sportime.fakeDirectory.${normalizeEmail(email)}`;
 
+/** What the fake directory holds under an email, as a get from the server answers; null when none. */
+export function fakeDirectoryEntry(email: string): unknown {
+  try {
+    const raw = localStorage.getItem(keyOf(email));
+    return raw === null ? null : (JSON.parse(raw) as unknown);
+  } catch {
+    return null;
+  }
+}
+
 /** Keeps the entry in localStorage, so it outlives a reload like the server's would. */
 export function createFakeDirectoryListing(account: {
   id: string;

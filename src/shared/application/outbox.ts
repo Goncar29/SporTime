@@ -47,8 +47,11 @@ export interface HeldWrites {
 
 export interface Outbox<T, Draft> extends HeldWrites {
   subscribe: SubscribeToList<T>;
-  /** Durable as soon as it returns. Settles when the server answers, so callers must not wait for it. */
-  add: (draft: Draft) => Promise<void>;
+  /**
+   * Durable as soon as it returns. Settles when the server answers, so callers must not wait for it.
+   * Written under `id` when the item has its own, otherwise under a new one.
+   */
+  add: (draft: Draft, id?: string) => Promise<void>;
   cancel: (id: string) => void;
   /**
    * Replaces the draft of a write still held here, so an edit made before it reached the
@@ -188,8 +191,8 @@ export function withOutbox<T extends { id: string }, Draft>({
         stop();
       };
     },
-    add(draft) {
-      const id = collection.newId();
+    add(draft, givenId) {
+      const id = givenId ?? collection.newId();
       const settled = new Promise<void>((resolve, reject) => {
         waiters.set(id, { resolve, reject });
       });

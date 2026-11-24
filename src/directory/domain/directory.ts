@@ -39,16 +39,29 @@ function limitLength(text: string, max: number): string {
   return kept;
 }
 
-function displayName(name: string, email: string): string {
+function oneLine(name: string): string {
   // Firestore refuses half of a broken character (a lone surrogate) for ever.
-  const line = name
+  return name
     .replace(/\p{Cs}/gu, "")
     .replace(/\p{Cc}/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * A name as the directory keeps it: one line without control characters or broken ones, of at
+ * most DIRECTORY_LIMITS.nameLength; anything that is not text is no name.
+ */
+export function directoryName(name: unknown): string {
+  if (typeof name !== "string") return "";
+  return limitLength(oneLine(name), DIRECTORY_LIMITS.nameLength).trim();
+}
+
+function displayName(name: string, email: string): string {
+  const line = oneLine(name);
   // The app shows the email when Google gave no name; the entry's id already is the email.
   if (normalizeEmail(line) === normalizeEmail(email)) return "";
-  return limitLength(line, DIRECTORY_LIMITS.nameLength).trim();
+  return directoryName(line);
 }
 
 export function directoryEntryFor(user: {

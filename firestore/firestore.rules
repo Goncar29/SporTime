@@ -141,21 +141,45 @@ service cloud.firestore {
         && isTimestamp(data.createdAt);
     }
 
-    // A directory entry, as directoryEntryFor writes it; limits mirror DIRECTORY_LIMITS in
-    // src/directory/domain/directory.ts. The name is one line of up to 100 characters, possibly
-    // empty. The photo is empty or absent, or an https address on googleusercontent.com with only
-    // the host before the path, so it carries no credentials or port; same pattern as isGooglePhoto.
+    // A name as the directory keeps it (directoryName): one line of up to 100 characters, possibly
+    // empty. Limits mirror DIRECTORY_LIMITS in src/directory/domain/directory.ts.
+    function isDirectoryName(name) {
+      return name is string
+        && name.size() <= 100
+        && name.matches('[^\\p{Cc}]*');
+    }
+
+    // Empty, or an https address on googleusercontent.com with only the host before the path, so
+    // it carries no credentials or port; same pattern as isGooglePhoto.
+    function isGooglePhoto(photo) {
+      return photo == ''
+        || (photo.size() <= 500
+          && photo.matches('https://([a-z0-9-]+\\.)*googleusercontent\\.com/[^\\p{Cc}\\p{Z}]*'));
+    }
+
+    // A directory entry, as directoryEntryFor writes it. The photo may also be absent.
     function isDirectoryEntry(data) {
       return data.keys().hasAll(['uid', 'name'])
         && data.keys().hasOnly(['uid', 'name', 'photo'])
         && data.uid == request.auth.uid
-        && data.name is string
-        && data.name.size() <= 100
-        && data.name.matches('[^\\p{Cc}]*')
-        && (!('photo' in data)
-          || data.photo == ''
-          || (data.photo.size() <= 500
-            && data.photo.matches('https://([a-z0-9-]+\\.)*googleusercontent\\.com/[^\\p{Cc}\\p{Z}]*')));
+        && isDirectoryName(data.name)
+        && (!('photo' in data) || isGooglePhoto(data.photo));
+    }
+
+    // A contact, as toStoredContact writes it; limits mirror CONTACT_LIMITS in
+    // src/contacts/domain/contact.ts. Its id is the contact's uid, never the owner's. The email
+    // is one address (no space, slash or control character) under which that very uid is listed
+    // in the directory now, so nobody can be added who did not choose to be found; this read is
+    // the one get a write here costs. Only the app keeps the limit of 50: rules cannot count.
+    function isContact(uid, contactUid, data) {
+      return hasExactly(data, ['uid', 'name', 'photo', 'email'])
+        && data.uid == contactUid
+        && contactUid != uid
+        && isDirectoryName(data.name)
+        && isGooglePhoto(data.photo)
+        && data.email.size() <= 254
+        && data.email.matches('[^\\p{Cc}\\p{Z}/@]+@[^\\p{Cc}\\p{Z}/@]+')
+        && get(/databases/$(database)/documents/directory/$(data.email)).data.uid == contactUid;
     }
 
     // Only the signed-in owner of a verified email may list it, under that email trimmed and in
@@ -198,6 +222,15 @@ service cloud.firestore {
       allow get: if request.auth != null;
       allow create, update: if ownsEmail(email) && isDirectoryEntry(request.resource.data);
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // Saved contacts, owner only. Removing one needs no directory entry, so a contact who stopped
+    // being found can still be removed.
+    match /users/{uid}/contacts/{contactUid} {
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && isContact(uid, contactUid, request.resource.data);
+      allow update: if isOwner(uid)
+        && (isUnchanged() || isContact(uid, contactUid, request.resource.data));
     }
 
     match /users/{uid}/history/{entryId} {

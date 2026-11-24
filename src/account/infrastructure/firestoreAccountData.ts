@@ -67,8 +67,9 @@ export function createFirestoreAccountData({
 }: Dependencies): AccountData {
   const erase = async (isCancelled: () => boolean) => {
     discardPendingWrites();
-    // First, as it is the only thing other users can read. A listing still on its way is sent
-    // before this delete, as Firestore sends writes in order.
+    // First, as it is the only thing other users can read. It is read from the server before
+    // deleting, and a failed read stops here. Like the listings below, the answer includes this
+    // device's writes still on their way, and the delete is sent after them.
     const address = email();
     if (address !== null) await removeDirectoryEntry(db, { id: userId, email: address });
     if (isCancelled()) return;
@@ -76,6 +77,7 @@ export function createFirestoreAccountData({
     await eraseCollection(db, collection(db, "users", userId, "workouts"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "history"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "routines"), isCancelled);
+    await eraseCollection(db, collection(db, "users", userId, "contacts"), isCancelled);
   };
 
   return {

@@ -155,7 +155,7 @@ describe("removeDirectoryEntry", () => {
     expect(firestore.server.has("directory/bob@example.com")).toBe(true);
   });
 
-  it("settles when there is no entry, or it belongs to another account", async () => {
+  it("settles without deleting when there is no entry, or it belongs to another account", async () => {
     await expect(
       removeDirectoryEntry(db, { id: "u1", email: user.email }),
     ).resolves.toBeUndefined();
@@ -163,6 +163,17 @@ describe("removeDirectoryEntry", () => {
     await expect(
       removeDirectoryEntry(db, { id: "u1", email: user.email }),
     ).resolves.toBeUndefined();
+    expect(firestore.server.has(PATH)).toBe(true);
+    expect(firestore.calls).toEqual([]);
+  });
+
+  it("rejects, deleting nothing, when the server cannot be asked", async () => {
+    firestore.server.set(PATH, { uid: "u1", name: "", photo: "" });
+    firestore.serverReachable = false;
+    await expect(removeDirectoryEntry(db, { id: "u1", email: user.email })).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    expect(firestore.calls).toEqual([]);
     expect(firestore.server.has(PATH)).toBe(true);
   });
 
