@@ -15,6 +15,8 @@ interface ProfileScreenProps {
   onOpenPrivacy: () => void;
   /** Without it, the Routines section is not offered. */
   onOpenRoutines?: () => void;
+  /** Without it, the Contacts section is not offered. */
+  onOpenContacts?: () => void;
   /** The switch to be found by email; without it, none is offered. */
   findByEmail?: ReactNode;
 }
@@ -26,6 +28,7 @@ export function ProfileScreen({
   onOpenSettings,
   onOpenPrivacy,
   onOpenRoutines,
+  onOpenContacts,
   findByEmail,
 }: ProfileScreenProps) {
   const { t } = useI18n();
@@ -49,6 +52,12 @@ export function ProfileScreen({
         {onOpenRoutines && (
           <button className={profile.item} onClick={onOpenRoutines}>
             {t.routines}
+            <Chevron />
+          </button>
+        )}
+        {onOpenContacts && (
+          <button className={profile.item} onClick={onOpenContacts}>
+            {t.contacts}
             <Chevron />
           </button>
         )}

@@ -513,3 +513,39 @@ describe("finding by email", () => {
     expect(stored("alice@example.com")).not.toBeNull();
   });
 });
+
+describe("contacts", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const settle = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+  const list = () => screen.queryByRole("list", { name: "Contacts" });
+
+  it("adds, lists and removes the signed-in account's contacts from Profile", async () => {
+    await createFakeDirectoryListing(person("bob")).list();
+    const { switchTo } = setup();
+    await click("Profile");
+    await click("Contacts");
+    fireEvent.change(screen.getByRole("textbox", { name: "Contact's email" }), {
+      target: { value: "bob@example.com" },
+    });
+    await click("Add");
+    await settle();
+    expect(within(list() ?? document.body).getAllByRole("listitem")).toHaveLength(1);
+    expect(list()).toHaveTextContent("bob@example.com");
+
+    // Another account signed in here sees its own contacts.
+    switchTo("carol");
+    await click("Profile");
+    await click("Contacts");
+    expect(list()).not.toBeInTheDocument();
+    expect(screen.getByText(/No contacts yet/)).toBeInTheDocument();
+  });
+});

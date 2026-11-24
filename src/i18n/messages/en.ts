@@ -1,3 +1,4 @@
+import { CONTACT_LIMITS } from "../../contacts/domain/contact";
 import type { Messages } from "./types";
 
 export const en: Messages = {
@@ -132,7 +133,7 @@ export const en: Messages = {
   privacySections: [
     {
       heading: "What we keep",
-      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts and finished sessions, so you can use them on any device. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
+      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts and finished sessions, so you can use them on any device. Your contacts, the people you add by the email they let others find them by, are kept with that email and the Google name and photo they listed, and only you can see them. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
     },
     {
       heading: "Where it is kept",
@@ -140,7 +141,7 @@ export const en: Messages = {
     },
     {
       heading: "On this device",
-      body: "While you are signed in, this browser keeps your name, email and photo address, a copy of your saved workouts and finished sessions, and anything not yet sent, so the app works without a connection. All of it is erased from this device when you sign out: anything not yet sent is sent first, and if it can't be, the app warns you before erasing it. Your language choice and your sound settings stay here.",
+      body: "While you are signed in, this browser keeps your name, email and photo address, a copy of your saved workouts, finished sessions and contacts, and anything not yet sent, so the app works without a connection. All of it is erased from this device when you sign out: anything not yet sent is sent first, and if it can't be, the app warns you before erasing it. Your language choice and your sound settings stay here.",
     },
     {
       heading: "What we don't do",
@@ -148,7 +149,7 @@ export const en: Messages = {
     },
     {
       heading: "Removing your data",
-      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your finished sessions and your name and photo from finding by email. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
+      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your finished sessions, your contacts and your name and photo from finding by email. Anyone who added you as a contact keeps the name, photo and email they saw then. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
     },
   ],
   privacyContactHeading: "Contact",
@@ -220,4 +221,28 @@ export const en: Messages = {
     "Anyone signed in who enters your exact email will see your Google name and photo.",
   findByEmailChangeFailed: "We couldn't change whether people can find you by email.",
   findByEmailLoadFailed: "We couldn't check whether people can find you by email.",
+  contacts: "Contacts",
+  noContacts:
+    "No contacts yet. Add someone by the email they use here; they must first turn on “Let people find me by email” in their Profile.",
+  contactCount: (total, max) => `${total} of ${max} contacts`,
+  contactEmail: "Contact's email",
+  addContact: "Add",
+  addingContact: "Adding…",
+  contactAdded: "Contact added.",
+  contactRefusals: {
+    invalidEmail: "Enter a full email address, like name@example.com.",
+    notListed:
+      "Nobody can be found by that email. Ask them to turn on “Let people find me by email” in their Profile.",
+    self: "That is your own email.",
+    duplicate: "That person is already in your contacts.",
+    full: `You already have ${CONTACT_LIMITS.contacts} contacts. Remove one to add someone else.`,
+    offline: "Adding a contact needs a connection. Try again when you are online.",
+  },
+  addContactFailed: "We couldn't add that contact. Try again.",
+  loadContactsFailed: "We couldn't load your contacts.",
+  removeContactFailed: "We couldn't remove that contact.",
+  removeContact: (name) => `Remove ${name}`,
+  confirmRemoveContact: (name) => `Remove ${name} from your contacts?`,
+  removeContactNote: "You can add them again by their email while they let people find them.",
+  confirmRemoveContactAction: "Remove",
 };

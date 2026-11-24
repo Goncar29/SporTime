@@ -7,6 +7,8 @@ import { SettingsScreen } from "../settings/ui/SettingsScreen";
 import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
+import type { ContactList } from "../contacts/application/ports";
+import { ContactsScreen } from "../contacts/ui/ContactsScreen";
 import type { DirectoryListing } from "../directory/application/ports";
 import { FindByEmailSwitch } from "../directory/ui/FindByEmailSwitch";
 import { useI18n } from "../i18n/ui/I18nProvider";
@@ -77,6 +79,8 @@ interface AppProps {
   routines?: RoutineLibrary;
   /** Without it, Profile offers no switch to be found by email. */
   directory?: DirectoryListing;
+  /** Without it, Profile offers no Contacts section. */
+  contacts?: ContactList;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -93,14 +97,22 @@ interface AppProps {
 }
 
 /**
- * Settings, Privacy and Routines, with its view and editor, open from Profile, so its tab stays
- * marked while they are shown.
+ * Settings, Privacy, Contacts and Routines, with its view and editor, open from Profile, so its
+ * tab stays marked while they are shown.
  */
-type Screen = Tab | "settings" | "privacy" | "routines" | "routineView" | "routineEditor";
+type Screen =
+  | Tab
+  | "settings"
+  | "privacy"
+  | "contacts"
+  | "routines"
+  | "routineView"
+  | "routineEditor";
 
 const tabOf = (screen: Screen): Tab =>
   screen === "settings" ||
   screen === "privacy" ||
+  screen === "contacts" ||
   screen === "routines" ||
   screen === "routineView" ||
   screen === "routineEditor"
@@ -116,6 +128,7 @@ export function App({
   history,
   routines,
   directory,
+  contacts,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -409,9 +422,17 @@ export function App({
                 setScreen("routines");
               })
             }
+            onOpenContacts={
+              contacts &&
+              (() => {
+                setScreen("contacts");
+              })
+            }
             findByEmail={directory && <FindByEmailSwitch listing={directory} />}
           />
         );
+      case "contacts":
+        return contacts && <ContactsScreen list={contacts} onBack={openProfile} />;
       case "routines":
         return (
           routines && (

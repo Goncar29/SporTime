@@ -63,3 +63,39 @@ it("names the switch to be found by email", () => {
   expect(MESSAGES.es.findByEmail).toBe("Permitir que me encuentren por email");
   expect(MESSAGES.en.findByEmail).toBe("Let people find me by email");
 });
+
+describe("contacts messages", () => {
+  const refusals = ["invalidEmail", "notListed", "self", "duplicate", "full", "offline"] as const;
+
+  it.each(["en", "es"] as const)("%s explains every refusal", (language) => {
+    const messages = MESSAGES[language];
+    expect(Object.keys(messages.contactRefusals).sort()).toEqual([...refusals].sort());
+    for (const kind of refusals) expect(messages.contactRefusals[kind]).not.toBe("");
+    // Who is not listed must turn the switch on, named as Profile names it.
+    expect(messages.contactRefusals.notListed).toContain(messages.findByEmail);
+    expect(messages.contactRefusals.full).toContain("50");
+    expect(messages.noContacts).toContain(messages.findByEmail);
+  });
+
+  it("has the same contact messages in English and Spanish", () => {
+    const contactKeys = (language: "en" | "es") =>
+      Object.keys(MESSAGES[language])
+        .filter((key) => /contact/i.test(key))
+        .sort();
+    expect(contactKeys("es")).toEqual(contactKeys("en"));
+    expect(contactKeys("en").length).toBeGreaterThan(5);
+    for (const key of contactKeys("es")) {
+      expect(MESSAGES.es[key as keyof typeof MESSAGES.es]).not.toEqual(
+        MESSAGES.en[key as keyof typeof MESSAGES.en],
+      );
+    }
+  });
+
+  it("Spanish names contacts and counts them out of 50", () => {
+    expect(MESSAGES.es.contacts).toBe("Contactos");
+    expect(MESSAGES.es.contactCount(3, 50)).toBe("3 de 50 contactos");
+    expect(MESSAGES.en.contactCount(1, 50)).toBe("1 of 50 contacts");
+    expect(MESSAGES.es.removeContact("Ana")).toBe("Quitar Ana");
+    expect(MESSAGES.en.confirmRemoveContact("Ana")).toBe("Remove Ana from your contacts?");
+  });
+});
