@@ -82,6 +82,12 @@ export async function clearLocalCache(): Promise<void> {
   unmarkForClearing();
 }
 
+/** The email Auth reports for this account, when it is the one signed in; null otherwise. */
+export function signedInEmail(userId: string): string | null {
+  const current = getAuth(firebaseApp()).currentUser;
+  return current?.uid === userId ? current.email : null;
+}
+
 /** Firestore writes as whoever Auth reports, so a write must wait for that account to be confirmed. */
 export async function accountReady(userId: string): Promise<boolean> {
   const auth = getAuth(firebaseApp());

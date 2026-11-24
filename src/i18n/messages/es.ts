@@ -1,3 +1,4 @@
+import { CONTACT_LIMITS } from "../../contacts/domain/contact";
 import type { Messages } from "./types";
 
 export const es: Messages = {
@@ -138,15 +139,15 @@ export const es: Messages = {
   privacySections: [
     {
       heading: "Qué guardamos",
-      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo.",
+      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Tus contactos, las personas que agregas con el email por el que permiten que las encuentren, se guardan con ese email y el nombre y la foto de Google que publicaron, y solo tú puedes verlos. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google; las direcciones nunca se muestran en una lista.",
     },
     {
       heading: "Dónde se guarda",
-      body: "Tu cuenta y tus datos se guardan en Google Firebase. Cada cuenta solo puede acceder a sus propios datos.",
+      body: "Tu cuenta y tus datos se guardan en Google Firebase. Cada cuenta solo puede acceder a sus propios datos, salvo ese nombre y esa foto mientras permitas que te encuentren por email.",
     },
     {
       heading: "En este dispositivo",
-      body: "Mientras la sesión está abierta, este navegador conserva tu nombre, correo y dirección de la foto, una copia de tus entrenamientos guardados y sesiones terminadas, y lo que aún no se haya enviado, para que la app funcione sin conexión. Todo eso se borra de este dispositivo al cerrar sesión: lo que falte enviar se envía antes, y si no se puede, la app avisa antes de borrarlo. Tu idioma y tus ajustes de sonido se quedan aquí.",
+      body: "Mientras la sesión está abierta, este navegador conserva tu nombre, correo y dirección de la foto, una copia de tus entrenamientos guardados, sesiones terminadas y contactos, y lo que aún no se haya enviado, para que la app funcione sin conexión. Todo eso se borra de este dispositivo al cerrar sesión: lo que falte enviar se envía antes, y si no se puede, la app avisa antes de borrarlo. Tu idioma y tus ajustes de sonido se quedan aquí.",
     },
     {
       heading: "Lo que no hacemos",
@@ -154,7 +155,7 @@ export const es: Messages = {
     },
     {
       heading: "Eliminar tus datos",
-      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
+      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus sesiones terminadas, tus contactos y tu nombre y foto de la búsqueda por email. Quien te haya agregado como contacto conserva el nombre, la foto y el email que vio entonces. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
     },
   ],
   privacyContactHeading: "Contacto",
@@ -222,4 +223,41 @@ export const es: Messages = {
   viewLink: "Ver",
   viewLinkTo: (host) => `Ver ${host}`,
   viewExerciseLink: (host, exercise) => `Ver ${host} (${exercise})`,
+  findByEmail: "Permitir que me encuentren por email",
+  findByEmailHint:
+    "Quien haya iniciado sesión y escriba tu email exacto verá tu nombre y foto de Google.",
+  findByEmailContactsHint: "Actívalo para que otros puedan agregarte como contacto.",
+  findByEmailChangeFailed: "No pudimos cambiar si te pueden encontrar por email.",
+  findByEmailLoadFailed: "No pudimos comprobar si te pueden encontrar por email.",
+  contacts: "Contactos",
+  contactsMenuItem: (total) => `Contactos · ${total}`,
+  contactsMenuLabel: (total) => `Contactos, ${total} ${total === 1 ? "contacto" : "contactos"}`,
+  noContacts:
+    "Todavía no tienes contactos. Agrega a alguien con el email que usa aquí; antes debe activar «Permitir que me encuentren por email» en su Perfil.",
+  contactCount: (total, max) => `${total} de ${max} contactos`,
+  contactEmail: "Email del contacto",
+  addContact: "Agregar",
+  addingContact: "Agregando…",
+  contactAdded: "Contacto agregado.",
+  contactRefusals: {
+    invalidEmail: "Escribe un email completo, como nombre@ejemplo.com.",
+    notListed:
+      "Nadie se puede encontrar con ese email. Pídele que active «Permitir que me encuentren por email» en su Perfil.",
+    self: "Ese es tu propio email.",
+    duplicate: "Esa persona ya está en tus contactos.",
+    full: `Ya tienes ${CONTACT_LIMITS.contacts} contactos. Quita uno para agregar a otra persona.`,
+    offline:
+      "Para agregar un contacto necesitas conexión. Inténtalo de nuevo cuando estés en línea.",
+  },
+  addContactFailed: "No pudimos agregar ese contacto. Inténtalo de nuevo.",
+  loadContactsFailed: "No pudimos cargar tus contactos.",
+  removeContactFailed: "No pudimos quitar ese contacto.",
+  contactNotSaved: (name, stillListed) =>
+    stillListed
+      ? `No pudimos guardar a ${name} en el servidor; por ahora sigue en tu lista.`
+      : `No pudimos guardar a ${name} en el servidor, así que no está en tu lista.`,
+  removeContact: (name) => `Quitar ${name}`,
+  confirmRemoveContact: (name) => `¿Quitar a ${name} de tus contactos?`,
+  removeContactNote: "Puedes volver a agregarlo con su email mientras permita que lo encuentren.",
+  confirmRemoveContactAction: "Quitar",
 };

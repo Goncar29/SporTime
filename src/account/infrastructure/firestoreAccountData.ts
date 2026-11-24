@@ -8,6 +8,7 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { AuthFailure } from "../../auth/domain/user";
+import { removeDirectoryEntry } from "../../directory/infrastructure/firestoreDirectoryListing";
 import type { AccountData } from "../application/ports";
 
 const BATCH_SIZE = 400;
@@ -16,6 +17,8 @@ const ERASE_TIMEOUT_MS = 60_000;
 interface Dependencies {
   db: Firestore;
   userId: string;
+  /** The account's email, under which it may be listed in the directory; null when it has none. */
+  email: () => string | null;
   /** Drops writes not yet handed to Firestore, so none can recreate data after erasing. */
   discardPendingWrites: () => void;
 }
@@ -59,14 +62,22 @@ function withTimeout(work: (isCancelled: () => boolean) => Promise<void>): Promi
 export function createFirestoreAccountData({
   db,
   userId,
+  email,
   discardPendingWrites,
 }: Dependencies): AccountData {
   const erase = async (isCancelled: () => boolean) => {
     discardPendingWrites();
+    // First, as it is the only thing other users can read. It is read from the server before
+    // deleting, and a failed read stops here. Like the listings below, the answer includes this
+    // device's writes still on their way, and the delete is sent after them.
+    const address = email();
+    if (address !== null) await removeDirectoryEntry(db, { id: userId, email: address });
+    if (isCancelled()) return;
     // Firestore's listing includes writes still on their way, and sends the deletes after them.
     await eraseCollection(db, collection(db, "users", userId, "workouts"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "history"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "routines"), isCancelled);
+    await eraseCollection(db, collection(db, "users", userId, "contacts"), isCancelled);
   };
 
   return {

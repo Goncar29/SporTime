@@ -1,3 +1,4 @@
+import type { ContactRefusal } from "../../contacts/domain/contact";
 import type { SoundSettings } from "../../timer/domain/soundSettings";
 import type { PhaseKind } from "../../workouts/domain/timeline";
 import type { FieldId, WorkoutMode } from "../../workouts/domain/workout";
@@ -177,4 +178,43 @@ export interface Messages {
   viewLinkTo(host: string): string;
   /** Its accessible name when the exercise has a name. */
   viewExerciseLink(host: string, exercise: string): string;
+  /** The Profile switch that lists the user in the directory, found by exact email. */
+  findByEmail: string;
+  /** What turning it on shows, and to whom. */
+  findByEmailHint: string;
+  /** Shown above that hint on the Contacts screen: turning it on lets others add you. */
+  findByEmailContactsHint: string;
+  findByEmailChangeFailed: string;
+  findByEmailLoadFailed: string;
+  /** The Contacts section of Profile: people found by the exact email they let others use. */
+  contacts: string;
+  /** The Profile menu item with how many contacts there are, such as "Contacts · 3". */
+  contactsMenuItem(total: number): string;
+  /** Its accessible name, starting with `contacts`, with the count in words. */
+  contactsMenuLabel(total: number): string;
+  /** What there is to do with no contacts yet, naming the switch they must turn on. */
+  noContacts: string;
+  /** How many contacts are kept, out of the most allowed. */
+  contactCount(total: number, max: number): string;
+  /** The email field's label. */
+  contactEmail: string;
+  addContact: string;
+  addingContact: string;
+  contactAdded: string;
+  /** Why someone cannot be added, by refusal; `notListed` names the switch `findByEmail`. */
+  contactRefusals: Record<ContactRefusal, string>;
+  /** Adding failed for a reason none of the refusals explains. */
+  addContactFailed: string;
+  loadContactsFailed: string;
+  removeContactFailed: string;
+  /**
+   * The server refused a contact added on this device; `name` arrives isolated, and
+   * `stillListed` says whether this device still shows them.
+   */
+  contactNotSaved(name: string, stillListed: boolean): string;
+  /** `name` arrives isolated, so its direction cannot reorder the words around it. */
+  removeContact(name: string): string;
+  confirmRemoveContact(name: string): string;
+  removeContactNote: string;
+  confirmRemoveContactAction: string;
 }

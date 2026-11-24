@@ -12,6 +12,7 @@ import { SignedInApp, type UserStores } from "./app/SignedInApp";
 import { markedForClearing } from "./shared/firebase/clearOnStart";
 import { StoresLoader, createStoresLoad } from "./app/StoresLoader";
 import type { AuthGateway } from "./auth/application/ports";
+import type { Contact } from "./contacts/domain/contact";
 import { AccountMenu } from "./auth/ui/AccountMenu";
 import { AuthGate } from "./auth/ui/AuthGate";
 import type { HistoryDraft } from "./history/domain/historyEntry";
@@ -98,12 +99,19 @@ async function createStoresFactory(
     },
   };
   if (import.meta.env.MODE === "e2e") {
-    const [{ createFakeWorkoutLibrary }, { createFakeHistoryLog }, { createFakeRoutineLibrary }] =
-      await Promise.all([
-        import("./workouts/infrastructure/fakeWorkoutLibrary"),
-        import("./history/infrastructure/fakeHistoryLog"),
-        import("./routines/infrastructure/fakeRoutineLibrary"),
-      ]);
+    const [
+      { createFakeWorkoutLibrary },
+      { createFakeHistoryLog },
+      { createFakeRoutineLibrary },
+      { createFakeDirectoryListing },
+      { createFakeContactList },
+    ] = await Promise.all([
+      import("./workouts/infrastructure/fakeWorkoutLibrary"),
+      import("./history/infrastructure/fakeHistoryLog"),
+      import("./routines/infrastructure/fakeRoutineLibrary"),
+      import("./directory/infrastructure/fakeDirectoryListing"),
+      import("./contacts/infrastructure/fakeContactList"),
+    ]);
     // No Firestore here: nothing waits to be sent and nothing is cached, so sign-out stays as it was.
     const local = {
       sendPending: () => Promise.resolve("sent" as const),
@@ -116,6 +124,8 @@ async function createStoresFactory(
       workouts: createFakeWorkoutLibrary(userId),
       history: createFakeHistoryLog(userId),
       routines: createFakeRoutineLibrary(userId),
+      contacts: createFakeContactList(userId),
+      directoryFor: createFakeDirectoryListing,
       deleteAccount: () => authGateway.signOut(),
       deletionConfirmedByRedirect: () => Promise.resolve(false),
       signOut: (options) => signOut({ auth, local }, options),
@@ -128,12 +138,15 @@ async function createStoresFactory(
       firestore,
       markForClearing,
       serverHasWrites,
+      signedInEmail,
       unmarkForClearing,
     },
     { createLocalStorageOutboxStore },
     { createFirestoreWorkoutLibrary },
     { createFirestoreHistoryLog },
     { createFirestoreRoutineLibrary },
+    { createFirestoreDirectoryListing },
+    { createFirestoreContactList },
     { deleteAccount },
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
@@ -146,6 +159,8 @@ async function createStoresFactory(
     import("./workouts/infrastructure/firestoreWorkoutLibrary"),
     import("./history/infrastructure/firestoreHistoryLog"),
     import("./routines/infrastructure/firestoreRoutineLibrary"),
+    import("./directory/infrastructure/firestoreDirectoryListing"),
+    import("./contacts/infrastructure/firestoreContactList"),
     import("./account/application/deleteAccount"),
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
@@ -168,10 +183,14 @@ async function createStoresFactory(
     const routineOutbox = createLocalStorageOutboxStore<RoutineDraft>(
       `sportime.outbox.routines.${userId}`,
     );
+    const contactOutbox = createLocalStorageOutboxStore<Contact>(
+      `sportime.outbox.contacts.${userId}`,
+    );
     const discardPendingWrites = () => {
       workoutOutbox.save([]);
       historyOutbox.save([]);
       routineOutbox.save([]);
+      contactOutbox.save([]);
     };
     const identity = createFirebaseAccountIdentity(userId);
     // Changes wait while another tab signs out, and are refused once it did (or none without Web Locks).
@@ -218,8 +237,35 @@ async function createStoresFactory(
         otherTabs.confirming(routineLibrary.update(routine)),
       remove: (id: string) => otherTabs.confirming(routineLibrary.remove(id)),
     };
+    const contactStore = createFirestoreContactList(firestore(), userId, {
+      store: contactOutbox,
+      whenReady,
+      guard: otherTabs.guard,
+    });
+    const contacts = {
+      ...contactStore,
+      add(email: string) {
+        const added = contactStore.add(email);
+        // Followed, like every other change, until the server answers the write.
+        otherTabs.confirming(added.then(({ saved }) => saved)).catch(() => undefined);
+        return added;
+      },
+      remove: (uid: string) => otherTabs.confirming(contactStore.remove(uid)),
+    };
+    // One document, set or deleted, which Firestore's own cache queues offline; no outbox. A
+    // sign-out waits for it like any other write, and leaves the entry on the server.
+    const directoryFor = (user: Parameters<typeof createFirestoreDirectoryListing>[1]) => {
+      const listing = createFirestoreDirectoryListing(firestore(), user, {
+        guard: otherTabs.guard,
+      });
+      return {
+        ...listing,
+        list: () => otherTabs.confirming(listing.list()),
+        unlist: () => otherTabs.confirming(listing.unlist()),
+      };
+    };
     const local = createLocalAccountData({
-      outboxes: [workouts, history, routines],
+      outboxes: [workouts, history, routines, contacts],
       discardPendingWrites,
       serverHasWrites,
       clearCache: clearLocalCache,
@@ -243,6 +289,8 @@ async function createStoresFactory(
       workouts,
       history,
       routines,
+      contacts,
+      directoryFor,
       // Holds every change, here and in the other tabs, from erasing until the account is gone.
       deleteAccount: () =>
         deleteAccount({
@@ -250,6 +298,7 @@ async function createStoresFactory(
           data: createFirestoreAccountData({
             db: firestore(),
             userId,
+            email: () => signedInEmail(userId),
             discardPendingWrites,
           }),
           otherTabs,

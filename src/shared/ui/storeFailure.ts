@@ -10,8 +10,8 @@ export function reportStoreFailure(operation: string, error: unknown): StoreFail
   return storeFailureKind(error);
 }
 
-/** The message for a kind of failure; one nothing specific explains keeps the caller's own. */
-export function storeFailureMessage(t: Messages, kind: StoreFailureKind, fallback: string): string {
+/** What explains a kind of failure, or null when nothing specific does. */
+export function storeFailureReason(t: Messages, kind: StoreFailureKind): string | null {
   switch (kind) {
     case "notFound":
       return t.failureNotFound;
@@ -24,6 +24,11 @@ export function storeFailureMessage(t: Messages, kind: StoreFailureKind, fallbac
     case "busy":
       return t.failureBusy;
     case "unknown":
-      return fallback;
+      return null;
   }
+}
+
+/** The message for a kind of failure; one nothing specific explains keeps the caller's own. */
+export function storeFailureMessage(t: Messages, kind: StoreFailureKind, fallback: string): string {
+  return storeFailureReason(t, kind) ?? fallback;
 }

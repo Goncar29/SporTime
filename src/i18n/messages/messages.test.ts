@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
+import { CONTACT_LIMITS } from "../../contacts/domain/contact";
 import { MODES } from "../../workouts/domain/workout";
 import { MESSAGES } from "./index";
 
@@ -57,4 +58,76 @@ it("Spanish names an exercise's link and its button", () => {
   expect(MESSAGES.en.viewExerciseLink("youtube.com", "Row")).toBe("View youtube.com (Row)");
   expect("openLink" in MESSAGES.es).toBe(false);
   expect("openExerciseLink" in MESSAGES.en).toBe(false);
+});
+
+it("names the switch to be found by email", () => {
+  expect(MESSAGES.es.findByEmail).toBe("Permitir que me encuentren por email");
+  expect(MESSAGES.en.findByEmail).toBe("Let people find me by email");
+});
+
+describe("contacts messages", () => {
+  const refusals = ["invalidEmail", "notListed", "self", "duplicate", "full", "offline"] as const;
+
+  it.each(["en", "es"] as const)("%s explains every refusal", (language) => {
+    const messages = MESSAGES[language];
+    expect(Object.keys(messages.contactRefusals).sort()).toEqual([...refusals].sort());
+    for (const kind of refusals) expect(messages.contactRefusals[kind]).not.toBe("");
+    // Who is not listed must turn the switch on, named as Profile names it.
+    expect(messages.contactRefusals.notListed).toContain(messages.findByEmail);
+    expect(messages.contactRefusals.full).toContain(String(CONTACT_LIMITS.contacts));
+    expect(messages.noContacts).toContain(messages.findByEmail);
+  });
+
+  it("has the same contact messages in English and Spanish", () => {
+    const contactKeys = (language: "en" | "es") =>
+      Object.keys(MESSAGES[language])
+        .filter((key) => /contact/i.test(key))
+        .sort();
+    expect(contactKeys("es")).toEqual(contactKeys("en"));
+    expect(contactKeys("en").length).toBeGreaterThan(5);
+    for (const key of contactKeys("es")) {
+      expect(MESSAGES.es[key as keyof typeof MESSAGES.es]).not.toEqual(
+        MESSAGES.en[key as keyof typeof MESSAGES.en],
+      );
+    }
+  });
+
+  it("Spanish names contacts and counts them out of the limit", () => {
+    const max = CONTACT_LIMITS.contacts;
+    expect(MESSAGES.es.contacts).toBe("Contactos");
+    expect(MESSAGES.es.contactCount(3, max)).toBe(`3 de ${max} contactos`);
+    expect(MESSAGES.en.contactCount(1, max)).toBe(`1 of ${max} contacts`);
+    expect(MESSAGES.es.removeContact("Ana")).toBe("Quitar Ana");
+    expect(MESSAGES.en.confirmRemoveContact("Ana")).toBe("Remove Ana from your contacts?");
+  });
+
+  it("counts contacts on the Profile menu, with a spoken name", () => {
+    expect(MESSAGES.es.contactsMenuItem(3)).toBe("Contactos · 3");
+    expect(MESSAGES.en.contactsMenuItem(3)).toBe("Contacts · 3");
+    expect(MESSAGES.es.contactsMenuLabel(1)).toBe("Contactos, 1 contacto");
+    expect(MESSAGES.es.contactsMenuLabel(3)).toBe("Contactos, 3 contactos");
+    expect(MESSAGES.en.contactsMenuLabel(1)).toBe("Contacts, 1 contact");
+    expect(MESSAGES.en.contactsMenuLabel(0)).toBe("Contacts, 0 contacts");
+  });
+
+  it("says on the Contacts screen that the switch lets others add you", () => {
+    expect(MESSAGES.es.findByEmailContactsHint).toBe(
+      "Actívalo para que otros puedan agregarte como contacto.",
+    );
+    expect(MESSAGES.en.findByEmailContactsHint).toBe(
+      "Turn it on so others can add you as a contact.",
+    );
+  });
+
+  it("names a contact the server refused to save, and whether it is still listed", () => {
+    expect(MESSAGES.es.contactNotSaved("Ana", true)).toBe(
+      "No pudimos guardar a Ana en el servidor; por ahora sigue en tu lista.",
+    );
+    expect(MESSAGES.es.contactNotSaved("Ana", false)).toBe(
+      "No pudimos guardar a Ana en el servidor, así que no está en tu lista.",
+    );
+    expect(MESSAGES.en.contactNotSaved("Ana", false)).toBe(
+      "We couldn't save Ana on the server, so they are not in your list.",
+    );
+  });
 });

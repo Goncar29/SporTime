@@ -23,13 +23,23 @@ interface StoredDocument {
 /** Reads what the server really holds, bypassing the rules and the page. */
 export async function stored(
   uid: string,
-  kind: "workouts" | "history" | "routines",
+  kind: "workouts" | "history" | "routines" | "contacts",
 ): Promise<StoredDocument[]> {
   const response = await fetch(`http://${DOCUMENTS}/users/${uid}/${kind}?pageSize=300`, {
     headers: { Authorization: "Bearer owner" },
   });
   const body = (await response.json()) as { documents?: StoredDocument[] };
   return body.documents ?? [];
+}
+
+/** The directory entry the server holds under a normalized email, or null when there is none. */
+export async function storedEntry(email: string): Promise<Record<string, StoredValue> | null> {
+  const response = await fetch(`http://${DOCUMENTS}/directory/${encodeURIComponent(email)}`, {
+    headers: { Authorization: "Bearer owner" },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Firestore emulator answered ${response.status}`);
+  return ((await response.json()) as StoredDocument).fields;
 }
 
 /** Deletes a stored document as another device would, bypassing the rules and the page. */

@@ -7,6 +7,12 @@ import { SettingsScreen } from "../settings/ui/SettingsScreen";
 import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
+import type { ContactStore } from "../contacts/application/ports";
+import type { Contact } from "../contacts/domain/contact";
+import { ContactsScreen } from "../contacts/ui/ContactsScreen";
+import { useContactSaveFailures } from "../contacts/ui/useContactSaveFailures";
+import type { DirectoryListing } from "../directory/application/ports";
+import { FindByEmailSwitch } from "../directory/ui/FindByEmailSwitch";
 import { useI18n } from "../i18n/ui/I18nProvider";
 import type { RoutineLibrary } from "../routines/application/ports";
 import type { Routine } from "../routines/domain/routine";
@@ -73,6 +79,10 @@ interface AppProps {
   history: HistoryLog;
   /** Without it, Profile offers no Routines section. */
   routines?: RoutineLibrary;
+  /** Without it, Profile offers no switch to be found by email. */
+  directory?: DirectoryListing;
+  /** Without it, Profile offers no Contacts section. */
+  contactStore?: ContactStore;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -89,14 +99,22 @@ interface AppProps {
 }
 
 /**
- * Settings, Privacy and Routines, with its view and editor, open from Profile, so its tab stays
- * marked while they are shown.
+ * Settings, Privacy, Contacts and Routines, with its view and editor, open from Profile, so its
+ * tab stays marked while they are shown.
  */
-type Screen = Tab | "settings" | "privacy" | "routines" | "routineView" | "routineEditor";
+type Screen =
+  | Tab
+  | "settings"
+  | "privacy"
+  | "contacts"
+  | "routines"
+  | "routineView"
+  | "routineEditor";
 
 const tabOf = (screen: Screen): Tab =>
   screen === "settings" ||
   screen === "privacy" ||
+  screen === "contacts" ||
   screen === "routines" ||
   screen === "routineView" ||
   screen === "routineEditor"
@@ -105,12 +123,16 @@ const tabOf = (screen: Screen): Tab =>
 
 /** Stands in for a missing routine library: it never answers, and nothing reads it. */
 const noRoutines: SubscribeToList<Routine> = () => () => undefined;
+/** Stands in for a missing contact list the same way. */
+const noContacts: SubscribeToList<Contact> = () => () => undefined;
 
 export function App({
   timer,
   workouts,
   history,
   routines,
+  directory,
+  contactStore,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -129,6 +151,18 @@ export function App({
   } | null>(null);
   const library = useLiveList(workouts.subscribe, "Loading saved workouts");
   const routineList = useLiveList(routines?.subscribe ?? noRoutines, "Loading routines");
+  // Read here, so Profile can count them; unknown while loading or after a failed read.
+  const liveContacts = useLiveList(contactStore?.subscribe ?? noContacts, "Loading contacts");
+  const contactCount =
+    liveContacts.failed || liveContacts.items === null ? null : liveContacts.items.length;
+  const contactSaveFailures = useContactSaveFailures();
+  // Refusals shown on Contacts are let go once it is left; one arriving later waits for it.
+  const shownScreen = useRef<Screen>(screen);
+  const { clear: clearContactSaveFailures } = contactSaveFailures;
+  useEffect(() => {
+    if (shownScreen.current === "contacts" && screen !== "contacts") clearContactSaveFailures();
+    shownScreen.current = screen;
+  }, [screen, clearContactSaveFailures]);
   /** The routine open in the editor, or null for a new one. */
   const [editedRoutine, setEditedRoutine] = useState<Routine | null>(null);
   /** The routine open to read, which the editor goes back to; null when opened from the list. */
@@ -404,7 +438,33 @@ export function App({
                 setScreen("routines");
               })
             }
+            onOpenContacts={
+              contactStore &&
+              (() => {
+                // The listener stops for good after an error, so opening Contacts reads again.
+                if (liveContacts.failed) liveContacts.retry();
+                setScreen("contacts");
+              })
+            }
+            contactCount={contactCount}
+            findByEmail={directory && <FindByEmailSwitch listing={directory} />}
           />
+        );
+      case "contacts":
+        return (
+          contactStore && (
+            <ContactsScreen
+              contactStore={contactStore}
+              liveContacts={liveContacts}
+              saveFailures={contactSaveFailures}
+              findByEmail={
+                directory && (
+                  <FindByEmailSwitch listing={directory} note={t.findByEmailContactsHint} />
+                )
+              }
+              onBack={openProfile}
+            />
+          )
         );
       case "routines":
         return (

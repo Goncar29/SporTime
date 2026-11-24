@@ -7,8 +7,11 @@ import type { AuthGateway } from "../auth/application/ports";
 import { AuthFailure, type User } from "../auth/domain/user";
 import { AccountMenu } from "../auth/ui/AccountMenu";
 import { AuthGate } from "../auth/ui/AuthGate";
+import type { DirectoryListing } from "../directory/application/ports";
+import { createFakeDirectoryListing } from "../directory/infrastructure/fakeDirectoryListing";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
+import { createFakeContactList } from "../contacts/infrastructure/fakeContactList";
 import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
 import { createFakeWorkoutLibrary } from "../workouts/infrastructure/fakeWorkoutLibrary";
 import { SignedInApp } from "./SignedInApp";
@@ -25,6 +28,8 @@ interface Options {
   otherTabs?: ReturnType<typeof createOtherTabsStatus>;
   /** The account's deletion; by default it removes the account, which signs it out. */
   deleteAccount?: () => Promise<void>;
+  /** The directory listing for a signed-in user; none by default. */
+  directoryFor?: (user: User) => DirectoryListing;
 }
 
 /** The other tabs' status as the account's stores report it, changed by the test. */
@@ -50,7 +55,7 @@ function createOtherTabsStatus() {
   };
 }
 
-function setup({ language = "en", signOut, otherTabs, deleteAccount }: Options = {}) {
+function setup({ language = "en", signOut, otherTabs, deleteAccount, directoryFor }: Options = {}) {
   let report: (user: User | null) => void = () => undefined;
   const gateway = {
     subscribe(listener: (user: User | null) => void) {
@@ -84,6 +89,7 @@ function setup({ language = "en", signOut, otherTabs, deleteAccount }: Options =
     workouts: createFakeWorkoutLibrary(userId),
     history: createFakeHistoryLog(userId),
     routines: createFakeRoutineLibrary(userId),
+    contacts: createFakeContactList(userId),
     deleteAccount:
       deleteAccount ??
       (async () => {
@@ -92,6 +98,7 @@ function setup({ language = "en", signOut, otherTabs, deleteAccount }: Options =
     deletionConfirmedByRedirect: () => Promise.resolve(false),
     signOut: accountSignOut,
     otherTabs,
+    directoryFor,
   });
   render(
     <I18nProvider store={{ get: () => language, set: vi.fn() }} browserLanguages={["en-US"]}>
@@ -117,7 +124,7 @@ function setup({ language = "en", signOut, otherTabs, deleteAccount }: Options =
   };
 }
 
-const click = async (name: string) => {
+const click = async (name: string | RegExp) => {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name }));
     await Promise.resolve();
@@ -463,5 +470,103 @@ describe("deleting the account", () => {
     await accept();
     expect(screen.getByRole("alert")).toHaveTextContent(/connection/);
     expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+describe("finding by email", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const toggle = () => screen.getByRole("switch", { name: "Let people find me by email" });
+  const stored = (email: string) => localStorage.getItem(`sportime.fakeDirectory.${email}`);
+
+  it("offers the signed-in user's own listing on Profile, and lists their Google name", async () => {
+    const directoryFor = vi.fn((user: User) => createFakeDirectoryListing(user));
+    setup({ directoryFor });
+    await click("Profile");
+    expect(directoryFor).toHaveBeenCalledWith(person("alice"));
+    await act(async () => {
+      fireEvent.click(toggle());
+      await Promise.resolve();
+    });
+    expect(toggle()).toBeChecked();
+    expect(JSON.parse(stored("alice@example.com") ?? "null")).toMatchObject({ uid: "alice" });
+  });
+
+  it("follows the account when another one signs in here", async () => {
+    await createFakeDirectoryListing(person("alice")).list();
+    const { switchTo } = setup({ directoryFor: (user) => createFakeDirectoryListing(user) });
+    await click("Profile");
+    expect(toggle()).toBeChecked();
+    switchTo("bob");
+    await click("Profile");
+    expect(toggle()).not.toBeChecked();
+  });
+
+  it("keeps the entry on the server when signing out, which only erases this device", async () => {
+    await createFakeDirectoryListing(person("alice")).list();
+    const { signOut } = setup({ directoryFor: (user) => createFakeDirectoryListing(user) });
+    await click("Profile");
+    await click("Sign out");
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(stored("alice@example.com")).not.toBeNull();
+  });
+});
+
+describe("contacts", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const settle = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+  const list = () => screen.queryByRole("list", { name: "Contacts" });
+
+  it("adds, lists and removes the signed-in account's contacts from Profile", async () => {
+    await createFakeDirectoryListing(person("bob")).list();
+    const { switchTo } = setup();
+    await click("Profile");
+    await click("Contacts, 0 contacts");
+    fireEvent.change(screen.getByRole("textbox", { name: "Contact's email" }), {
+      target: { value: "bob@example.com" },
+    });
+    await click("Add");
+    await settle();
+    expect(within(list() ?? document.body).getAllByRole("listitem")).toHaveLength(1);
+    expect(list()).toHaveTextContent("bob@example.com");
+    await click("Back");
+    expect(screen.getByRole("button", { name: "Contacts, 1 contact" })).toHaveTextContent(
+      "Contacts · 1",
+    );
+
+    // Another account signed in here sees its own contacts.
+    switchTo("carol");
+    await click("Profile");
+    await click("Contacts, 0 contacts");
+    expect(list()).not.toBeInTheDocument();
+    expect(screen.getByText(/No contacts yet/)).toBeInTheDocument();
+  });
+
+  it("offers the signed-in user's own switch to be found by email on the Contacts screen", async () => {
+    setup({ directoryFor: (user) => createFakeDirectoryListing(user) });
+    await click("Profile");
+    await click(/^Contacts\b/);
+    const toggle = () => screen.getByRole("switch", { name: "Let people find me by email" });
+    await act(async () => {
+      fireEvent.click(toggle());
+      await Promise.resolve();
+    });
+    expect(toggle()).toBeChecked();
+    expect(
+      JSON.parse(localStorage.getItem("sportime.fakeDirectory.alice@example.com") ?? "null"),
+    ).toMatchObject({ uid: "alice" });
+    await click("Back");
+    expect(toggle()).toBeChecked();
   });
 });

@@ -95,6 +95,13 @@ describe("withOutbox", () => {
     expect(store.load()).toEqual([]);
   });
 
+  it("writes under the id given, when the item has its own", async () => {
+    const { outbox, fake } = setup();
+    await outbox.add({ order: 1 }, "own-id");
+    expect(fake.collection.put).toHaveBeenCalledWith("own-id", { order: 1 });
+    expect([...fake.stored.keys()]).toEqual(["own-id"]);
+  });
+
   it("does not show an item twice while it moves to the collection", async () => {
     const { outbox, fake } = setup();
     const onData = vi.fn();

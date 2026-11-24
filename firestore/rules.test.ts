@@ -11,12 +11,29 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  documentId,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  CONTACT_LIMITS,
+  contactFromEntry,
+  isContactEmail,
+  toStoredContact,
+} from "../src/contacts/domain/contact";
+import {
+  DIRECTORY_LIMITS,
+  directoryEntryFor,
+  isGooglePhoto,
+  normalizeEmail,
+} from "../src/directory/domain/directory";
 import { ROUTINE_LIMITS, toStoredRoutine, type RoutineDraft } from "../src/routines/domain/routine";
 import { MAX_TIMESTAMP_MS } from "../src/shared/domain/timestamp";
 import {
@@ -633,5 +650,461 @@ describe("routine shape", () => {
     await assertFails(setDoc(doc(asUser("alice"), path), { ...edited, createdAt: 2 }));
     await assertFails(setDoc(doc(asUser("alice"), path), { ...edited, name: "" }));
     await assertFails(setDoc(doc(asUser("mallory"), path), edited));
+  });
+});
+
+describe("directory", () => {
+  const aliceEmail = "alice@example.com";
+  const entryPath = (email: string) => `directory/${email}`;
+  const aliceEntry = directoryEntryFor({
+    id: "alice",
+    name: "Alice Liddell",
+    email: aliceEmail,
+    photoUrl: "https://lh3.googleusercontent.com/a/alice=s96-c",
+  });
+  /** Signed in with Google, so the token carries the account's email, verified unless told. */
+  const signedIn = (uid: string, email: string, emailVerified = true) =>
+    env.authenticatedContext(uid, { email, email_verified: emailVerified }).firestore();
+  const asAlice = () => signedIn("alice", aliceEmail);
+  const write = (data: object, db = asAlice(), email = aliceEmail) =>
+    setDoc(doc(db, entryPath(email)), data);
+
+  it("lets anyone signed in read one exact email, and nobody signed out", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    const found = await assertSucceeds(
+      getDoc(doc(signedIn("bob", "bob@example.com"), entryPath(aliceEmail))),
+    );
+    expect(found.data()).toEqual(aliceEntry);
+    await assertSucceeds(getDoc(doc(asUser("bob"), entryPath("nobody@example.com"))));
+    await assertFails(getDoc(doc(asGuest(), entryPath(aliceEmail))));
+  });
+
+  it("never lists it, not even for an entry's owner", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    await assertFails(getDocs(collection(asAlice(), "directory")));
+    await assertFails(getDocs(collection(signedIn("bob", "bob@example.com"), "directory")));
+    await assertFails(getDocs(collection(asGuest(), "directory")));
+    await assertFails(getDocs(collectionGroup(asAlice(), "directory")));
+  });
+
+  it("lets the owner of a verified email list themselves, and change and resend it", async () => {
+    await assertSucceeds(write(aliceEntry));
+    await assertSucceeds(write(aliceEntry));
+    await assertSucceeds(write({ ...aliceEntry, name: "Alice L." }));
+  });
+
+  it("matches the token's email however it is written", async () => {
+    await assertSucceeds(write(aliceEntry, signedIn("alice", " Alice@Example.COM ")));
+    await assertFails(write(aliceEntry, asAlice(), "Alice@Example.com"));
+  });
+
+  it("refuses an entry under someone else's email", async () => {
+    await assertFails(write(aliceEntry, signedIn("alice", aliceEmail), "bob@example.com"));
+    await assertFails(
+      write({ ...aliceEntry, uid: "mallory" }, signedIn("mallory", "mallory@example.com")),
+    );
+  });
+
+  it("refuses an email that is not verified, or a token without one", async () => {
+    await assertFails(write(aliceEntry, signedIn("alice", aliceEmail, false)));
+    await assertFails(write(aliceEntry, asUser("alice")));
+    await assertFails(write(aliceEntry, asGuest()));
+  });
+
+  it("refuses a uid that is not the writer's", async () => {
+    await assertFails(write({ ...aliceEntry, uid: "bob" }));
+    await assertFails(write({ ...aliceEntry, uid: 7 }));
+  });
+
+  it("refuses extra, missing or oversized fields", async () => {
+    await assertFails(write({ ...aliceEntry, email: aliceEmail }));
+    await assertFails(write({ uid: "alice", photo: "" }));
+    await assertFails(write({ name: "Alice", photo: "" }));
+    await assertFails(write({ ...aliceEntry, name: "a".repeat(DIRECTORY_LIMITS.nameLength + 1) }));
+    await assertSucceeds(write({ ...aliceEntry, name: "a".repeat(DIRECTORY_LIMITS.nameLength) }));
+    await assertFails(write({ ...aliceEntry, name: 7 }));
+    await assertFails(write({ ...aliceEntry, name: "Alice\nLiddell" }));
+    const base = "https://lh3.googleusercontent.com/";
+    const longest = base + "a".repeat(DIRECTORY_LIMITS.photoLength - base.length);
+    await assertSucceeds(write({ ...aliceEntry, photo: longest }));
+    await assertFails(write({ ...aliceEntry, photo: `${longest}a` }));
+  });
+
+  it("accepts an empty name and an empty or absent photo", async () => {
+    await assertSucceeds(write({ ...aliceEntry, name: "", photo: "" }));
+    await assertSucceeds(write({ uid: "alice", name: "Alice" }));
+  });
+
+  it("refuses a photo that is not https on googleusercontent.com", async () => {
+    for (const photo of [
+      "http://lh3.googleusercontent.com/a",
+      "https://evil.com/a.png",
+      "https://lh3.googleusercontent.com.evil.com/a",
+      "https://evilgoogleusercontent.com/a",
+      "https://user@lh3.googleusercontent.com/a",
+      "https://lh3.googleusercontent.com:8080/a",
+      "https://lh3.googleusercontent.com/a b",
+      "javascript:alert(1)",
+      7,
+      null,
+    ]) {
+      await assertFails(write({ ...aliceEntry, photo }));
+    }
+  });
+
+  it("lets only the owner delete it", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    await assertFails(deleteDoc(doc(signedIn("bob", "bob@example.com"), entryPath(aliceEmail))));
+    // Even one signed in with the same email, under another account.
+    await assertFails(deleteDoc(doc(signedIn("mallory", aliceEmail), entryPath(aliceEmail))));
+    await assertFails(deleteDoc(doc(asGuest(), entryPath(aliceEmail))));
+    await assertSucceeds(deleteDoc(doc(asAlice(), entryPath(aliceEmail))));
+  });
+
+  it("keeps every entry the app writes within the rules", async () => {
+    for (const user of [
+      { id: "alice", name: "💪".repeat(80), email: aliceEmail, photoUrl: null },
+      { id: "alice", name: aliceEmail, email: aliceEmail, photoUrl: "https://example.com/a.png" },
+      {
+        id: "alice",
+        name: "Ana\tPérez\u0000",
+        email: aliceEmail,
+        photoUrl: "https://lh3.googleusercontent.com/a/x",
+      },
+    ]) {
+      await assertSucceeds(write(directoryEntryFor(user), asAlice(), normalizeEmail(user.email)));
+    }
+  });
+
+  it("refuses every query, filtered or limited (S11)", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    const bob = signedIn("bob", "bob@example.com");
+    for (const q of [
+      query(collection(bob, "directory"), limit(1)),
+      query(collection(bob, "directory"), where("uid", "==", "alice")),
+      query(collection(bob, "directory"), where(documentId(), "==", aliceEmail)),
+      query(collection(bob, "directory"), where(documentId(), "in", [aliceEmail]), limit(1)),
+      query(collection(bob, "directory"), orderBy("name"), limit(1)),
+    ]) {
+      await assertFails(getDocs(q));
+    }
+  });
+
+  it("refuses a document id that differs from the normalized email (S11)", async () => {
+    for (const id of [
+      " alice@example.com",
+      "alice@example.com ",
+      "alice@example.com\u00a0",
+      "alice@example.co",
+    ]) {
+      await assertFails(write(aliceEntry, asAlice(), id));
+    }
+    await assertFails(write(aliceEntry, signedIn("alice", aliceEmail, "true" as never)));
+  });
+
+  it("refuses more photo look-alikes (S11, S5)", async () => {
+    for (const photo of [
+      "https://user:pw@googleusercontent.com/a",
+      "https://lh3.googleusercontent.com:443/a",
+      "https://LH3.googleusercontent.com/a",
+      "HTTPS://lh3.googleusercontent.com/a",
+      "https://lh3.googleusercontent.com%2eevil.com/a",
+      "https://lh3.googleusercontent.com./a",
+      "https://evil.com\\@lh3.googleusercontent.com/a",
+      "https://evil.com#.googleusercontent.com/a",
+      "//lh3.googleusercontent.com/a",
+      "https://\uff47oogleusercontent.com/a",
+      "https://lh3.googleusercontent.com/a\u00a0",
+      "data:image/png;base64,AAAA",
+    ]) {
+      await assertFails(write({ ...aliceEntry, photo }));
+    }
+  });
+
+  it("never lets an update hand the entry to another uid or add a key (S11)", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    const entry = (db = asAlice()) => doc(db, entryPath(aliceEmail));
+    await assertFails(updateDoc(entry(), { uid: "bob" }));
+    await assertFails(updateDoc(entry(), { extra: 1 }));
+    await assertFails(updateDoc(entry(), { name: deleteField() }));
+    await assertFails(updateDoc(entry(signedIn("bob", "bob@example.com")), { uid: "bob" }));
+  });
+
+  it("refuses deleting a missing entry, which the app resolves by asking the server (S11)", async () => {
+    await assertFails(deleteDoc(doc(asAlice(), entryPath(aliceEmail))));
+  });
+});
+
+describe("contacts (S11, S5)", () => {
+  const bobEmail = "bob@example.com";
+  const bobEntry = directoryEntryFor({
+    id: "bob",
+    name: "Bob Stone",
+    email: bobEmail,
+    photoUrl: "https://lh3.googleusercontent.com/a/bob=s96-c",
+  });
+  const bobContact = toStoredContact({ ...bobEntry, email: bobEmail });
+  const contactPath = (owner: string, contactUid: string) =>
+    `users/${owner}/contacts/${contactUid}`;
+  const add = (data: object, db = asUser("alice"), id = "bob") =>
+    setDoc(doc(db, contactPath("alice", id)), data);
+
+  beforeEach(async () => {
+    await seed(`directory/${bobEmail}`, bobEntry);
+  });
+
+  it("lets the owner add, read, list, resend and delete a contact who is listed", async () => {
+    const db = asUser("alice");
+    await assertSucceeds(add(bobContact));
+    await assertSucceeds(add(bobContact));
+    const read = await assertSucceeds(getDoc(doc(db, contactPath("alice", "bob"))));
+    expect(read.data()).toEqual(bobContact);
+    await assertSucceeds(getDocs(collection(db, "users/alice/contacts")));
+    await assertSucceeds(deleteDoc(doc(db, contactPath("alice", "bob"))));
+  });
+
+  it("hides a user's contacts from everyone else, and refuses their writes", async () => {
+    await seed(contactPath("alice", "bob"), bobContact);
+    for (const db of [asUser("mallory"), asUser("bob"), asGuest()]) {
+      await assertFails(getDoc(doc(db, contactPath("alice", "bob"))));
+      await assertFails(getDocs(collection(db, "users/alice/contacts")));
+      await assertFails(setDoc(doc(db, contactPath("alice", "bob")), bobContact));
+      await assertFails(updateDoc(doc(db, contactPath("alice", "bob")), { name: "X" }));
+      await assertFails(deleteDoc(doc(db, contactPath("alice", "bob"))));
+    }
+    await assertFails(getDocs(collectionGroup(asUser("mallory"), "contacts")));
+  });
+
+  it("refuses a document id that is not the contact's uid, and adding yourself", async () => {
+    await assertFails(add(bobContact, asUser("alice"), "carol"));
+    await seed("directory/alice@example.com", { uid: "alice", name: "Alice", photo: "" });
+    await assertFails(
+      add(
+        { uid: "alice", name: "Alice", photo: "", email: "alice@example.com" },
+        asUser("alice"),
+        "alice",
+      ),
+    );
+  });
+
+  it("refuses someone not listed, or listed under that email by another account", async () => {
+    await assertFails(add({ ...bobContact, email: "carol@example.com" }));
+    await seed("directory/carol@example.com", { uid: "carol", name: "", photo: "" });
+    await assertFails(add({ ...bobContact, email: "carol@example.com" }));
+  });
+
+  it("still lets the owner delete a contact who left the directory", async () => {
+    await seed(contactPath("alice", "bob"), bobContact);
+    await env.withSecurityRulesDisabled(async (context) => {
+      await deleteDoc(doc(context.firestore(), `directory/${bobEmail}`));
+    });
+    await assertSucceeds(getDoc(doc(asUser("alice"), contactPath("alice", "bob"))));
+    await assertSucceeds(deleteDoc(doc(asUser("alice"), contactPath("alice", "bob"))));
+  });
+
+  it("refuses extra, missing, mistyped or oversized fields", async () => {
+    const { photo: _photo, ...withoutPhoto } = bobContact;
+    await assertFails(add({ ...bobContact, extra: 1 }));
+    await assertFails(add(withoutPhoto));
+    await assertFails(add({ ...bobContact, uid: 7 }));
+    await assertFails(add({ ...bobContact, name: 7 }));
+    await assertFails(add({ ...bobContact, name: "Bob\nStone" }));
+    await assertFails(add({ ...bobContact, name: "a".repeat(DIRECTORY_LIMITS.nameLength + 1) }));
+    await assertSucceeds(add({ ...bobContact, name: "a".repeat(DIRECTORY_LIMITS.nameLength) }));
+    await assertSucceeds(add({ ...bobContact, name: "", photo: "" }));
+    await assertFails(add({ ...bobContact, email: 7 }));
+    const base = "https://lh3.googleusercontent.com/";
+    const longest = base + "a".repeat(DIRECTORY_LIMITS.photoLength - base.length);
+    await assertSucceeds(add({ ...bobContact, photo: longest }));
+    await assertFails(add({ ...bobContact, photo: `${longest}a` }));
+  });
+
+  it("refuses an email that is too long or not an address, even when listed", async () => {
+    const longest = `${"b".repeat(CONTACT_LIMITS.emailLength - "@x.io".length)}@x.io`;
+    await seed(`directory/${longest}`, bobEntry);
+    await assertSucceeds(add({ ...bobContact, email: longest }));
+    for (const email of [`b${longest}`, "bob", "bob@@example.com", "bob example@x.io"]) {
+      await seed(`directory/${email}`, bobEntry);
+      await assertFails(add({ ...bobContact, email }));
+    }
+    await assertFails(add({ ...bobContact, email: "bob@example.com/../x" }));
+  });
+
+  it("refuses a photo that is not https on googleusercontent.com", async () => {
+    for (const photo of [
+      "http://lh3.googleusercontent.com/a",
+      "https://evil.com/a.png",
+      "https://lh3.googleusercontent.com.evil.com/a",
+      "https://user@lh3.googleusercontent.com/a",
+      "https://lh3.googleusercontent.com:8080/a",
+      "https://lh3.googleusercontent.com/a b",
+      "javascript:alert(1)",
+      7,
+      null,
+    ]) {
+      await assertFails(add({ ...bobContact, photo }));
+    }
+  });
+
+  it("never lets an update hand the contact to another uid or add a key", async () => {
+    await seed(contactPath("alice", "bob"), bobContact);
+    const contact = doc(asUser("alice"), contactPath("alice", "bob"));
+    await assertFails(updateDoc(contact, { uid: "carol" }));
+    await assertFails(updateDoc(contact, { extra: 1 }));
+    await assertFails(updateDoc(contact, { name: deleteField() }));
+    await assertSucceeds(updateDoc(contact, { name: "Bobby" }));
+  });
+
+  it("keeps every contact the app writes within the rules", async () => {
+    for (const entry of [
+      { uid: "bob", name: "💪".repeat(80), photo: "" },
+      { uid: "bob", name: "Bob\tStone\u0000", photo: "https://example.com/a.png" },
+      { uid: "bob", name: 7, photo: "https://lh3.googleusercontent.com/a/x" },
+    ]) {
+      const contact = contactFromEntry(bobEmail, entry);
+      expect(contact).not.toBeNull();
+      await assertSucceeds(add(toStoredContact(contact as NonNullable<typeof contact>)));
+    }
+  });
+});
+
+describe("contacts: verifier probes (S5, S11)", () => {
+  const bobEmail = "bob@example.com";
+  const bob = { uid: "bob", name: "Bob", photo: "", email: bobEmail };
+  const path = (owner: string, id: string) => `users/${owner}/contacts/${id}`;
+  const put = (
+    data: unknown,
+    { owner = "alice", id = "bob", as }: { owner?: string; id?: string; as?: string } = {},
+  ) => setDoc(doc(asUser(as ?? owner), path(owner, id)), data as object);
+  beforeEach(async () => {
+    await seed(`directory/${bobEmail}`, { uid: "bob", name: "Bob", photo: "" });
+  });
+
+  it("refuses collection-group reads to everyone, the owner included", async () => {
+    await seed(path("alice", "bob"), bob);
+    for (const db of [asUser("alice"), asUser("mallory"), asGuest()]) {
+      await assertFails(getDocs(collectionGroup(db, "contacts")));
+      await assertFails(getDocs(query(collectionGroup(db, "contacts"), where("uid", "==", "bob"))));
+    }
+  });
+
+  it("refuses writes below a contact or into someone else's list", async () => {
+    await assertFails(setDoc(doc(asUser("alice"), `${path("alice", "bob")}/x/y`), { a: 1 }));
+    await assertFails(put(bob, { as: "mallory" }));
+    await assertSucceeds(put(bob, { owner: "mallory" }));
+  });
+
+  it("refuses another uid, an entry naming someone else, and yourself under any email", async () => {
+    await seed("directory/carol@example.com", { uid: "carol", name: "", photo: "" });
+    await assertFails(put({ ...bob, uid: "carol", email: "carol@example.com" }));
+    await assertFails(put({ ...bob, email: "carol@example.com" }));
+    await seed("directory/alias@example.com", { uid: "alice", name: "", photo: "" });
+    await assertFails(put({ ...bob, uid: "alice", email: "alias@example.com" }, { id: "alice" }));
+  });
+
+  it("refuses emails that only look like the listed one", async () => {
+    for (const email of [
+      "Bob@example.com",
+      " bob@example.com",
+      "bob@example.com ",
+      "bob@example.com\t",
+      "bob@example.com\u200b",
+      "bob@ex%61mple.com",
+      "b\u043eb@example.com",
+      "bob@example.com/..",
+      "../bob@example.com",
+      "bob%2F..%2Fbob@example.com",
+      "__bob@example.com__",
+      "x$(database)@y",
+    ]) {
+      await assertFails(put({ ...bob, email }));
+    }
+  });
+
+  it("reads the email as one literal document id", async () => {
+    const odd = "a#b?c[d]*%2F@x.io";
+    expect(isContactEmail(odd)).toBe(true);
+    await seed(`directory/${odd}`, { uid: "bob", name: "", photo: "" });
+    await assertSucceeds(put({ ...bob, email: odd }));
+  });
+
+  it("refuses missing keys and values that are not text", async () => {
+    for (const key of ["uid", "name", "photo", "email"] as const) {
+      const { [key]: _gone, ...rest } = bob;
+      await assertFails(put(rest));
+    }
+    for (const [key, value] of [
+      ["email", null],
+      ["email", [bobEmail]],
+      ["photo", {}],
+      ["photo", ["https://lh3.googleusercontent.com/a"]],
+      ["name", null],
+      ["uid", null],
+    ] as const) {
+      await assertFails(put({ ...bob, [key]: value }));
+    }
+  });
+
+  it("refuses every photo look-alike, as the domain does", async () => {
+    const long = "https://lh3.googleusercontent.com/" + "a".repeat(467);
+    for (const photo of [
+      "HTTPS://lh3.googleusercontent.com/a",
+      "https://LH3.googleusercontent.com/a",
+      "https://lh3.googleusercontent.com",
+      "https://lh3.googleusercontent.com?x=1",
+      "https://lh3.googleusercontent.com#x",
+      "https://lh3.googleusercontent.com./a",
+      "https://lh3.googleusercontent.com\\@evil.com/a",
+      "https://evilgoogleusercontent.com/a",
+      "https://lh3.googleusercontent.co/a",
+      "https://lh3.googleusercontent.com/a\u0000",
+      "https://lh3.googleusercontent.com/a\n",
+      "https://lh3.googleusercontent.com/a\u00a0",
+      "https://lh3.googleusercontent.com/a\u2028",
+      " https://lh3.googleusercontent.com/a",
+      "//lh3.googleusercontent.com/a",
+      "data:image/svg+xml,<svg/>",
+      "https://lh3.googleusercontent\u3002com/a",
+      "https:/lh3.googleusercontent.com/a",
+      "ftp://lh3.googleusercontent.com/a",
+      long,
+    ]) {
+      expect(isGooglePhoto(photo)).toBe(false);
+      await assertFails(put({ ...bob, photo }));
+    }
+  });
+
+  it("accepts the largest contact in one write", async () => {
+    const base = "https://lh3.googleusercontent.com/";
+    const email = `${"b".repeat(CONTACT_LIMITS.emailLength - 5)}@x.io`;
+    await seed(`directory/${email}`, { uid: "bob", name: "", photo: "" });
+    await assertSucceeds(
+      put({
+        uid: "bob",
+        name: "a".repeat(100),
+        photo: base + "a".repeat(DIRECTORY_LIMITS.photoLength - base.length),
+        email,
+      }),
+    );
+  });
+
+  it("after the contact leaves the directory: resend and delete pass, edits do not", async () => {
+    await seed(path("alice", "bob"), bob);
+    await env.withSecurityRulesDisabled((c) =>
+      deleteDoc(doc(c.firestore(), `directory/${bobEmail}`)),
+    );
+    await assertSucceeds(put(bob));
+    await assertFails(updateDoc(doc(asUser("alice"), path("alice", "bob")), { name: "X" }));
+    await assertSucceeds(deleteDoc(doc(asUser("alice"), path("alice", "bob"))));
+    await assertSucceeds(deleteDoc(doc(asUser("alice"), path("alice", "bob"))));
+  });
+
+  it("moves to another email only when it lists the same uid", async () => {
+    await seed(path("alice", "bob"), bob);
+    await seed("directory/bob2@example.com", { uid: "bob", name: "", photo: "" });
+    await seed("directory/carol@example.com", { uid: "carol", name: "", photo: "" });
+    const ref = doc(asUser("alice"), path("alice", "bob"));
+    await assertFails(updateDoc(ref, { email: "carol@example.com" }));
+    await assertSucceeds(updateDoc(ref, { email: "bob2@example.com" }));
   });
 });

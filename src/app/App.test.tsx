@@ -4,6 +4,11 @@ import { deleteAccount as deleteAccountOf } from "../account/application/deleteA
 import type { OtherTabsStatus } from "../account/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import { AuthFailure } from "../auth/domain/user";
+import type { AddedContact, ContactStore } from "../contacts/application/ports";
+import { CONTACT_LIMITS, type Contact } from "../contacts/domain/contact";
+import { createFakeContactList } from "../contacts/infrastructure/fakeContactList";
+import type { DirectoryListing } from "../directory/application/ports";
+import { createFakeDirectoryListing } from "../directory/infrastructure/fakeDirectoryListing";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { InstallProvider } from "../install/ui/InstallProvider";
@@ -21,6 +26,10 @@ interface Stores {
   history?: HistoryLog;
   /** Without it, Profile offers no Routines section. */
   routines?: RoutineLibrary;
+  /** Without it, Profile offers no switch to be found by email. */
+  directory?: DirectoryListing;
+  /** Without it, Profile offers no Contacts section. */
+  contacts?: ContactStore;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
@@ -32,6 +41,8 @@ function setup({
   workouts = createFakeWorkoutLibrary("test"),
   history = createFakeHistoryLog("test"),
   routines,
+  directory,
+  contacts,
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
   updater = createAppUpdater(() => undefined),
@@ -54,6 +65,8 @@ function setup({
           workouts={workouts}
           history={history}
           routines={routines}
+          directory={directory}
+          contactStore={contacts}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
@@ -618,6 +631,8 @@ describe("App account data", () => {
         /erased from this device when you sign out/,
         /no analytics/i,
         /Delete account/,
+        /find you by email.*name and photo.*never listed/,
+        /contacts.*only you can see them/,
       ]) {
         expect(notice).toHaveTextContent(text);
       }
@@ -2213,5 +2228,902 @@ describe("routines", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("We couldn't delete that routine.");
     expect(consoleError).toHaveBeenCalledWith("Deleting a routine failed:", "no code");
     consoleError.mockRestore();
+  });
+});
+
+describe("finding me by email", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const me = {
+    id: "u1",
+    name: "Ana Pérez",
+    email: "Ana@Example.com",
+    photoUrl: "https://lh3.googleusercontent.com/a/ana=s96-c",
+  };
+  /** A fake directory whose writes are spied on. */
+  const directoryListing = () => {
+    const fake = createFakeDirectoryListing(me);
+    return { ...fake, list: vi.fn(() => fake.list()), unlist: vi.fn(() => fake.unlist()) };
+  };
+  const stored = () => localStorage.getItem("sportime.fakeDirectory.ana@example.com");
+  const toggle = () => screen.getByRole("switch", { name: "Let people find me by email" });
+  const settle = () => act(() => Promise.resolve());
+
+  it("is not offered without a directory", () => {
+    setup();
+    click("Profile");
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("is off by default, and on lists my Google name and photo, off removes them", async () => {
+    const directory = directoryListing();
+    setup({ directory });
+    click("Profile");
+    expect(toggle()).not.toBeChecked();
+    expect(stored()).toBeNull();
+
+    fireEvent.click(toggle());
+    await settle();
+    expect(directory.list).toHaveBeenCalledTimes(1);
+    expect(toggle()).toBeChecked();
+    expect(JSON.parse(stored() ?? "null")).toEqual({
+      uid: "u1",
+      name: "Ana Pérez",
+      photo: "https://lh3.googleusercontent.com/a/ana=s96-c",
+    });
+
+    fireEvent.click(toggle());
+    await settle();
+    expect(directory.unlist).toHaveBeenCalledTimes(1);
+    expect(toggle()).not.toBeChecked();
+    expect(stored()).toBeNull();
+  });
+
+  it("shows on when my entry already exists", async () => {
+    await createFakeDirectoryListing(me).list();
+    setup({ directory: directoryListing() });
+    click("Profile");
+    expect(toggle()).toBeChecked();
+  });
+
+  it("waits, disabled, until the directory answers", () => {
+    setup({ directory: { ...directoryListing(), subscribe: () => () => undefined } });
+    click("Profile");
+    expect(toggle()).toBeDisabled();
+  });
+
+  it("says when the change was refused, and stays as stored", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setup({
+      directory: {
+        ...directoryListing(),
+        list: () => Promise.reject(refusal("permission-denied")),
+      },
+    });
+    click("Profile");
+    fireEvent.click(toggle());
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't change whether people can find you by email.",
+    );
+    expect(toggle()).not.toBeChecked();
+    expect(stored()).toBeNull();
+    consoleError.mockRestore();
+  });
+
+  it("says when it cannot tell whether I am listed", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setup({
+      directory: {
+        ...directoryListing(),
+        subscribe(_onListed, onError) {
+          onError(new Error("boom"));
+          return () => undefined;
+        },
+      },
+    });
+    click("Profile");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't check whether people can find you by email.",
+    );
+    consoleError.mockRestore();
+  });
+
+  it("is labelled in Spanish", () => {
+    const store = { get: () => "es", set: vi.fn() };
+    render(
+      <I18nProvider store={store} browserLanguages={["es"]}>
+        <UpdateProvider updater={createAppUpdater(() => undefined)}>
+          <App
+            timer={{
+              clock: { now: () => 0 },
+              cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+              voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+              soundStore: { get: () => null, set: vi.fn() },
+              screenAwake: { acquire: vi.fn(), release: vi.fn() },
+            }}
+            workouts={createFakeWorkoutLibrary("test")}
+            history={createFakeHistoryLog("test")}
+            directory={directoryListing()}
+            deleteAccount={() => Promise.resolve()}
+            deletionConfirmedByRedirect={() => Promise.resolve(false)}
+          />
+        </UpdateProvider>
+      </I18nProvider>,
+    );
+    click("Perfil");
+    expect(
+      screen.getByRole("switch", { name: "Permitir que me encuentren por email" }),
+    ).not.toBeChecked();
+  });
+});
+
+describe("contacts", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Plain-text names are wrapped in first-strong isolates, so bidi controls stay inside. */
+  const isolated = (name: string) => `\u2068${name}\u2069`;
+  /** Someone who chose to be found by email, in the fake directory. */
+  const listed = (id: string, name: string, email: string, photoUrl: string | null = null) =>
+    createFakeDirectoryListing({ id, name, email, photoUrl }).list();
+  /** Contacts already kept by the account "me", as the fake list stores them. */
+  const keep = (contacts: Contact[]) => {
+    localStorage.setItem("sportime.fakeContacts.me", JSON.stringify(contacts));
+  };
+  /** A fake list for the account "me" whose writes are spied on. */
+  const contactList = () => {
+    const fake = createFakeContactList("me");
+    return {
+      ...fake,
+      add: vi.fn((email: string) => fake.add(email)),
+      remove: vi.fn((uid: string) => fake.remove(uid)),
+    };
+  };
+  const openContacts = () => {
+    click("Profile");
+    click(/^Contacts\b/);
+  };
+  const MAX = CONTACT_LIMITS.contacts;
+  /** The count shown on the Contacts screen. */
+  const countOf = (total: number) => `${total} of ${MAX} contacts`;
+  const anyCount = new RegExp(` of ${MAX} contacts$`);
+  const emailInput = () => screen.getByRole("textbox", { name: "Contact's email" });
+  const add = (email: string) => {
+    fireEvent.change(emailInput(), { target: { value: email } });
+    click("Add");
+  };
+  /** Lets the list answer, which may take several steps. */
+  const settle = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+  const items = () =>
+    within(screen.getByRole("list", { name: "Contacts" })).getAllByRole("listitem");
+  /** The listed contact at `index`, by name. */
+  const item = (index: number) => {
+    const found = items()[index];
+    if (!found) throw new Error(`No contact at ${index}`);
+    return found;
+  };
+  const bob: Contact = {
+    uid: "bob",
+    name: "Bob Stone",
+    photo: "https://lh3.googleusercontent.com/a/bob",
+    email: "bob@example.com",
+  };
+
+  it("is not offered on Profile without a contact list", () => {
+    setup();
+    click("Profile");
+    expect(screen.queryByRole("button", { name: /^Contacts\b/ })).not.toBeInTheDocument();
+  });
+
+  it("opens from Profile, says there are none yet, with the count out of the limit, and goes back", () => {
+    setup({ contacts: contactList() });
+    openContacts();
+    expect(screen.getByRole("heading", { level: 1, name: "Contacts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Profile" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText(/No contacts yet/)).toHaveTextContent("Let people find me by email");
+    expect(screen.getByText(countOf(0))).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Contacts" })).not.toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("heading", { level: 1, name: "Profile" })).toBeInTheDocument();
+  });
+
+  it("adds someone by email, disabled while adding, and clears the field", async () => {
+    await listed("bob", "Bob Stone", "Bob@Example.com", bob.photo);
+    const contacts = contactList();
+    setup({ contacts });
+    openContacts();
+    add("  BOB@example.com ");
+    expect(screen.getByRole("button", { name: "Adding…" })).toBeDisabled();
+    expect(emailInput()).toBeDisabled();
+    await settle();
+    // An email field drops the spaces around its value; the list normalizes the rest.
+    expect(contacts.add).toHaveBeenCalledExactlyOnceWith("BOB@example.com");
+    expect(emailInput()).toHaveValue("");
+    expect(emailInput()).toBeEnabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Contact added.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(items()).toHaveLength(1);
+    expect(item(0)).toHaveTextContent("Bob Stone");
+    expect(item(0)).toHaveTextContent("bob@example.com");
+    expect(screen.getByText(countOf(1))).toBeInTheDocument();
+  });
+
+  it("does not add a blank email", () => {
+    const contacts = contactList();
+    setup({ contacts });
+    openContacts();
+    fireEvent.change(emailInput(), { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
+    const form = emailInput().closest("form");
+    if (!form) throw new Error("no form");
+    fireEvent.submit(form);
+    expect(contacts.add).not.toHaveBeenCalled();
+  });
+
+  describe("says why someone cannot be added, keeping the email and the list", () => {
+    const cases: {
+      kind: string;
+      email: string;
+      before?: () => Promise<void> | void;
+      message: string;
+    }[] = [
+      {
+        kind: "invalidEmail",
+        email: "not-an-email",
+        message: "Enter a full email address, like name@example.com.",
+      },
+      {
+        kind: "notListed",
+        email: "nobody@example.com",
+        message:
+          "Nobody can be found by that email. Ask them to turn on “Let people find me by email” in their Profile.",
+      },
+      {
+        kind: "self",
+        email: "me@example.com",
+        before: () => listed("me", "Me", "me@example.com"),
+        message: "That is your own email.",
+      },
+      {
+        kind: "duplicate",
+        email: "bob@example.com",
+        before: async () => {
+          await listed("bob", "Bob Stone", "bob@example.com");
+          keep([bob]);
+        },
+        message: "That person is already in your contacts.",
+      },
+      {
+        kind: "full",
+        email: "bob@example.com",
+        before: async () => {
+          await listed("bob", "Bob Stone", "bob@example.com");
+          keep(
+            Array.from({ length: CONTACT_LIMITS.contacts }, (_, index) => ({
+              uid: `u${index}`,
+              name: `Person ${index}`,
+              photo: "",
+              email: `p${index}@example.com`,
+            })),
+          );
+        },
+        message: `You already have ${CONTACT_LIMITS.contacts} contacts. Remove one to add someone else.`,
+      },
+      {
+        kind: "offline",
+        email: "bob@example.com",
+        before: async () => {
+          await listed("bob", "Bob Stone", "bob@example.com");
+          vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+        },
+        message: "Adding a contact needs a connection. Try again when you are online.",
+      },
+    ];
+
+    it.each(cases)("$kind", async ({ email, before, message }) => {
+      await before?.();
+      const stored = localStorage.getItem("sportime.fakeContacts.me");
+      setup({ contacts: contactList() });
+      openContacts();
+      const count = screen.getByText(anyCount).textContent;
+      add(email);
+      await settle();
+      expect(screen.getByRole("alert")).toHaveTextContent(message);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(emailInput()).toHaveValue(email);
+      expect(emailInput()).toBeEnabled();
+      expect(screen.getByText(anyCount)).toHaveTextContent(count ?? "");
+      expect(localStorage.getItem("sportime.fakeContacts.me")).toBe(stored);
+    });
+  });
+
+  it("clears the last refusal when trying again", async () => {
+    await listed("bob", "Bob Stone", "bob@example.com");
+    setup({ contacts: contactList() });
+    openContacts();
+    add("nobody@example.com");
+    await settle();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    add("bob@example.com");
+    await settle();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(items()).toHaveLength(1);
+  });
+
+  it("never shows a raw error, such as one for an email the store cannot look up", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const contacts = contactList();
+    contacts.add.mockImplementation(() =>
+      Promise.reject(
+        Object.assign(new Error("Invalid document reference: directory/__a@b__ is reserved"), {
+          code: "invalid-argument",
+        }),
+      ),
+    );
+    setup({ contacts });
+    openContacts();
+    add("__a@b__");
+    await settle();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/^We couldn't add that contact\. Try again\.$/);
+    expect(alert).not.toHaveTextContent("__a@b__");
+    expect(consoleError).toHaveBeenCalledWith("Adding a contact failed:", "invalid-argument");
+    expect(emailInput()).toHaveValue("__a@b__");
+    expect(emailInput()).toBeEnabled();
+  });
+
+  it("says so when an error without a code comes back", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const contacts = contactList();
+    contacts.add.mockImplementation(() => Promise.reject(new Error("boom")));
+    setup({ contacts });
+    openContacts();
+    add("bob@example.com");
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /^We couldn't add that contact\. Try again\.$/,
+    );
+    expect(consoleError).toHaveBeenCalledWith("Adding a contact failed:", "no code");
+  });
+
+  it("says so when the server later refuses a contact added on this device", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const contacts = contactList();
+    contacts.add.mockImplementation(() =>
+      Promise.resolve<AddedContact>({
+        contact: bob,
+        saved: Promise.reject(refusal("permission-denied")),
+      }),
+    );
+    setup({ contacts });
+    openContacts();
+    add("bob@example.com");
+    await settle();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(isolated("Bob Stone"));
+    expect(alert).toHaveTextContent(
+      "The server refused the change. Update the app; if it keeps happening, write to us.",
+    );
+    expect(consoleError).toHaveBeenCalledWith("Saving a contact failed:", "permission-denied");
+  });
+
+  describe("when the server later refuses the only add", () => {
+    /** A list whose add's server answer the test settles by hand. */
+    const heldSave = () => {
+      let refuse: (error: unknown) => void = () => undefined;
+      const saved = new Promise<void>((_resolve, reject) => {
+        refuse = reject;
+      });
+      const contacts = contactList();
+      contacts.add.mockImplementation(() => Promise.resolve<AddedContact>({ contact: bob, saved }));
+      return { contacts, refuse: (error: unknown) => refuse(error) };
+    };
+
+    it("no longer says the contact was added", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { contacts, refuse } = heldSave();
+      setup({ contacts });
+      openContacts();
+      add("bob@example.com");
+      await settle();
+      expect(screen.getByRole("status")).toHaveTextContent("Contact added.");
+      refuse(refusal("permission-denied"));
+      await settle();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.queryByText("Contact added.")).not.toBeInTheDocument();
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toHaveTextContent(isolated("Bob Stone"));
+    });
+
+    it("keeps a refusal that arrives after leaving Contacts, and shows it there once", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { contacts, refuse } = heldSave();
+      setup({ contacts });
+      openContacts();
+      add("bob@example.com");
+      await settle();
+      click("Back");
+      refuse(refusal("permission-denied"));
+      await settle();
+      expect(consoleError).toHaveBeenCalledWith("Saving a contact failed:", "permission-denied");
+      click(/^Contacts\b/);
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toHaveTextContent(
+        `We couldn't save ${isolated("Bob Stone")} on the server, so they are not in your list.`,
+      );
+      expect(alerts[0]).toHaveTextContent("The server refused the change.");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      // Seen once; leaving Contacts again lets it go.
+      click("Back");
+      click(/^Contacts\b/);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("when the server refuses an earlier add after a later one succeeded", () => {
+    /** A list whose first add's server answer the test settles by hand. */
+    const overlapping = () => {
+      const fake = createFakeContactList("me");
+      let refuse: (error: unknown) => void = () => undefined;
+      const firstSaved = new Promise<void>((_resolve, reject) => {
+        refuse = reject;
+      });
+      let calls = 0;
+      const contacts = {
+        ...fake,
+        add: vi.fn(async (email: string) => {
+          const added = await fake.add(email);
+          calls += 1;
+          return calls === 1 ? { ...added, saved: firstSaved } : added;
+        }),
+      };
+      return { fake, contacts, refuse: (error: unknown) => refuse(error) };
+    };
+
+    const addBothThenRefuseFirst = async () => {
+      await listed("bob", "Bob Stone", "bob@example.com");
+      await listed("carl", "", "carl@example.com");
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { contacts, refuse } = overlapping();
+      setup({ contacts });
+      openContacts();
+      add("bob@example.com");
+      await settle();
+      add("carl@example.com");
+      await settle();
+      expect(screen.getByRole("status")).toHaveTextContent("Contact added.");
+      refuse(refusal("permission-denied"));
+      await settle();
+      expect(consoleError).toHaveBeenCalledWith("Saving a contact failed:", "permission-denied");
+    };
+
+    it("names the contact, keeps the later success, and says it is still listed", async () => {
+      await addBothThenRefuseFirst();
+      // The later add's own feedback stays as it was.
+      expect(screen.getByRole("status")).toHaveTextContent("Contact added.");
+      const alerts = screen.getAllByRole("alert");
+      expect(alerts).toHaveLength(1);
+      const [alert] = alerts;
+      expect(alert).toHaveTextContent(
+        `We couldn't save ${isolated("Bob Stone")} on the server; they still show in your list for now.`,
+      );
+      expect(alert).toHaveTextContent("The server refused the change.");
+      expect(alert).not.toHaveTextContent("carl@example.com");
+      expect(items()).toHaveLength(2);
+      expect(screen.getByText(countOf(2))).toBeInTheDocument();
+    });
+
+    it("names a contact without a name by email, and says when it is no longer listed", async () => {
+      await listed("bob", "Bob Stone", "bob@example.com");
+      await listed("carl", "", "carl@example.com");
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { fake, contacts, refuse } = overlapping();
+      setup({ contacts });
+      openContacts();
+      add("carl@example.com");
+      await settle();
+      add("bob@example.com");
+      await settle();
+      // The store drops the refused write, as Firestore does.
+      await act(() => fake.remove("carl"));
+      refuse(refusal("permission-denied"));
+      await settle();
+      expect(consoleError).toHaveBeenCalledWith("Saving a contact failed:", "permission-denied");
+      expect(screen.getByRole("status")).toHaveTextContent("Contact added.");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        `We couldn't save ${isolated("carl@example.com")} on the server, so they are not in your list.`,
+      );
+      expect(items()).toHaveLength(1);
+      expect(item(0)).toHaveTextContent("Bob Stone");
+    });
+
+    it("keeps the refusal shown when another add starts", async () => {
+      await addBothThenRefuseFirst();
+      add("nobody@example.com");
+      await settle();
+      const alerts = screen.getAllByRole("alert").map((alert) => alert.textContent);
+      expect(alerts).toHaveLength(2);
+      expect(alerts.some((text) => text?.includes(isolated("Bob Stone")))).toBe(true);
+      expect(alerts.some((text) => text?.startsWith("Nobody can be found"))).toBe(true);
+    });
+  });
+
+  it("lists contacts by name, with the Google photo or else the initial", () => {
+    keep([
+      { uid: "z", name: "Zoe", photo: "", email: "zoe@example.com" },
+      bob,
+      { uid: "c", name: "", photo: "", email: "carl@example.com" },
+      { uid: "a", name: "ana", photo: "https://evil.example.com/a.png", email: "ana@example.com" },
+    ]);
+    setup({ contacts: contactList() });
+    openContacts();
+    expect(items()).toHaveLength(4);
+    const [ana, bobItem, carl, zoe] = [item(0), item(1), item(2), item(3)];
+    expect(ana).toHaveTextContent(/^Aana\s*ana@example\.com/);
+    expect(ana.querySelector("img")).toBeNull();
+    expect(bobItem.querySelector("img")).toHaveAttribute("src", bob.photo);
+    expect(bobItem.querySelector("img")).toHaveAttribute("alt", "");
+    expect(bobItem.querySelector("img")).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(bobItem).toHaveTextContent("Bob Stone");
+    // Without a name, the email stands for it, once.
+    expect(carl.querySelector("img")).toBeNull();
+    expect(carl).toHaveTextContent(/^Ccarl@example\.com/);
+    expect(carl.textContent?.match(/carl@example\.com/g)).toHaveLength(1);
+    expect(zoe).toHaveTextContent(/^ZZoe\s*zoe@example\.com/);
+    expect(screen.getByText(countOf(4))).toBeInTheDocument();
+  });
+
+  it("shows the initial when the photo does not load", () => {
+    keep([bob]);
+    setup({ contacts: contactList() });
+    openContacts();
+    const image = item(0).querySelector("img");
+    if (!image) throw new Error("no photo");
+    fireEvent.error(image);
+    expect(item(0).querySelector("img")).toBeNull();
+    expect(item(0)).toHaveTextContent(/^BBob Stone/);
+  });
+
+  it("keeps names as isolated text, so bidi controls and markup cannot change what is around them", () => {
+    const tricky = "\u202Egnp.exe <b>x</b>";
+    keep([{ uid: "t", name: tricky, photo: "", email: "t@example.com" }]);
+    setup({ contacts: contactList() });
+    openContacts();
+    const isolates = item(0).querySelectorAll("bdi");
+    expect([...isolates].map((node) => node.textContent)).toEqual([tricky, "t@example.com"]);
+    expect(item(0).querySelector("b")).toBeNull();
+    // The initial skips what is not a letter.
+    expect(item(0)).toHaveTextContent(/^G/);
+    expect(screen.getByRole("button", { name: `Remove ${isolated(tricky)}` })).toBeInTheDocument();
+  });
+
+  it("removes a contact only after confirming", async () => {
+    keep([bob]);
+    const contacts = contactList();
+    setup({ contacts });
+    openContacts();
+    click(`Remove ${isolated("Bob Stone")}`);
+    const dialog = screen.getByRole("alertdialog", {
+      name: `Remove ${isolated("Bob Stone")} from your contacts?`,
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(contacts.remove).not.toHaveBeenCalled();
+    expect(items()).toHaveLength(1);
+
+    click(`Remove ${isolated("Bob Stone")}`);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
+    await settle();
+    expect(contacts.remove).toHaveBeenCalledExactlyOnceWith("bob");
+    expect(screen.getByText(/No contacts yet/)).toBeInTheDocument();
+    expect(screen.getByText(countOf(0))).toBeInTheDocument();
+  });
+
+  it("names a contact without a name by their email when removing", () => {
+    keep([{ uid: "c", name: "", photo: "", email: "carl@example.com" }]);
+    setup({ contacts: contactList() });
+    openContacts();
+    expect(
+      screen.getByRole("button", { name: `Remove ${isolated("carl@example.com")}` }),
+    ).toBeInTheDocument();
+  });
+
+  it("reports a refused removal", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    keep([bob]);
+    const contacts = contactList();
+    contacts.remove.mockImplementation(() => Promise.reject(new Error("boom")));
+    setup({ contacts });
+    openContacts();
+    click(`Remove ${isolated("Bob Stone")}`);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't remove that contact.");
+    expect(consoleError).toHaveBeenCalledWith("Removing a contact failed:", "no code");
+    // The store kept the contact, and the list shows it.
+    expect(JSON.parse(localStorage.getItem("sportime.fakeContacts.me") ?? "[]")).toEqual([bob]);
+    expect(items()).toHaveLength(1);
+    expect(item(0)).toHaveTextContent("Bob Stone");
+    expect(screen.getByText(countOf(1))).toBeInTheDocument();
+    expect(screen.queryByText(/No contacts yet/)).not.toBeInTheDocument();
+  });
+
+  it("shows loading until the list answers", () => {
+    setup({ contacts: { ...contactList(), subscribe: () => () => undefined } });
+    openContacts();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByText(/No contacts yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText(anyCount)).not.toBeInTheDocument();
+  });
+
+  it("says when the contacts cannot be read, without calling them none", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setup({
+      contacts: {
+        ...contactList(),
+        subscribe(_onData, onError) {
+          onError(new Error("boom"));
+          return () => undefined;
+        },
+      },
+    });
+    openContacts();
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your contacts.");
+    expect(screen.queryByText(anyCount)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No contacts yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
+  it("keeps showing what it had when a later read fails", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    keep([bob]);
+    const fake = contactList();
+    setup({
+      contacts: {
+        ...fake,
+        subscribe(onData, onError) {
+          const stop = fake.subscribe(onData, onError);
+          onError(new Error("boom"));
+          return stop;
+        },
+      },
+    });
+    openContacts();
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your contacts.");
+    expect(items()).toHaveLength(1);
+    expect(screen.getByText(countOf(1))).toBeInTheDocument();
+  });
+
+  it("reads the contacts again when Contacts opens after a failed read, with the count on Profile", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    keep([bob]);
+    const fake = contactList();
+    let fail: (error: Error) => void = () => undefined;
+    let reads = 0;
+    setup({
+      contacts: {
+        ...fake,
+        subscribe(onData, onError) {
+          reads += 1;
+          fail = onError;
+          return fake.subscribe(onData, onError);
+        },
+      },
+    });
+    openContacts();
+    expect(items()).toHaveLength(1);
+    // The listener stops for good after an error, as Firestore's does.
+    act(() => {
+      fail(new Error("boom"));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your contacts.");
+    expect(consoleError).toHaveBeenCalledWith("Loading contacts failed:", "no code");
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName("Contacts");
+    const readsBefore = reads;
+    click(/^Contacts\b/);
+    expect(reads).toBe(readsBefore + 1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(items()).toHaveLength(1);
+    expect(screen.getByText(countOf(1))).toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName(
+      "Contacts, 1 contact",
+    );
+    // A list that reads fine is not read again on every visit.
+    click(/^Contacts\b/);
+    expect(reads).toBe(readsBefore + 1);
+  });
+
+  it("shows loading, not the old failure, while the read again has not answered", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let answer: (contacts: Contact[]) => void = () => undefined;
+    let fail: (error: Error) => void = () => undefined;
+    // Answers later, as the server does.
+    setup({
+      contacts: {
+        ...contactList(),
+        subscribe(onData, onError) {
+          answer = onData;
+          fail = onError;
+          return () => undefined;
+        },
+      },
+    });
+    openContacts();
+    act(() => {
+      fail(new Error("boom"));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your contacts.");
+    click("Back");
+    click(/^Contacts\b/);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByText(anyCount)).not.toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName("Contacts");
+    click(/^Contacts\b/);
+    act(() => {
+      answer([bob]);
+    });
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(items()).toHaveLength(1);
+    expect(screen.getByText(countOf(1))).toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("button", { name: /^Contacts\b/ })).toHaveAccessibleName(
+      "Contacts, 1 contact",
+    );
+  });
+
+  describe("count on the Profile menu", () => {
+    const menuItem = () => screen.getByRole("button", { name: /^Contacts\b/ });
+
+    it("shows how many contacts there are, and says so to screen readers", async () => {
+      keep([bob, { uid: "c", name: "", photo: "", email: "carl@example.com" }]);
+      await listed("zoe", "Zoe", "zoe@example.com");
+      setup({ contacts: contactList() });
+      click("Profile");
+      expect(menuItem()).toHaveTextContent(/^Contacts · 2$/);
+      expect(menuItem()).toHaveAccessibleName("Contacts, 2 contacts");
+      click(/^Contacts\b/);
+      add("zoe@example.com");
+      await settle();
+      click("Back");
+      expect(menuItem()).toHaveTextContent(/^Contacts · 3$/);
+      expect(menuItem()).toHaveAccessibleName("Contacts, 3 contacts");
+    });
+
+    it("names one contact in the singular", () => {
+      keep([bob]);
+      setup({ contacts: contactList() });
+      click("Profile");
+      expect(menuItem()).toHaveTextContent(/^Contacts · 1$/);
+      expect(menuItem()).toHaveAccessibleName("Contacts, 1 contact");
+    });
+
+    it("shows no count while loading", () => {
+      setup({ contacts: { ...contactList(), subscribe: () => () => undefined } });
+      click("Profile");
+      expect(menuItem()).toHaveTextContent(/^Contacts$/);
+      expect(menuItem()).toHaveAccessibleName("Contacts");
+    });
+
+    it("shows no count when the list cannot be read", () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      setup({
+        contacts: {
+          ...contactList(),
+          subscribe(_onData, onError) {
+            onError(new Error("boom"));
+            return () => undefined;
+          },
+        },
+      });
+      click("Profile");
+      expect(menuItem()).toHaveTextContent(/^Contacts$/);
+      expect(menuItem()).toHaveAccessibleName("Contacts");
+    });
+  });
+
+  describe("the switch to be found by email", () => {
+    const me = { id: "me", name: "Me", email: "me@example.com", photoUrl: null };
+    const toggle = () => screen.getByRole("switch", { name: "Let people find me by email" });
+
+    it("is at the top of the Contacts screen, saying that it lets others add me", () => {
+      setup({ contacts: contactList(), directory: createFakeDirectoryListing(me) });
+      openContacts();
+      expect(toggle()).not.toBeChecked();
+      expect(toggle()).toHaveAccessibleDescription(
+        /^Turn it on so others can add you as a contact\. Anyone signed in/,
+      );
+      // Before the add form.
+      expect(
+        toggle().compareDocumentPosition(emailInput()) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("is the same setting as on Profile", async () => {
+      setup({ contacts: contactList(), directory: createFakeDirectoryListing(me) });
+      openContacts();
+      fireEvent.click(toggle());
+      await settle();
+      expect(toggle()).toBeChecked();
+      expect(localStorage.getItem("sportime.fakeDirectory.me@example.com")).not.toBeNull();
+      click("Back");
+      expect(toggle()).toBeChecked();
+      // Profile keeps its own hint, without the one about contacts.
+      expect(toggle()).toHaveAccessibleDescription(/^Anyone signed in/);
+      fireEvent.click(toggle());
+      await settle();
+      click(/^Contacts\b/);
+      expect(toggle()).not.toBeChecked();
+      expect(localStorage.getItem("sportime.fakeDirectory.me@example.com")).toBeNull();
+    });
+
+    it("is not offered without a directory", () => {
+      setup({ contacts: contactList() });
+      openContacts();
+      expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    });
+  });
+
+  it("is in Spanish", async () => {
+    const store = { get: () => "es", set: vi.fn() };
+    render(
+      <I18nProvider store={store} browserLanguages={["es"]}>
+        <UpdateProvider updater={createAppUpdater(() => undefined)}>
+          <App
+            timer={{
+              clock: { now: () => 0 },
+              cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+              voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+              soundStore: { get: () => null, set: vi.fn() },
+              screenAwake: { acquire: vi.fn(), release: vi.fn() },
+            }}
+            workouts={createFakeWorkoutLibrary("test")}
+            history={createFakeHistoryLog("test")}
+            contactStore={contactList()}
+            deleteAccount={() => Promise.resolve()}
+            deletionConfirmedByRedirect={() => Promise.resolve(false)}
+          />
+        </UpdateProvider>
+      </I18nProvider>,
+    );
+    click("Perfil");
+    const menuItem = screen.getByRole("button", { name: /^Contactos\b/ });
+    expect(menuItem).toHaveTextContent(/^Contactos · 0$/);
+    expect(menuItem).toHaveAccessibleName("Contactos, 0 contactos");
+    fireEvent.click(menuItem);
+    expect(screen.getByRole("heading", { level: 1, name: "Contactos" })).toBeInTheDocument();
+    expect(screen.getByText(`0 de ${CONTACT_LIMITS.contacts} contactos`)).toBeInTheDocument();
+    expect(screen.getByText(/Todavía no tienes contactos/)).toHaveTextContent(
+      "Permitir que me encuentren por email",
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Email del contacto" }), {
+      target: { value: "nadie@example.com" },
+    });
+    click("Agregar");
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Nadie se puede encontrar con ese email. Pídele que active «Permitir que me encuentren por email» en su Perfil.",
+    );
   });
 });
