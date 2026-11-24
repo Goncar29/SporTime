@@ -11,12 +11,22 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  documentId,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  DIRECTORY_LIMITS,
+  directoryEntryFor,
+  normalizeEmail,
+} from "../src/directory/domain/directory";
 import { ROUTINE_LIMITS, toStoredRoutine, type RoutineDraft } from "../src/routines/domain/routine";
 import { MAX_TIMESTAMP_MS } from "../src/shared/domain/timestamp";
 import {
@@ -633,5 +643,187 @@ describe("routine shape", () => {
     await assertFails(setDoc(doc(asUser("alice"), path), { ...edited, createdAt: 2 }));
     await assertFails(setDoc(doc(asUser("alice"), path), { ...edited, name: "" }));
     await assertFails(setDoc(doc(asUser("mallory"), path), edited));
+  });
+});
+
+describe("directory", () => {
+  const aliceEmail = "alice@example.com";
+  const entryPath = (email: string) => `directory/${email}`;
+  const aliceEntry = directoryEntryFor({
+    id: "alice",
+    name: "Alice Liddell",
+    email: aliceEmail,
+    photoUrl: "https://lh3.googleusercontent.com/a/alice=s96-c",
+  });
+  /** Signed in with Google, so the token carries the account's email, verified unless told. */
+  const signedIn = (uid: string, email: string, emailVerified = true) =>
+    env.authenticatedContext(uid, { email, email_verified: emailVerified }).firestore();
+  const asAlice = () => signedIn("alice", aliceEmail);
+  const write = (data: object, db = asAlice(), email = aliceEmail) =>
+    setDoc(doc(db, entryPath(email)), data);
+
+  it("lets anyone signed in read one exact email, and nobody signed out", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    const found = await assertSucceeds(
+      getDoc(doc(signedIn("bob", "bob@example.com"), entryPath(aliceEmail))),
+    );
+    expect(found.data()).toEqual(aliceEntry);
+    await assertSucceeds(getDoc(doc(asUser("bob"), entryPath("nobody@example.com"))));
+    await assertFails(getDoc(doc(asGuest(), entryPath(aliceEmail))));
+  });
+
+  it("never lists it, not even for an entry's owner", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    await assertFails(getDocs(collection(asAlice(), "directory")));
+    await assertFails(getDocs(collection(signedIn("bob", "bob@example.com"), "directory")));
+    await assertFails(getDocs(collection(asGuest(), "directory")));
+    await assertFails(getDocs(collectionGroup(asAlice(), "directory")));
+  });
+
+  it("lets the owner of a verified email list themselves, and change and resend it", async () => {
+    await assertSucceeds(write(aliceEntry));
+    await assertSucceeds(write(aliceEntry));
+    await assertSucceeds(write({ ...aliceEntry, name: "Alice L." }));
+  });
+
+  it("matches the token's email however it is written", async () => {
+    await assertSucceeds(write(aliceEntry, signedIn("alice", " Alice@Example.COM ")));
+    await assertFails(write(aliceEntry, asAlice(), "Alice@Example.com"));
+  });
+
+  it("refuses an entry under someone else's email", async () => {
+    await assertFails(write(aliceEntry, signedIn("alice", aliceEmail), "bob@example.com"));
+    await assertFails(
+      write({ ...aliceEntry, uid: "mallory" }, signedIn("mallory", "mallory@example.com")),
+    );
+  });
+
+  it("refuses an email that is not verified, or a token without one", async () => {
+    await assertFails(write(aliceEntry, signedIn("alice", aliceEmail, false)));
+    await assertFails(write(aliceEntry, asUser("alice")));
+    await assertFails(write(aliceEntry, asGuest()));
+  });
+
+  it("refuses a uid that is not the writer's", async () => {
+    await assertFails(write({ ...aliceEntry, uid: "bob" }));
+    await assertFails(write({ ...aliceEntry, uid: 7 }));
+  });
+
+  it("refuses extra, missing or oversized fields", async () => {
+    await assertFails(write({ ...aliceEntry, email: aliceEmail }));
+    await assertFails(write({ uid: "alice", photo: "" }));
+    await assertFails(write({ name: "Alice", photo: "" }));
+    await assertFails(write({ ...aliceEntry, name: "a".repeat(DIRECTORY_LIMITS.nameLength + 1) }));
+    await assertSucceeds(write({ ...aliceEntry, name: "a".repeat(DIRECTORY_LIMITS.nameLength) }));
+    await assertFails(write({ ...aliceEntry, name: 7 }));
+    await assertFails(write({ ...aliceEntry, name: "Alice\nLiddell" }));
+    const base = "https://lh3.googleusercontent.com/";
+    const longest = base + "a".repeat(DIRECTORY_LIMITS.photoLength - base.length);
+    await assertSucceeds(write({ ...aliceEntry, photo: longest }));
+    await assertFails(write({ ...aliceEntry, photo: `${longest}a` }));
+  });
+
+  it("accepts an empty name and an empty or absent photo", async () => {
+    await assertSucceeds(write({ ...aliceEntry, name: "", photo: "" }));
+    await assertSucceeds(write({ uid: "alice", name: "Alice" }));
+  });
+
+  it("refuses a photo that is not https on googleusercontent.com", async () => {
+    for (const photo of [
+      "http://lh3.googleusercontent.com/a",
+      "https://evil.com/a.png",
+      "https://lh3.googleusercontent.com.evil.com/a",
+      "https://evilgoogleusercontent.com/a",
+      "https://user@lh3.googleusercontent.com/a",
+      "https://lh3.googleusercontent.com:8080/a",
+      "https://lh3.googleusercontent.com/a b",
+      "javascript:alert(1)",
+      7,
+      null,
+    ]) {
+      await assertFails(write({ ...aliceEntry, photo }));
+    }
+  });
+
+  it("lets only the owner delete it", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    await assertFails(deleteDoc(doc(signedIn("bob", "bob@example.com"), entryPath(aliceEmail))));
+    // Even one signed in with the same email, under another account.
+    await assertFails(deleteDoc(doc(signedIn("mallory", aliceEmail), entryPath(aliceEmail))));
+    await assertFails(deleteDoc(doc(asGuest(), entryPath(aliceEmail))));
+    await assertSucceeds(deleteDoc(doc(asAlice(), entryPath(aliceEmail))));
+  });
+
+  it("keeps every entry the app writes within the rules", async () => {
+    for (const user of [
+      { id: "alice", name: "💪".repeat(80), email: aliceEmail, photoUrl: null },
+      { id: "alice", name: aliceEmail, email: aliceEmail, photoUrl: "https://example.com/a.png" },
+      {
+        id: "alice",
+        name: "Ana\tPérez\u0000",
+        email: aliceEmail,
+        photoUrl: "https://lh3.googleusercontent.com/a/x",
+      },
+    ]) {
+      await assertSucceeds(write(directoryEntryFor(user), asAlice(), normalizeEmail(user.email)));
+    }
+  });
+
+  it("refuses every query, filtered or limited (S11)", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    const bob = signedIn("bob", "bob@example.com");
+    for (const q of [
+      query(collection(bob, "directory"), limit(1)),
+      query(collection(bob, "directory"), where("uid", "==", "alice")),
+      query(collection(bob, "directory"), where(documentId(), "==", aliceEmail)),
+      query(collection(bob, "directory"), where(documentId(), "in", [aliceEmail]), limit(1)),
+      query(collection(bob, "directory"), orderBy("name"), limit(1)),
+    ]) {
+      await assertFails(getDocs(q));
+    }
+  });
+
+  it("refuses a document id that differs from the normalized email (S11)", async () => {
+    for (const id of [
+      " alice@example.com",
+      "alice@example.com ",
+      "alice@example.com\u00a0",
+      "alice@example.co",
+    ]) {
+      await assertFails(write(aliceEntry, asAlice(), id));
+    }
+    await assertFails(write(aliceEntry, signedIn("alice", aliceEmail, "true" as never)));
+  });
+
+  it("refuses more photo look-alikes (S11, S5)", async () => {
+    for (const photo of [
+      "https://user:pw@googleusercontent.com/a",
+      "https://lh3.googleusercontent.com:443/a",
+      "https://LH3.googleusercontent.com/a",
+      "HTTPS://lh3.googleusercontent.com/a",
+      "https://lh3.googleusercontent.com%2eevil.com/a",
+      "https://lh3.googleusercontent.com./a",
+      "https://evil.com\\@lh3.googleusercontent.com/a",
+      "https://evil.com#.googleusercontent.com/a",
+      "//lh3.googleusercontent.com/a",
+      "https://\uff47oogleusercontent.com/a",
+      "https://lh3.googleusercontent.com/a\u00a0",
+      "data:image/png;base64,AAAA",
+    ]) {
+      await assertFails(write({ ...aliceEntry, photo }));
+    }
+  });
+
+  it("never lets an update hand the entry to another uid or add a key (S11)", async () => {
+    await seed(entryPath(aliceEmail), aliceEntry);
+    const entry = (db = asAlice()) => doc(db, entryPath(aliceEmail));
+    await assertFails(updateDoc(entry(), { uid: "bob" }));
+    await assertFails(updateDoc(entry(), { extra: 1 }));
+    await assertFails(updateDoc(entry(), { name: deleteField() }));
+    await assertFails(updateDoc(entry(signedIn("bob", "bob@example.com")), { uid: "bob" }));
+  });
+
+  it("refuses deleting a missing entry, which the app resolves by asking the server (S11)", async () => {
+    await assertFails(deleteDoc(doc(asAlice(), entryPath(aliceEmail))));
   });
 });

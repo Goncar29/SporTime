@@ -138,11 +138,11 @@ export const es: Messages = {
   privacySections: [
     {
       heading: "Qué guardamos",
-      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo.",
+      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google; las direcciones nunca se muestran en una lista.",
     },
     {
       heading: "Dónde se guarda",
-      body: "Tu cuenta y tus datos se guardan en Google Firebase. Cada cuenta solo puede acceder a sus propios datos.",
+      body: "Tu cuenta y tus datos se guardan en Google Firebase. Cada cuenta solo puede acceder a sus propios datos, salvo ese nombre y esa foto mientras permitas que te encuentren por email.",
     },
     {
       heading: "En este dispositivo",
@@ -154,7 +154,7 @@ export const es: Messages = {
     },
     {
       heading: "Eliminar tus datos",
-      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados y tus sesiones terminadas. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
+      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus sesiones terminadas y tu nombre y foto de la búsqueda por email. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
     },
   ],
   privacyContactHeading: "Contacto",
@@ -222,4 +222,9 @@ export const es: Messages = {
   viewLink: "Ver",
   viewLinkTo: (host) => `Ver ${host}`,
   viewExerciseLink: (host, exercise) => `Ver ${host} (${exercise})`,
+  findByEmail: "Permitir que me encuentren por email",
+  findByEmailHint:
+    "Quien haya iniciado sesión y escriba tu email exacto verá tu nombre y foto de Google.",
+  findByEmailChangeFailed: "No pudimos cambiar si te pueden encontrar por email.",
+  findByEmailLoadFailed: "No pudimos comprobar si te pueden encontrar por email.",
 };

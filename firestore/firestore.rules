@@ -141,6 +141,31 @@ service cloud.firestore {
         && isTimestamp(data.createdAt);
     }
 
+    // A directory entry, as directoryEntryFor writes it; limits mirror DIRECTORY_LIMITS in
+    // src/directory/domain/directory.ts. The name is one line of up to 100 characters, possibly
+    // empty. The photo is empty or absent, or an https address on googleusercontent.com with only
+    // the host before the path, so it carries no credentials or port; same pattern as isGooglePhoto.
+    function isDirectoryEntry(data) {
+      return data.keys().hasAll(['uid', 'name'])
+        && data.keys().hasOnly(['uid', 'name', 'photo'])
+        && data.uid == request.auth.uid
+        && data.name is string
+        && data.name.size() <= 100
+        && data.name.matches('[^\\p{Cc}]*')
+        && (!('photo' in data)
+          || data.photo == ''
+          || (data.photo.size() <= 500
+            && data.photo.matches('https://([a-z0-9-]+\\.)*googleusercontent\\.com/[^\\p{Cc}\\p{Z}]*')));
+    }
+
+    // Only the signed-in owner of a verified email may list it, under that email trimmed and in
+    // lower case (normalizeEmail), so nobody can claim an address that is not theirs.
+    function ownsEmail(email) {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.trim().lower() == email;
+    }
+
     // The SDK resends a write when its answer was lost, so an identical rewrite must succeed.
     function isUnchanged() {
       return request.resource.data == resource.data;
@@ -165,6 +190,14 @@ service cloud.firestore {
         && (isUnchanged()
           || (isRoutine(request.resource.data)
             && request.resource.data.createdAt == resource.data.createdAt));
+    }
+
+    // Who chose to be found by email. Anyone signed in may read one exact address; nobody may
+    // list them, so the directory cannot be harvested.
+    match /directory/{email} {
+      allow get: if request.auth != null;
+      allow create, update: if ownsEmail(email) && isDirectoryEntry(request.resource.data);
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
     match /users/{uid}/history/{entryId} {

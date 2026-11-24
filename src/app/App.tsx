@@ -7,6 +7,8 @@ import { SettingsScreen } from "../settings/ui/SettingsScreen";
 import type { HistoryLog } from "../history/application/ports";
 import { recordFinishedSessions } from "../history/application/recordFinishedSessions";
 import { HistoryScreen } from "../history/ui/HistoryScreen";
+import type { DirectoryListing } from "../directory/application/ports";
+import { FindByEmailSwitch } from "../directory/ui/FindByEmailSwitch";
 import { useI18n } from "../i18n/ui/I18nProvider";
 import type { RoutineLibrary } from "../routines/application/ports";
 import type { Routine } from "../routines/domain/routine";
@@ -73,6 +75,8 @@ interface AppProps {
   history: HistoryLog;
   /** Without it, Profile offers no Routines section. */
   routines?: RoutineLibrary;
+  /** Without it, Profile offers no switch to be found by email. */
+  directory?: DirectoryListing;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -111,6 +115,7 @@ export function App({
   workouts,
   history,
   routines,
+  directory,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -404,6 +409,7 @@ export function App({
                 setScreen("routines");
               })
             }
+            findByEmail={directory && <FindByEmailSwitch listing={directory} />}
           />
         );
       case "routines":

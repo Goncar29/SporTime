@@ -58,3 +58,8 @@ it("Spanish names an exercise's link and its button", () => {
   expect("openLink" in MESSAGES.es).toBe(false);
   expect("openExerciseLink" in MESSAGES.en).toBe(false);
 });
+
+it("names the switch to be found by email", () => {
+  expect(MESSAGES.es.findByEmail).toBe("Permitir que me encuentren por email");
+  expect(MESSAGES.en.findByEmail).toBe("Let people find me by email");
+});

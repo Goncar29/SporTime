@@ -132,11 +132,11 @@ export const en: Messages = {
   privacySections: [
     {
       heading: "What we keep",
-      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts and finished sessions, so you can use them on any device.",
+      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts and finished sessions, so you can use them on any device. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
     },
     {
       heading: "Where it is kept",
-      body: "Your account and your data are stored with Google Firebase. Each account can only reach its own data.",
+      body: "Your account and your data are stored with Google Firebase. Each account can only reach its own data, apart from that name and photo while you let people find you by email.",
     },
     {
       heading: "On this device",
@@ -148,7 +148,7 @@ export const en: Messages = {
     },
     {
       heading: "Removing your data",
-      body: "Delete account, on the main screen, permanently removes your account, your saved workouts and your finished sessions. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
+      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your finished sessions and your name and photo from finding by email. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
     },
   ],
   privacyContactHeading: "Contact",
@@ -215,4 +215,9 @@ export const en: Messages = {
   viewLink: "View",
   viewLinkTo: (host) => `View ${host}`,
   viewExerciseLink: (host, exercise) => `View ${host} (${exercise})`,
+  findByEmail: "Let people find me by email",
+  findByEmailHint:
+    "Anyone signed in who enters your exact email will see your Google name and photo.",
+  findByEmailChangeFailed: "We couldn't change whether people can find you by email.",
+  findByEmailLoadFailed: "We couldn't check whether people can find you by email.",
 };

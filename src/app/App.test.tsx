@@ -4,6 +4,8 @@ import { deleteAccount as deleteAccountOf } from "../account/application/deleteA
 import type { OtherTabsStatus } from "../account/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import { AuthFailure } from "../auth/domain/user";
+import type { DirectoryListing } from "../directory/application/ports";
+import { createFakeDirectoryListing } from "../directory/infrastructure/fakeDirectoryListing";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { InstallProvider } from "../install/ui/InstallProvider";
@@ -21,6 +23,8 @@ interface Stores {
   history?: HistoryLog;
   /** Without it, Profile offers no Routines section. */
   routines?: RoutineLibrary;
+  /** Without it, Profile offers no switch to be found by email. */
+  directory?: DirectoryListing;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
@@ -32,6 +36,7 @@ function setup({
   workouts = createFakeWorkoutLibrary("test"),
   history = createFakeHistoryLog("test"),
   routines,
+  directory,
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
   updater = createAppUpdater(() => undefined),
@@ -54,6 +59,7 @@ function setup({
           workouts={workouts}
           history={history}
           routines={routines}
+          directory={directory}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
@@ -618,6 +624,7 @@ describe("App account data", () => {
         /erased from this device when you sign out/,
         /no analytics/i,
         /Delete account/,
+        /find you by email.*name and photo.*never listed/,
       ]) {
         expect(notice).toHaveTextContent(text);
       }
@@ -2213,5 +2220,134 @@ describe("routines", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("We couldn't delete that routine.");
     expect(consoleError).toHaveBeenCalledWith("Deleting a routine failed:", "no code");
     consoleError.mockRestore();
+  });
+});
+
+describe("finding me by email", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const me = {
+    id: "u1",
+    name: "Ana Pérez",
+    email: "Ana@Example.com",
+    photoUrl: "https://lh3.googleusercontent.com/a/ana=s96-c",
+  };
+  /** A fake directory whose writes are spied on. */
+  const directoryListing = () => {
+    const fake = createFakeDirectoryListing(me);
+    return { ...fake, list: vi.fn(() => fake.list()), unlist: vi.fn(() => fake.unlist()) };
+  };
+  const stored = () => localStorage.getItem("sportime.fakeDirectory.ana@example.com");
+  const toggle = () => screen.getByRole("switch", { name: "Let people find me by email" });
+  const settle = () => act(() => Promise.resolve());
+
+  it("is not offered without a directory", () => {
+    setup();
+    click("Profile");
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("is off by default, and on lists my Google name and photo, off removes them", async () => {
+    const directory = directoryListing();
+    setup({ directory });
+    click("Profile");
+    expect(toggle()).not.toBeChecked();
+    expect(stored()).toBeNull();
+
+    fireEvent.click(toggle());
+    await settle();
+    expect(directory.list).toHaveBeenCalledTimes(1);
+    expect(toggle()).toBeChecked();
+    expect(JSON.parse(stored() ?? "null")).toEqual({
+      uid: "u1",
+      name: "Ana Pérez",
+      photo: "https://lh3.googleusercontent.com/a/ana=s96-c",
+    });
+
+    fireEvent.click(toggle());
+    await settle();
+    expect(directory.unlist).toHaveBeenCalledTimes(1);
+    expect(toggle()).not.toBeChecked();
+    expect(stored()).toBeNull();
+  });
+
+  it("shows on when my entry already exists", async () => {
+    await createFakeDirectoryListing(me).list();
+    setup({ directory: directoryListing() });
+    click("Profile");
+    expect(toggle()).toBeChecked();
+  });
+
+  it("waits, disabled, until the directory answers", () => {
+    setup({ directory: { ...directoryListing(), subscribe: () => () => undefined } });
+    click("Profile");
+    expect(toggle()).toBeDisabled();
+  });
+
+  it("says when the change was refused, and stays as stored", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setup({
+      directory: {
+        ...directoryListing(),
+        list: () => Promise.reject(refusal("permission-denied")),
+      },
+    });
+    click("Profile");
+    fireEvent.click(toggle());
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't change whether people can find you by email.",
+    );
+    expect(toggle()).not.toBeChecked();
+    expect(stored()).toBeNull();
+    consoleError.mockRestore();
+  });
+
+  it("says when it cannot tell whether I am listed", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setup({
+      directory: {
+        ...directoryListing(),
+        subscribe(_onListed, onError) {
+          onError(new Error("boom"));
+          return () => undefined;
+        },
+      },
+    });
+    click("Profile");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't check whether people can find you by email.",
+    );
+    consoleError.mockRestore();
+  });
+
+  it("is labelled in Spanish", () => {
+    const store = { get: () => "es", set: vi.fn() };
+    render(
+      <I18nProvider store={store} browserLanguages={["es"]}>
+        <UpdateProvider updater={createAppUpdater(() => undefined)}>
+          <App
+            timer={{
+              clock: { now: () => 0 },
+              cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+              voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+              soundStore: { get: () => null, set: vi.fn() },
+              screenAwake: { acquire: vi.fn(), release: vi.fn() },
+            }}
+            workouts={createFakeWorkoutLibrary("test")}
+            history={createFakeHistoryLog("test")}
+            directory={directoryListing()}
+            deleteAccount={() => Promise.resolve()}
+            deletionConfirmedByRedirect={() => Promise.resolve(false)}
+          />
+        </UpdateProvider>
+      </I18nProvider>,
+    );
+    click("Perfil");
+    expect(
+      screen.getByRole("switch", { name: "Permitir que me encuentren por email" }),
+    ).not.toBeChecked();
   });
 });

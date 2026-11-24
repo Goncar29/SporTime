@@ -3,8 +3,9 @@ import type { OtherTabsActivity } from "../account/application/ports";
 import type { SignOutOptions, SignOutResult } from "../account/application/signOut";
 import { useOtherTabs } from "../account/ui/useOtherTabs";
 import { useSignOut, type AccountSignOut } from "../account/ui/useSignOut";
-import { AuthFailure } from "../auth/domain/user";
+import { AuthFailure, type User } from "../auth/domain/user";
 import { useAuth } from "../auth/ui/AuthGate";
+import type { DirectoryListing } from "../directory/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import type { RoutineLibrary } from "../routines/application/ports";
 import type { WorkoutLibrary } from "../workouts/application/ports";
@@ -14,6 +15,11 @@ export interface UserStores {
   workouts: WorkoutLibrary;
   history: HistoryLog;
   routines: RoutineLibrary;
+  /**
+   * Whether the signed-in user can be found by email, which needs their Google profile; none
+   * where the directory is not offered.
+   */
+  directoryFor?: (user: User) => DirectoryListing;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   /** Sends what is pending, then signs out and erases this device's copy of the account. */
@@ -37,6 +43,11 @@ const reloadPage = () => {
 export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: SignedInAppProps) {
   const { user, reportFailure } = useAuth();
   const stores = useMemo(() => storesFor(user.id), [storesFor, user.id]);
+  const { id, name, email, photoUrl } = user;
+  const directory = useMemo(
+    () => stores.directoryFor?.({ id, name, email, photoUrl }),
+    [stores, id, name, email, photoUrl],
+  );
   const signOut = useSignOut({ signOut: (options) => stores.signOut(options), reload });
   const otherTabs = useOtherTabs(stores.otherTabs);
   const deleteAccount = () =>
@@ -62,6 +73,7 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
       workouts={stores.workouts}
       history={stores.history}
       routines={stores.routines}
+      directory={directory}
       deleteAccount={deleteAccount}
       deletionConfirmedByRedirect={stores.deletionConfirmedByRedirect}
     />

@@ -15,6 +15,8 @@ interface ProfileScreenProps {
   onOpenPrivacy: () => void;
   /** Without it, the Routines section is not offered. */
   onOpenRoutines?: () => void;
+  /** The switch to be found by email; without it, none is offered. */
+  findByEmail?: ReactNode;
 }
 
 /** Everything about the user and the app itself, kept off the timer so it stays uncluttered. */
@@ -24,6 +26,7 @@ export function ProfileScreen({
   onOpenSettings,
   onOpenPrivacy,
   onOpenRoutines,
+  findByEmail,
 }: ProfileScreenProps) {
   const { t } = useI18n();
 
@@ -39,6 +42,8 @@ export function ProfileScreen({
         <span className={profile.rowLabel}>{t.language}</span>
         <LanguageSwitcher />
       </div>
+
+      {findByEmail}
 
       <div className={profile.menu}>
         {onOpenRoutines && (

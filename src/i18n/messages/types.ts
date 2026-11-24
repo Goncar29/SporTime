@@ -177,4 +177,10 @@ export interface Messages {
   viewLinkTo(host: string): string;
   /** Its accessible name when the exercise has a name. */
   viewExerciseLink(host: string, exercise: string): string;
+  /** The Profile switch that lists the user in the directory, found by exact email. */
+  findByEmail: string;
+  /** What turning it on shows, and to whom. */
+  findByEmailHint: string;
+  findByEmailChangeFailed: string;
+  findByEmailLoadFailed: string;
 }
