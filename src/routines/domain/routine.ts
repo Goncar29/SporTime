@@ -331,7 +331,11 @@ function exerciseFromLine(line: string, forStorage: boolean): Exercise | null {
   );
 }
 
-function exerciseToLine(exercise: Exercise): string {
+/**
+ * An exercise's six fields as one stored line holds them, in order, without checking them:
+ * name, reps, rest, weight, notes and link. A shared copy checks them strictly instead.
+ */
+export function exerciseFields(exercise: Exercise): string[] {
   const reps =
     exercise.repsMin === undefined
       ? ""
@@ -347,7 +351,11 @@ function exerciseToLine(exercise: Exercise): string {
     weight,
     exercise.notes ?? "",
     exercise.link ?? "",
-  ].join(FIELD_SEPARATOR);
+  ];
+}
+
+function exerciseToLine(exercise: Exercise): string {
+  return exerciseFields(exercise).join(FIELD_SEPARATOR);
 }
 
 /** Reads a stage in the app's shape or the stored one; null when nothing in it is valid. */
