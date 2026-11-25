@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { OutboxStore } from "../../shared/application/outbox";
 import { ContactRefused, type Contact } from "../domain/contact";
-import { createFirestoreContactList } from "./firestoreContactList";
+import { createFirestoreContactStore } from "./firestoreContactStore";
 
 const firestore = vi.hoisted(() => ({
   /** Directory entries on the server, by path. */
@@ -84,7 +84,7 @@ function setup({ guard }: { guard?: Guard } = {}) {
       items = next;
     },
   };
-  const contacts = createFirestoreContactList({} as never, "u1", {
+  const contacts = createFirestoreContactStore({} as never, "u1", {
     store,
     whenReady: () => Promise.resolve(true),
     guard,
@@ -114,7 +114,7 @@ const writes = () => firestore.calls.filter((call) => /^(setDoc|deleteDoc)/.test
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-describe("createFirestoreContactList", () => {
+describe("createFirestoreContactStore", () => {
   beforeEach(() => {
     firestore.directory.clear();
     firestore.contacts.clear();

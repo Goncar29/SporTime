@@ -89,7 +89,11 @@ async function addContact(page: Page, email: string) {
 async function deleteAccount(page: Page) {
   await openTab(page, "Profile");
   await page.getByRole("button", { name: "Delete account" }).click();
+  await markPage(page);
   await page.getByRole("button", { name: "Delete my account" }).click();
+  // Sign-in shows as soon as the account is gone; the page reloads once this device's cache is
+  // cleared, so anything read from the page waits for that.
+  await reloaded(page);
   await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
 }
 
@@ -270,6 +274,8 @@ test("deleting an account removes its directory entry and its contacts, not othe
   await deleteAccount(page);
   expect(await accountExists(bob.uid)).toBe(false);
   expect(await directoryEntry(bob.email)).toBeNull();
+  // Not even the marker Firestore keeps on this device for the deleted entry, named by his email.
+  await expect.poll(() => cacheContains(page, bob.email)).toBe(false);
   // Alice keeps what she saw when she added him.
   expect(await storedContacts(alice.uid)).toEqual([contactOf(bob)]);
 

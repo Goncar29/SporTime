@@ -57,7 +57,7 @@ function answerLater(answer: Promise<void>): { answer: Promise<void> } {
  * like any other. The rules refuse a contact whose directory entry is gone by the time the write
  * arrives; Firestore then drops it, as the outbox already handed it over.
  */
-export function createFirestoreContactList(
+export function createFirestoreContactStore(
   db: Firestore,
   userId: string,
   { store, whenReady, guard = runAtOnce }: Durability,

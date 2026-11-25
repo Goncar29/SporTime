@@ -328,14 +328,17 @@ test("a change made in another tab while one signs out is refused, with a messag
   await finishWhileBlocked(other);
   await expect.poll(() => asksBeforeLeaving(other)).toBe(true);
 
+  // The lost-change alert shows for only 4 s before the other tab reloads, so it is watched from
+  // now on, not after this tab's own reload, which takes longer under memory pressure (L17).
+  const lost = expect(
+    other.getByRole("alert").filter({ hasText: "Couldn't save: you signed out in another tab." }),
+  ).toBeVisible({ timeout: 30_000 });
   // Everything this tab had reaches the server, so it signs out while that change still waits.
   await writes.release();
+  await lost;
   await reloaded(page);
   await expect(googleButton(page)).toBeVisible();
 
-  const lost = other.getByText("Couldn't save: you signed out in another tab.");
-  await expect(lost).toBeVisible();
-  await expect(lost).toHaveAttribute("role", "alert");
   // The app's own reload to the sign-in screen never asks.
   expect(await asksBeforeLeaving(other)).toBe(false);
   await reloaded(other);

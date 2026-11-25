@@ -133,7 +133,7 @@ export const en: Messages = {
   privacySections: [
     {
       heading: "What we keep",
-      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts and finished sessions, so you can use them on any device. Your contacts, the people you add by the email they let others find them by, are kept with that email and the Google name and photo they listed, and only you can see them. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
+      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts, routines and finished sessions, so you can use them on any device. Your contacts, the people you add by the email they let others find them by, are kept with that email and the Google name and photo they listed, and only you can see them. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
     },
     {
       heading: "Where it is kept",
@@ -141,7 +141,7 @@ export const en: Messages = {
     },
     {
       heading: "On this device",
-      body: "While you are signed in, this browser keeps your name, email and photo address, a copy of your saved workouts, finished sessions and contacts, and anything not yet sent, so the app works without a connection. All of it is erased from this device when you sign out: anything not yet sent is sent first, and if it can't be, the app warns you before erasing it. Your language choice and your sound settings stay here.",
+      body: "While you are signed in, this browser keeps your name, email and photo address, a copy of your saved workouts, routines, finished sessions and contacts, and anything not yet sent, so the app works without a connection. All of it is erased from this device when you sign out: anything not yet sent is sent first, and if it can't be, the app warns you before erasing it. Your language choice and your sound settings stay here.",
     },
     {
       heading: "What we don't do",
@@ -149,14 +149,14 @@ export const en: Messages = {
     },
     {
       heading: "Removing your data",
-      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your finished sessions, your contacts and your name and photo from finding by email. Anyone who added you as a contact keeps the name, photo and email they saw then. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
+      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your routines, your finished sessions, your contacts and your name and photo from finding by email. Anyone who added you as a contact keeps the name, photo and email they saw then. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
     },
   ],
   privacyContactHeading: "Contact",
   privacyContactBody: "For questions about your data, or to ask us to remove it, write to",
   deleteAccount: "Delete account",
   deleteAccountWarning:
-    "This permanently removes your account, your saved workouts and your finished sessions. It cannot be undone.",
+    "This permanently removes your account, your saved workouts, your routines, your finished sessions and your contacts. It cannot be undone.",
   deleteAccountConfirmNote:
     "Google may ask you to confirm it's you; the deletion then finishes by itself.",
   confirmDeleteAccount: "Delete my account",
