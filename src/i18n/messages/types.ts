@@ -172,6 +172,8 @@ export interface Messages {
   /** An exercise's optional https link. */
   exerciseLink: string;
   invalidLink: string;
+  /** A link to localhost, an IP address or a local network name, refused like any unsafe one. */
+  localLink: string;
   /** The visible text of the button that opens an exercise's link. */
   viewLink: string;
   /** Its accessible name, by the link's site, when the exercise has no name. */

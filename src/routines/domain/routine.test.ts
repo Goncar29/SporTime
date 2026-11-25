@@ -3,6 +3,7 @@ import {
   ROUTINE_LIMITS,
   formatReps,
   formatRest,
+  isLocalLink,
   linkHost,
   normalizeLink,
   normalizeRoutineName,
@@ -199,6 +200,101 @@ describe("normalizeLink", () => {
   });
 });
 
+describe("links to the local network or an IP address (S12)", () => {
+  const refuses = (text: string) => {
+    expect(normalizeLink(text), text).toBeNull();
+    expect(isLocalLink(text), text).toBe(true);
+  };
+
+  it("refuses localhost and any *.localhost name", () => {
+    refuses("https://localhost");
+    refuses("https://localhost:5173/rutina");
+    refuses("https://LOCALHOST/");
+    refuses("https://app.localhost");
+    refuses("https://localhost.");
+  });
+
+  it("refuses a dotted IPv4 address", () => {
+    refuses("https://192.168.0.1");
+    refuses("https://8.8.8.8");
+    refuses("https://192.168.0.1:8080/admin");
+    refuses("https://8.8.8.8.");
+  });
+
+  it("refuses an all-decimal IPv4 address", () => {
+    refuses("https://3232235521");
+  });
+
+  it("refuses a hexadecimal IPv4 address", () => {
+    refuses("https://0xC0A80001");
+    refuses("https://0xc0a80001/x");
+  });
+
+  it("refuses an IPv4 address with hexadecimal or octal parts", () => {
+    refuses("https://0xC0.0250.0.1");
+    refuses("https://0300.0250.0.1");
+  });
+
+  it("refuses a short IPv4 address", () => {
+    refuses("https://127.1");
+    refuses("https://10.1.1");
+  });
+
+  it("refuses an IPv6 address", () => {
+    refuses("https://[::1]");
+    refuses("https://[2001:db8::1]:8443/x");
+    refuses("https://[::ffff:192.168.0.1]");
+  });
+
+  it("refuses a name of one label", () => {
+    refuses("https://router");
+    refuses("https://router:8080/admin");
+    refuses("https://router.");
+    refuses("https://www");
+  });
+
+  it("refuses the local network suffixes .local, .lan, .internal and .home.arpa", () => {
+    refuses("https://nas.local");
+    refuses("https://NAS.Local/fotos");
+    refuses("https://printer.lan");
+    refuses("https://db.internal:8443");
+    refuses("https://box.home.arpa");
+    refuses("https://home.arpa");
+    refuses("https://nas.local.");
+  });
+
+  it("refuses a local name written with the dots the browser reads as dots", () => {
+    refuses("https://nas\u3002local");
+    refuses("https://192\uff0e168\uff0e0\uff0e1");
+  });
+
+  it("keeps links to named sites working", () => {
+    for (const text of [
+      "https://youtube.com/watch?v=abc",
+      "https://www.youtube.com/watch?v=abc&t=1s",
+      "https://www.instagram.com/p/C1a2b3c4d5/",
+      "https://youtu.be/abc",
+      "https://localhost.com/x",
+      "https://local.example.org",
+      "https://lan.party.net",
+      "https://123.example.com",
+      "https://0xdead.beef.io",
+      "https://example.io:8443/x",
+    ]) {
+      expect(normalizeLink(text), text).toBe(text);
+      expect(isLocalLink(text), text).toBe(false);
+    }
+  });
+
+  it("calls local only a link that would otherwise be safe", () => {
+    expect(isLocalLink("")).toBe(false);
+    expect(isLocalLink("http://localhost")).toBe(false);
+    expect(isLocalLink("https://user@192.168.0.1")).toBe(false);
+    expect(isLocalLink("javascript:alert(1)")).toBe(false);
+    expect(isLocalLink(`https://router/${"a".repeat(ROUTINE_LIMITS.linkLength)}`)).toBe(false);
+  });
+});
+
 describe("sanitizeExercise", () => {
   it("discards an exercise with no field filled", () => {
     expect(sanitizeExercise({})).toBeNull();
@@ -349,6 +445,19 @@ describe("stored routines", () => {
         stages: [{ exercises: "Remo\t\t\t\t\tjavascript:alert(1)" }],
       })?.stages,
     ).toEqual([{ exercises: [{ name: "Remo" }] }]);
+  });
+
+  it("keep a stored link to the local network to show and fix, but never store it again", () => {
+    const stored = {
+      name: "Ok",
+      createdAt: 1,
+      stages: [{ exercises: "Remo\t\t\t\t\thttps://192.168.0.1/video" }],
+    };
+    const routine = parseRoutine("r", stored);
+    expect(routine?.stages).toEqual([
+      { exercises: [{ name: "Remo", link: "https://192.168.0.1/video" }] },
+    ]);
+    expect(toStoredRoutine(routine!).stages).toEqual([{ exercises: "Remo\t\t\t\t\t" }]);
   });
 
   it("read malformed stages as no stages rather than failing", () => {

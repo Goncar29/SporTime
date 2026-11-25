@@ -98,12 +98,20 @@ service cloud.firestore {
     // a path). The host and the rest are each bounded by the app's 300 characters; a pattern cannot
     // bound their sum, so a link of up to 592 passes here and the app drops it when reading.
     // The app (normalizeLink) also refuses other invisible characters; this pattern stays looser.
+    // A link must name an internet site, never the local network or an IP address (S12). The
+    // second pattern finds a link field (after a tab, the last on its line) whose host, in any
+    // letter case, is bracketed (IPv6), ends in a number or a 0x number (any IPv4 form a browser
+    // reads, like 3232235521, 0xC0A80001 or 127.1; or no address at all), is localhost or ends in
+    // .localhost, .local, .lan, .internal or .home.arpa, or is one name with no dot. A dot here is
+    // also U+3002, U+FF0E or U+FF61, which browsers read as one. The app (LOCAL_HOST_AS_TYPED in
+    // src/routines/domain/routine.ts) refuses the same text with the same pattern.
     // Up to 10 stages are checked per write, so each check here is kept to the fewest expressions:
     // a value of the wrong type makes split() or matches() fail, and a failure refuses the write.
     function isExercises(value) {
       return value == ''
           || (value.split('\n').size() <= 15
-            && value.matches('[^\\p{Cc}]{0,40}\\t([1-9][0-9]{0,2}(-[1-9][0-9]{0,2})?)?\\t(3600|3[0-5][0-9][0-9]|[12][0-9]{3}|[1-9][0-9]{0,2}|0)?\\t((1000(\\.0)?|([1-9][0-9]{0,2}|0)(\\.[0-9])?)(kg|lb))?\\t[^\\p{Cc}]{0,120}\\t(https://[^\\p{Cc}\\p{Z}@/?#\\\\]{1,292}([/?#\\\\][^\\p{Cc}\\p{Z}]{0,291})?)?(\\n[^\\p{Cc}]{0,40}\\t([1-9][0-9]{0,2}(-[1-9][0-9]{0,2})?)?\\t(3600|3[0-5][0-9][0-9]|[12][0-9]{3}|[1-9][0-9]{0,2}|0)?\\t((1000(\\.0)?|([1-9][0-9]{0,2}|0)(\\.[0-9])?)(kg|lb))?\\t[^\\p{Cc}]{0,120}\\t(https://[^\\p{Cc}\\p{Z}@/?#\\\\]{1,292}([/?#\\\\][^\\p{Cc}\\p{Z}]{0,291})?)?)*'));
+            && value.matches('[^\\p{Cc}]{0,40}\\t([1-9][0-9]{0,2}(-[1-9][0-9]{0,2})?)?\\t(3600|3[0-5][0-9][0-9]|[12][0-9]{3}|[1-9][0-9]{0,2}|0)?\\t((1000(\\.0)?|([1-9][0-9]{0,2}|0)(\\.[0-9])?)(kg|lb))?\\t[^\\p{Cc}]{0,120}\\t(https://[^\\p{Cc}\\p{Z}@/?#\\\\]{1,292}([/?#\\\\][^\\p{Cc}\\p{Z}]{0,291})?)?(\\n[^\\p{Cc}]{0,40}\\t([1-9][0-9]{0,2}(-[1-9][0-9]{0,2})?)?\\t(3600|3[0-5][0-9][0-9]|[12][0-9]{3}|[1-9][0-9]{0,2}|0)?\\t((1000(\\.0)?|([1-9][0-9]{0,2}|0)(\\.[0-9])?)(kg|lb))?\\t[^\\p{Cc}]{0,120}\\t(https://[^\\p{Cc}\\p{Z}@/?#\\\\]{1,292}([/?#\\\\][^\\p{Cc}\\p{Z}]{0,291})?)?)*')
+            && !value.matches('(?i)[\\s\\S]*\\thttps://(\\[[^\\t\\n]*|([^:/?#\\\\\\t\\n]*[.\\x{3002}\\x{FF0E}\\x{FF61}])?([0-9]+|0x[0-9a-f]*|localhost|local|lan|internal|home[.\\x{3002}\\x{FF0E}\\x{FF61}]arpa)[.\\x{3002}\\x{FF0E}\\x{FF61}]?|[^.\\x{3002}\\x{FF0E}\\x{FF61}:/?#\\\\\\t\\n]+[.\\x{3002}\\x{FF0E}\\x{FF61}]?)([:/?#\\\\][^\\t\\n]*)?(\\n[\\s\\S]*)?'));
     }
 
     // A stage name of 1 to 40 characters and notes of 1 to 500, both without control characters

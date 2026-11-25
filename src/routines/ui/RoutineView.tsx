@@ -102,7 +102,10 @@ interface SafeLink {
   host: string;
 }
 
-/** Checked again here: only a safe https link ever becomes something to open. */
+/**
+ * Checked again here: only a safe https link to a named site ever becomes something to open, never
+ * one to the local network a routine stored before it was refused may still hold.
+ */
 function safeLink({ link }: Exercise): SafeLink | undefined {
   const href = link === undefined ? undefined : normalizeLink(link);
   return typeof href === "string" ? { href, host: linkHost(href) } : undefined;

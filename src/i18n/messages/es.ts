@@ -220,6 +220,7 @@ export const es: Messages = {
   invalidWeight: "Escribe un número como 62,5.",
   exerciseLink: "Enlace",
   invalidLink: "Usa un enlace completo que empiece con https://.",
+  localLink: "Usa el enlace de un sitio web, no una dirección de red local o IP.",
   viewLink: "Ver",
   viewLinkTo: (host) => `Ver ${host}`,
   viewExerciseLink: (host, exercise) => `Ver ${host} (${exercise})`,
