@@ -18,6 +18,7 @@ A workout timer for the gym that you can install on your phone. It runs stopwatc
 | **History**        | Every finished workout is recorded. You can review and delete entries.                                                                                                                     |
 | **Account**        | Sign in with Google: only your name, email and profile photo are used. You can delete your account and all its data from Profile.                                                          |
 | **Contacts**       | Opt in from Profile to be found by your exact email (only your Google name and photo show). Add up to 50 contacts by email, with their photo, and remove them.                             |
+| **Sharing**        | Send a copy of a routine to one or more contacts from its view, after confirming. It needs a connection: a copy is never queued, and each recipient's result is shown.                     |
 | **Offline**        | After the first visit, the app loads and times workouts with no connection. Saves made offline are queued and sent when the connection returns.                                            |
 | **Installable**    | It is a PWA: the app offers installing on Android and shows the steps on iPhone. New versions apply on their own, but never in the middle of a workout.                                    |
 | **Languages**      | English and Spanish, following the browser's language, with a switch in Profile.                                                                                                           |
@@ -41,6 +42,7 @@ src/
 ├── routines/   Training routines split into stages
 ├── directory/  The opt-in find-by-email directory
 ├── contacts/   Contacts added by email
+├── sharing/    Sending copies of routines to contacts
 ├── auth/       Google sign-in and the cached session
 ├── account/    Profile, privacy and account deletion
 ├── settings/   Sound and voice settings
@@ -60,7 +62,7 @@ Each feature uses the layers it needs from these:
 
 `src/main.tsx` is the only place that chooses the adapters. Development and end-to-end builds swap in fakes or the Firebase emulators at build time, so none of that code ships in production.
 
-Firestore security rules live in `firestore/firestore.rules`. Each user can only read and write their own workouts, history, routines and contacts, and every document's shape is validated. The one exception is the opt-in directory: a signed-in user can read a single entry (uid, Google name and photo) by its exact email, never list them, and only the owner of that verified email can write or remove it. Contacts keep a copy of that entry; deleting the account removes the user's contacts and their own directory entry.
+Firestore security rules live in `firestore/firestore.rules`. Each user can only read and write their own workouts, history, routines and contacts, and every document's shape is validated. The one exception is the opt-in directory: a signed-in user can read a single entry (uid, Google name and photo) by its exact email, never list them, and only the owner of that verified email can write or remove it. Contacts keep a copy of that entry; deleting the account removes the user's contacts and their own directory entry. A user may also write a copy of a routine into a contact's inbox (`users/{recipient}/inbox/{copyId}`): only to someone in their contacts, with their Google name, photo and verified email taken from their sign-in, checked more strictly than one's own routines, and never changed once sent. The app checks a copy the same way before sending it, and sends it in a one-attempt transaction, so it is never queued offline nor resent after a lost answer.
 
 ## Getting started
 

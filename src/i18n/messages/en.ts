@@ -1,5 +1,57 @@
 import { CONTACT_LIMITS } from "../../contacts/domain/contact";
+import { ROUTINE_LIMITS } from "../../routines/domain/routine";
+import type { ShareProblem } from "../../sharing/domain/sharedCopy";
 import type { Messages } from "./types";
+
+const names = new Intl.ListFormat("en", { type: "conjunction" });
+
+/** Where an exercise is: by its name when it has one that can be shown, else by position. */
+const exerciseIn = (problem: Extract<ShareProblem, { kind: "exercise" }>) =>
+  problem.exerciseName === undefined
+    ? `exercise ${problem.exercise} of stage ${problem.stage}`
+    : `exercise "${problem.exerciseName}" of stage ${problem.stage}`;
+
+function shareProblem(problem: ShareProblem): string {
+  switch (problem.kind) {
+    case "senderName":
+      return "Your Google name is longer than 100 characters or holds characters that can't be sent. Change it in your Google Account, then try again.";
+    case "senderEmail":
+      return "Your Google account has no verified email, so you can't share routines.";
+    case "routineName":
+      return `Check the routine's name: it must start with a visible character and fit in ${ROUTINE_LIMITS.nameLength} characters.`;
+    case "routineNotes":
+      return `Check the routine's notes: they must start with a visible character and fit in ${ROUTINE_LIMITS.notesLength} characters.`;
+    case "tooManyStages":
+      return `A shared routine can have at most ${ROUTINE_LIMITS.stages} stages.`;
+    case "stageName":
+      return `Check the name of stage ${problem.stage}: it must start with a visible character.`;
+    case "stageNotes":
+      return `Check the notes of stage ${problem.stage}: they must start with a visible character.`;
+    case "emptyStage":
+      return `Stage ${problem.stage} is empty: add an exercise, a name or notes.`;
+    case "tooManyExercises":
+      return `Stage ${problem.stage} has more than ${ROUTINE_LIMITS.exercisesPerStage} exercises.`;
+    case "exercise": {
+      const where = exerciseIn(problem);
+      switch (problem.field) {
+        case "name":
+          return `Check the name of ${where}: it must start with a visible character.`;
+        case "notes":
+          return `Check the notes of ${where}: they must start with a visible character.`;
+        case "reps":
+          return `Check the reps of ${where}: use a number like 10 or a range from lower to higher, like 8 - 10.`;
+        case "rest":
+          return `Check the rest of ${where}.`;
+        case "weight":
+          return `Check the weight of ${where}.`;
+        case "link":
+          return `Check the link of ${where}: it must be a website address that can be shared, with no underscores, a valid port and a real domain ending.`;
+        case "empty":
+          return `Check ${where}: it is empty. Fill in a field or remove it.`;
+      }
+    }
+  }
+}
 
 export const en: Messages = {
   tagline: "Pick your fight.",
@@ -253,4 +305,28 @@ export const en: Messages = {
   confirmRemoveContact: (name) => `Remove ${name} from your contacts?`,
   removeContactNote: "You can add them again by their email while they let people find them.",
   confirmRemoveContactAction: "Remove",
+  share: "Share",
+  shareRoutine: (name) => `Share ${name}`,
+  shareTitle: "Share routine",
+  shareChooseContacts: "Choose who gets a copy",
+  shareNoContacts: "You have no contacts yet. Add them in Contacts to share routines.",
+  shareOpenContacts: "Go to Contacts",
+  shareContinue: "Continue",
+  confirmShare: (routine, recipients) => `Send "${routine}" to ${names.format(recipients)}?`,
+  shareNote: "Each one gets their own copy, with your Google name, photo and email.",
+  shareSend: "Send",
+  shareSending: "Sending…",
+  shareNeedsConnection: "You need a connection to share.",
+  shareFailed: "We couldn't prepare the copy. Try again.",
+  shareCannotSend: "This routine can't be shared yet:",
+  shareProblem,
+  shareResults: "Result",
+  shareOutcomes: {
+    sent: "Sent.",
+    refused: "Not sent: the server refused it. Check they are still in your contacts.",
+    mayHaveArrived: "It may have arrived: the answer was lost. Trying again never sends it twice.",
+    offline: "Not sent: you need a connection to share.",
+    failed: "Not sent.",
+  },
+  shareDone: "Done",
 };

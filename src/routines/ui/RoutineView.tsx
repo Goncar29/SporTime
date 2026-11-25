@@ -18,13 +18,22 @@ interface RoutineViewProps {
   onBack: () => void;
   onEdit: (routine: Routine) => void;
   onRemove: (routine: Routine) => void;
+  /** Opens sending a copy to contacts; without it, no Share button is offered. */
+  onShare?: (routine: Routine) => void;
 }
 
 /** Shown in a cell the exercise leaves empty. */
 const EMPTY = "—";
 
 /** A routine to read: its notes, then a table per stage. Nothing here can be changed. */
-export function RoutineView({ routine, errors, onBack, onEdit, onRemove }: RoutineViewProps) {
+export function RoutineView({
+  routine,
+  errors,
+  onBack,
+  onEdit,
+  onRemove,
+  onShare,
+}: RoutineViewProps) {
   const { t } = useI18n();
   const [confirming, setConfirming] = useState(false);
 
@@ -66,6 +75,18 @@ export function RoutineView({ routine, errors, onBack, onEdit, onRemove }: Routi
         >
           {t.confirmDelete}
         </button>
+        {onShare && (
+          <button
+            type="button"
+            className={styles.action}
+            aria-label={t.shareRoutine(routine.name)}
+            onClick={() => {
+              onShare(routine);
+            }}
+          >
+            {t.share}
+          </button>
+        )}
       </div>
 
       {routine.stages.length === 0 && <p className={styles.empty}>{t.noStagesYet}</p>}

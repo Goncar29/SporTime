@@ -1,5 +1,57 @@
 import { CONTACT_LIMITS } from "../../contacts/domain/contact";
+import { ROUTINE_LIMITS } from "../../routines/domain/routine";
+import type { ShareProblem } from "../../sharing/domain/sharedCopy";
 import type { Messages } from "./types";
+
+const names = new Intl.ListFormat("es", { type: "conjunction" });
+
+/** Where an exercise is: by its name when it has one that can be shown, else by position. */
+const exerciseIn = (problem: Extract<ShareProblem, { kind: "exercise" }>) =>
+  problem.exerciseName === undefined
+    ? `ejercicio ${problem.exercise} de la etapa ${problem.stage}`
+    : `ejercicio "${problem.exerciseName}" de la etapa ${problem.stage}`;
+
+function shareProblem(problem: ShareProblem): string {
+  switch (problem.kind) {
+    case "senderName":
+      return "Tu nombre de Google tiene más de 100 caracteres o caracteres que no se pueden enviar. Cámbialo en tu cuenta de Google e inténtalo de nuevo.";
+    case "senderEmail":
+      return "Tu cuenta de Google no tiene un email verificado, así que no puedes compartir rutinas.";
+    case "routineName":
+      return `Revisa el nombre de la rutina: debe empezar con un carácter visible y tener hasta ${ROUTINE_LIMITS.nameLength} caracteres.`;
+    case "routineNotes":
+      return `Revisa los comentarios de la rutina: deben empezar con un carácter visible y tener hasta ${ROUTINE_LIMITS.notesLength} caracteres.`;
+    case "tooManyStages":
+      return `Una rutina compartida puede tener hasta ${ROUTINE_LIMITS.stages} etapas.`;
+    case "stageName":
+      return `Revisa el nombre de la etapa ${problem.stage}: debe empezar con un carácter visible.`;
+    case "stageNotes":
+      return `Revisa los comentarios de la etapa ${problem.stage}: deben empezar con un carácter visible.`;
+    case "emptyStage":
+      return `La etapa ${problem.stage} está vacía: agrega un ejercicio, un nombre o comentarios.`;
+    case "tooManyExercises":
+      return `La etapa ${problem.stage} tiene más de ${ROUTINE_LIMITS.exercisesPerStage} ejercicios.`;
+    case "exercise": {
+      const where = exerciseIn(problem);
+      switch (problem.field) {
+        case "name":
+          return `Revisa el nombre del ${where}: debe empezar con un carácter visible.`;
+        case "notes":
+          return `Revisa los comentarios del ${where}: deben empezar con un carácter visible.`;
+        case "reps":
+          return `Revisa las repeticiones del ${where}: escribe un número como 10 o un rango de menor a mayor, como 8 - 10.`;
+        case "rest":
+          return `Revisa la pausa del ${where}.`;
+        case "weight":
+          return `Revisa el peso del ${where}.`;
+        case "link":
+          return `Revisa el enlace del ${where}: debe ser la dirección de un sitio web que se pueda compartir, sin guiones bajos, con un puerto válido y un dominio real.`;
+        case "empty":
+          return `Revisa el ${where}: está vacío. Completa un campo o quítalo.`;
+      }
+    }
+  }
+}
 
 export const es: Messages = {
   tagline: "Elige tu batalla.",
@@ -261,4 +313,29 @@ export const es: Messages = {
   confirmRemoveContact: (name) => `¿Quitar a ${name} de tus contactos?`,
   removeContactNote: "Puedes volver a agregarlo con su email mientras permita que lo encuentren.",
   confirmRemoveContactAction: "Quitar",
+  share: "Compartir",
+  shareRoutine: (name) => `Compartir ${name}`,
+  shareTitle: "Compartir rutina",
+  shareChooseContacts: "Elige quién recibe una copia",
+  shareNoContacts: "Todavía no tienes contactos. Agrégalos en Contactos para compartir rutinas.",
+  shareOpenContacts: "Ir a Contactos",
+  shareContinue: "Continuar",
+  confirmShare: (routine, recipients) => `¿Enviar "${routine}" a ${names.format(recipients)}?`,
+  shareNote: "Cada persona recibe su propia copia, con tu nombre, foto y email de Google.",
+  shareSend: "Enviar",
+  shareSending: "Enviando…",
+  shareNeedsConnection: "Necesitas conexión para compartir.",
+  shareFailed: "No pudimos preparar la copia. Inténtalo de nuevo.",
+  shareCannotSend: "Esta rutina todavía no se puede compartir:",
+  shareProblem,
+  shareResults: "Resultado",
+  shareOutcomes: {
+    sent: "Enviada.",
+    refused: "No se envió: el servidor la rechazó. Comprueba que siga en tus contactos.",
+    mayHaveArrived:
+      "Puede que haya llegado: se perdió la respuesta. Reintentar nunca la envía dos veces.",
+    offline: "No se envió: necesitas conexión para compartir.",
+    failed: "No se envió.",
+  },
+  shareDone: "Listo",
 };

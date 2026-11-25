@@ -154,3 +154,27 @@ it("shows no Ver button for a stored link to the local network or an IP address"
     "Repeticiones",
   ]);
 });
+
+it("offers Compartir only when sharing is possible, and hands it the routine", () => {
+  const onShare = vi.fn();
+  const routine = { id: "r1", name: "Piernas", createdAt: 1_000, stages: [] };
+  const view = (share?: typeof onShare) => (
+    <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["es-AR"]}>
+      <RoutineView
+        routine={routine}
+        errors={[]}
+        onBack={vi.fn()}
+        onEdit={vi.fn()}
+        onRemove={vi.fn()}
+        onShare={share}
+      />
+    </I18nProvider>
+  );
+  const { rerender } = render(view());
+  expect(screen.queryByRole("button", { name: "Compartir Piernas" })).not.toBeInTheDocument();
+  rerender(view(onShare));
+  const button = screen.getByRole("button", { name: "Compartir Piernas" });
+  expect(button.textContent).toBe("Compartir");
+  button.click();
+  expect(onShare).toHaveBeenCalledWith(routine);
+});

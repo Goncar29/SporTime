@@ -105,12 +105,14 @@ async function createStoresFactory(
       { createFakeRoutineLibrary },
       { createFakeDirectoryListing },
       { createFakeContactStore },
+      { createFakeRoutineSharing },
     ] = await Promise.all([
       import("./workouts/infrastructure/fakeWorkoutLibrary"),
       import("./history/infrastructure/fakeHistoryLog"),
       import("./routines/infrastructure/fakeRoutineLibrary"),
       import("./directory/infrastructure/fakeDirectoryListing"),
       import("./contacts/infrastructure/fakeContactStore"),
+      import("./sharing/infrastructure/fakeRoutineSharing"),
     ]);
     // No Firestore here: nothing waits to be sent and nothing is cached, so sign-out stays as it was.
     const local = {
@@ -126,6 +128,7 @@ async function createStoresFactory(
       routines: createFakeRoutineLibrary(userId),
       contacts: createFakeContactStore(userId),
       directoryFor: createFakeDirectoryListing,
+      sharingFor: createFakeRoutineSharing,
       deleteAccount: () => authGateway.signOut(),
       deletionConfirmedByRedirect: () => Promise.resolve(false),
       signOut: (options) => signOut({ auth, local }, options),
@@ -147,6 +150,9 @@ async function createStoresFactory(
     { createFirestoreRoutineLibrary },
     { createFirestoreDirectoryListing },
     { createFirestoreContactStore },
+    { createRoutineSharing },
+    { createFirestoreInbox },
+    { createFirebaseSenderIdentity },
     { deleteAccount },
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
@@ -161,6 +167,9 @@ async function createStoresFactory(
     import("./routines/infrastructure/firestoreRoutineLibrary"),
     import("./directory/infrastructure/firestoreDirectoryListing"),
     import("./contacts/infrastructure/firestoreContactStore"),
+    import("./sharing/application/shareRoutine"),
+    import("./sharing/infrastructure/firestoreInbox"),
+    import("./sharing/infrastructure/firebaseSenderIdentity"),
     import("./account/application/deleteAccount"),
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
@@ -265,6 +274,15 @@ async function createStoresFactory(
         unlist: () => otherTabs.confirming(listing.unlist()),
       };
     };
+    // A copy goes to the server now or not at all: never through an outbox or Firestore's offline
+    // queue, where one the rules refuse could wait for ever (L58). The sender is read from the
+    // ID token, which the rules compare the copy with.
+    const sharingFor = (user: { id: string }) =>
+      createRoutineSharing({
+        identity: createFirebaseSenderIdentity(user.id),
+        inbox: createFirestoreInbox(firestore()),
+        online: () => navigator.onLine,
+      });
     const local = createLocalAccountData({
       outboxes: [workouts, history, routines, contactStore],
       discardPendingWrites,
@@ -302,6 +320,7 @@ async function createStoresFactory(
       routines,
       contacts: contactStore,
       directoryFor,
+      sharingFor,
       // Holds every change, here and in the other tabs, from erasing until the account is gone.
       deleteAccount: () =>
         deleteAccount({

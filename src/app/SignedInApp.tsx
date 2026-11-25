@@ -9,6 +9,7 @@ import type { ContactStore } from "../contacts/application/ports";
 import type { DirectoryListing } from "../directory/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import type { RoutineLibrary } from "../routines/application/ports";
+import type { RoutineSharing } from "../sharing/application/ports";
 import type { WorkoutLibrary } from "../workouts/application/ports";
 import { App, type TimerDependencies } from "./App";
 
@@ -23,6 +24,11 @@ export interface UserStores {
    * where the directory is not offered.
    */
   directoryFor?: (user: User) => DirectoryListing;
+  /**
+   * Sends copies of routines to contacts as the signed-in user; none where sharing is not
+   * offered. Never queued: it needs a connection.
+   */
+  sharingFor?: (user: User) => RoutineSharing;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   /** Sends what is pending, then signs out and erases this device's copy of the account. */
@@ -49,6 +55,10 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
   const { id, name, email, photoUrl } = user;
   const directory = useMemo(
     () => stores.directoryFor?.({ id, name, email, photoUrl }),
+    [stores, id, name, email, photoUrl],
+  );
+  const sharing = useMemo(
+    () => stores.sharingFor?.({ id, name, email, photoUrl }),
     [stores, id, name, email, photoUrl],
   );
   const signOut = useSignOut({ signOut: (options) => stores.signOut(options), reload });
@@ -78,6 +88,7 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
       routines={stores.routines}
       directory={directory}
       contactStore={stores.contacts}
+      sharing={sharing}
       deleteAccount={deleteAccount}
       deletionConfirmedByRedirect={stores.deletionConfirmedByRedirect}
     />
