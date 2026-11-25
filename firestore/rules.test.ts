@@ -653,6 +653,15 @@ describe("routine shape", () => {
       "https://box.Home.Arpa.",
       "https://nas\u3002local",
       "https://192\uff0e168\uff0e0\uff0e1",
+      // Independent verifier probes (L53).
+      "https://192.168.0.1./",
+      "https://0XC0A80001",
+      "https://LOCALHOST",
+      "https://LOCALHOST.:443",
+      "https://printer.LOCAL",
+      "https://a.home.arpa./",
+      "https://127.1:80",
+      "https://4294967295",
     ];
     const sites = [
       "https://youtube.com/watch?v=abc",
@@ -666,6 +675,13 @@ describe("routine shape", () => {
       "https://0xdead.beef.io",
       "https://example.io:8443/x",
       "https://youtube\u3002com",
+      // Independent verifier probes (L53): named sites that only look local.
+      "https://192.168.0.1.nip.io/",
+      "https://localhost.example.com",
+      "https://router.local.example.com:8443/x",
+      "https://3232235521.com",
+      "https://a.0xg",
+      "https://EXAMPLE.COM.",
     ];
     const path = routinePath("alice");
     const line = (link: string) => `Remo\t10\t\t\t\t${link}`;
