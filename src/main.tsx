@@ -104,13 +104,13 @@ async function createStoresFactory(
       { createFakeHistoryLog },
       { createFakeRoutineLibrary },
       { createFakeDirectoryListing },
-      { createFakeContactList },
+      { createFakeContactStore },
     ] = await Promise.all([
       import("./workouts/infrastructure/fakeWorkoutLibrary"),
       import("./history/infrastructure/fakeHistoryLog"),
       import("./routines/infrastructure/fakeRoutineLibrary"),
       import("./directory/infrastructure/fakeDirectoryListing"),
-      import("./contacts/infrastructure/fakeContactList"),
+      import("./contacts/infrastructure/fakeContactStore"),
     ]);
     // No Firestore here: nothing waits to be sent and nothing is cached, so sign-out stays as it was.
     const local = {
@@ -124,7 +124,7 @@ async function createStoresFactory(
       workouts: createFakeWorkoutLibrary(userId),
       history: createFakeHistoryLog(userId),
       routines: createFakeRoutineLibrary(userId),
-      contacts: createFakeContactList(userId),
+      contacts: createFakeContactStore(userId),
       directoryFor: createFakeDirectoryListing,
       deleteAccount: () => authGateway.signOut(),
       deletionConfirmedByRedirect: () => Promise.resolve(false),
@@ -146,7 +146,7 @@ async function createStoresFactory(
     { createFirestoreHistoryLog },
     { createFirestoreRoutineLibrary },
     { createFirestoreDirectoryListing },
-    { createFirestoreContactList },
+    { createFirestoreContactStore },
     { deleteAccount },
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
@@ -160,7 +160,7 @@ async function createStoresFactory(
     import("./history/infrastructure/firestoreHistoryLog"),
     import("./routines/infrastructure/firestoreRoutineLibrary"),
     import("./directory/infrastructure/firestoreDirectoryListing"),
-    import("./contacts/infrastructure/firestoreContactList"),
+    import("./contacts/infrastructure/firestoreContactStore"),
     import("./account/application/deleteAccount"),
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
@@ -237,20 +237,21 @@ async function createStoresFactory(
         otherTabs.confirming(routineLibrary.update(routine)),
       remove: (id: string) => otherTabs.confirming(routineLibrary.remove(id)),
     };
-    const contactStore = createFirestoreContactList(firestore(), userId, {
+    // Not followed by the other-tabs sign-out check: use contactStore below, never this one.
+    const unguardedContacts = createFirestoreContactStore(firestore(), userId, {
       store: contactOutbox,
       whenReady,
       guard: otherTabs.guard,
     });
-    const contacts = {
-      ...contactStore,
+    const contactStore = {
+      ...unguardedContacts,
       add(email: string) {
-        const added = contactStore.add(email);
+        const added = unguardedContacts.add(email);
         // Followed, like every other change, until the server answers the write.
         otherTabs.confirming(added.then(({ saved }) => saved)).catch(() => undefined);
         return added;
       },
-      remove: (uid: string) => otherTabs.confirming(contactStore.remove(uid)),
+      remove: (uid: string) => otherTabs.confirming(unguardedContacts.remove(uid)),
     };
     // One document, set or deleted, which Firestore's own cache queues offline; no outbox. A
     // sign-out waits for it like any other write, and leaves the entry on the server.
@@ -265,7 +266,7 @@ async function createStoresFactory(
       };
     };
     const local = createLocalAccountData({
-      outboxes: [workouts, history, routines, contacts],
+      outboxes: [workouts, history, routines, contactStore],
       discardPendingWrites,
       serverHasWrites,
       clearCache: clearLocalCache,
@@ -283,13 +284,23 @@ async function createStoresFactory(
       async remove() {
         await identity.remove();
         signOutSignal.announce("deletion");
+        // The account is gone, so its copy in Firestore's cache on this device goes too. Noted
+        // first, so a page closed meanwhile, or another tab still holding the cache, leaves it to
+        // be cleared on the next start; the deletion itself already succeeded either way.
+        markForClearing();
+        await clearLocalCache().catch((error: unknown) => {
+          console.warn(
+            "The cache of the deleted account will be cleared on the next start:",
+            error,
+          );
+        });
       },
     };
     const created: UserStores = {
       workouts,
       history,
       routines,
-      contacts,
+      contacts: contactStore,
       directoryFor,
       // Holds every change, here and in the other tabs, from erasing until the account is gone.
       deleteAccount: () =>

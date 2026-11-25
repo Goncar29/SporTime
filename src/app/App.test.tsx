@@ -6,7 +6,7 @@ import type { HistoryLog } from "../history/application/ports";
 import { AuthFailure } from "../auth/domain/user";
 import type { AddedContact, ContactStore } from "../contacts/application/ports";
 import { CONTACT_LIMITS, type Contact } from "../contacts/domain/contact";
-import { createFakeContactList } from "../contacts/infrastructure/fakeContactList";
+import { createFakeContactStore } from "../contacts/infrastructure/fakeContactStore";
 import type { DirectoryListing } from "../directory/application/ports";
 import { createFakeDirectoryListing } from "../directory/infrastructure/fakeDirectoryListing";
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
@@ -627,7 +627,7 @@ describe("App account data", () => {
       for (const text of [
         /name, email and profile photo/,
         /Firebase/,
-        /saved workouts and finished sessions/,
+        /saved workouts, routines and finished sessions/,
         /erased from this device when you sign out/,
         /no analytics/i,
         /Delete account/,
@@ -666,7 +666,9 @@ describe("App account data", () => {
       click("Delete account");
       const dialog = screen.getByRole("alertdialog", { name: "Delete account" });
       expect(dialog).toHaveTextContent(/cannot be undone/);
-      expect(dialog).toHaveTextContent(/saved workouts/);
+      expect(dialog).toHaveTextContent(
+        /saved workouts, your routines, your finished sessions and your contacts/,
+      );
       expect(deleteAccount).not.toHaveBeenCalled();
 
       click("Keep my account");
@@ -2379,7 +2381,7 @@ describe("contacts", () => {
   };
   /** A fake list for the account "me" whose writes are spied on. */
   const contactList = () => {
-    const fake = createFakeContactList("me");
+    const fake = createFakeContactStore("me");
     return {
       ...fake,
       add: vi.fn((email: string) => fake.add(email)),
@@ -2678,7 +2680,7 @@ describe("contacts", () => {
   describe("when the server refuses an earlier add after a later one succeeded", () => {
     /** A list whose first add's server answer the test settles by hand. */
     const overlapping = () => {
-      const fake = createFakeContactList("me");
+      const fake = createFakeContactStore("me");
       let refuse: (error: unknown) => void = () => undefined;
       const firstSaved = new Promise<void>((_resolve, reject) => {
         refuse = reject;

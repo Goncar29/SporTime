@@ -7,7 +7,7 @@ import { ContactRefused, byName, parseContact, type Contact } from "../domain/co
  * Tests only: keeps contacts in localStorage and finds them in the fake directory, refusing like
  * the real list. Never part of a production build.
  */
-export function createFakeContactList(userId: string): ContactStore {
+export function createFakeContactStore(userId: string): ContactStore {
   const key = `sportime.fakeContacts.${userId}`;
   const listeners = new Set<(items: Contact[]) => void>();
   const serial = oneAtATime();

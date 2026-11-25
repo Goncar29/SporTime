@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createFakeDirectoryListing } from "../../directory/infrastructure/fakeDirectoryListing";
 import { ContactRefused, type Contact } from "../domain/contact";
-import { createFakeContactList } from "./fakeContactList";
+import { createFakeContactStore } from "./fakeContactStore";
 
 const bob = {
   id: "bob",
@@ -16,7 +16,7 @@ const kindOf = (attempt: Promise<unknown>) =>
     (error: unknown) => (error instanceof ContactRefused ? error.kind : error),
   );
 
-describe("createFakeContactList", () => {
+describe("createFakeContactStore", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
@@ -24,7 +24,7 @@ describe("createFakeContactList", () => {
 
   it("adds someone listed in the fake directory, lists and removes them", async () => {
     await createFakeDirectoryListing(bob).list();
-    const contacts = createFakeContactList("alice");
+    const contacts = createFakeContactStore("alice");
     const seen: Contact[][] = [];
     contacts.subscribe(
       (items) => seen.push(items),
@@ -37,12 +37,12 @@ describe("createFakeContactList", () => {
     ]);
     // Kept across a reload, per account.
     const reloaded: Contact[][] = [];
-    createFakeContactList("alice").subscribe(
+    createFakeContactStore("alice").subscribe(
       (items) => reloaded.push(items),
       () => undefined,
     );
     const other: Contact[][] = [];
-    createFakeContactList("carol").subscribe(
+    createFakeContactStore("carol").subscribe(
       (items) => other.push(items),
       () => undefined,
     );
@@ -55,7 +55,7 @@ describe("createFakeContactList", () => {
   it("refuses like the real list", async () => {
     await createFakeDirectoryListing(bob).list();
     await createFakeDirectoryListing({ ...bob, id: "alice", email: "alice@example.com" }).list();
-    const contacts = createFakeContactList("alice");
+    const contacts = createFakeContactStore("alice");
     expect(await kindOf(contacts.add("nope"))).toBe("invalidEmail");
     expect(await kindOf(contacts.add("carol@example.com"))).toBe("notListed");
     expect(await kindOf(contacts.add("alice@example.com"))).toBe("self");

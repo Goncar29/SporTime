@@ -2,6 +2,8 @@ import { expect, test, type BrowserContext, type Page, type Route } from "@playw
 import {
   accountExists,
   cacheContains,
+  markPage,
+  reloaded,
   clearEmulatorData,
   eventually,
   finishStopwatch,
@@ -76,16 +78,21 @@ test("deleting removes everything the account held, and nobody else's data", asy
   await eventually(() => storedNames(other)).toEqual(["Not yours"]);
   await signOut(page);
 
-  const uid = await signInAs(page, uniqueName("leaving"));
+  const name = uniqueName("leaving");
+  const uid = await signInAs(page, name);
   expect(await accountExists(uid)).toBe(true);
   await saveWorkout(page, "Synced");
   await finishStopwatch(page);
   await eventually(() => storedNames(uid)).toEqual(["Synced"]);
   // Proves the search below can find something: without this it could never fail.
   await expect.poll(() => cacheContains(page, "Synced")).toBe(true);
+  await expect.poll(() => cacheContains(page, uid)).toBe(true);
 
   await openDeleteDialog(page);
+  await markPage(page);
   await acceptDeletion(page);
+  // The page reloads once this device's cache is cleared, after sign-in already shows.
+  await reloaded(page);
   await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
 
   expect(await storedNames(uid)).toEqual([]);
@@ -93,6 +100,10 @@ test("deleting removes everything the account held, and nobody else's data", asy
   expect(await accountExists(uid)).toBe(false);
   expect(await storedNames(other)).toEqual(["Not yours"]);
   await expect.poll(() => cacheContains(page, "Synced")).toBe(false);
+  // Not even the markers Firestore keeps for deleted or missing documents, whose paths name the
+  // account: its documents, and the find-by-email entry erasing looks up (L30).
+  await expect.poll(() => cacheContains(page, uid)).toBe(false);
+  await expect.poll(() => cacheContains(page, `${name}@example.com`.toLowerCase())).toBe(false);
   const leftovers = await page.evaluate(() =>
     Object.keys(localStorage).filter(
       (key) => key.startsWith("sportime.outbox") || key === "sportime.session",

@@ -65,4 +65,35 @@ describe("useLiveList", () => {
     store.answer(["a", "b"]);
     expect(result.current).toMatchObject({ items: ["a", "b"], failed: false, failure: null });
   });
+
+  it("leaves a healthy list as it is when asked to retry", () => {
+    const store = heldStore();
+    const { result } = renderHook(() => useLiveList(store.subscribe, "Loading things"));
+    store.answer(["a"]);
+    const answered = result.current;
+    act(() => {
+      result.current.retry();
+    });
+    expect(store.reads()).toBe(1);
+    expect(result.current).toBe(answered);
+    expect(result.current).toMatchObject({ items: ["a"], failed: false, failure: null });
+  });
+
+  it("retries again when the retried read fails too", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const store = heldStore();
+    const { result } = renderHook(() => useLiveList(store.subscribe, "Loading things"));
+    store.fail(new Error("boom"));
+    act(() => {
+      result.current.retry();
+    });
+    store.fail(new Error("boom again"));
+    expect(result.current).toMatchObject({ items: null, failed: true, failure: "unknown" });
+    act(() => {
+      result.current.retry();
+    });
+    expect(store.reads()).toBe(3);
+    store.answer(["a"]);
+    expect(result.current).toMatchObject({ items: ["a"], failed: false, failure: null });
+  });
 });

@@ -86,9 +86,11 @@ describe("createFirestoreAccountData", () => {
     const workouts = createLocalStorageOutboxStore("sportime.outbox.workouts.u1");
     const history = createLocalStorageOutboxStore("sportime.outbox.history.u1");
     const routines = createLocalStorageOutboxStore("sportime.outbox.routines.u1");
+    const contacts = createLocalStorageOutboxStore("sportime.outbox.contacts.u1");
     workouts.save([{ id: "w1", draft: {} }]);
     history.save([{ id: "h1", draft: {} }]);
     routines.save([{ id: "r1", draft: {} }]);
+    contacts.save([{ id: "c1", draft: {} }]);
     const data = createFirestoreAccountData({
       db: {} as never,
       userId: "u1",
@@ -97,6 +99,7 @@ describe("createFirestoreAccountData", () => {
         workouts.save([]);
         history.save([]);
         routines.save([]);
+        contacts.save([]);
       },
     });
 
@@ -105,6 +108,7 @@ describe("createFirestoreAccountData", () => {
     expect(localStorage.getItem("sportime.outbox.workouts.u1")).toBeNull();
     expect(localStorage.getItem("sportime.outbox.history.u1")).toBeNull();
     expect(localStorage.getItem("sportime.outbox.routines.u1")).toBeNull();
+    expect(localStorage.getItem("sportime.outbox.contacts.u1")).toBeNull();
   });
 
   it("erases the account's workouts, history, routines and contacts, and no other account's", async () => {
