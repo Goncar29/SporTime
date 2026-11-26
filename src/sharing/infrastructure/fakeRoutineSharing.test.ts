@@ -26,7 +26,15 @@ it("keeps copies in the recipient's inbox, refusing like the rules", async () =>
     ["carol", "refused"],
   ]);
   expect(Object.values(fakeInboxOf("bob"))).toEqual([
-    { fromUid: "me", fromEmail: "me@example.com", fromName: "Me", name: "Piernas", stages: [] },
+    {
+      fromUid: "me",
+      fromEmail: "me@example.com",
+      fromName: "Me",
+      name: "Piernas",
+      stages: [],
+      // Set on arrival, as the rules make the server's time the copy's sentAt.
+      sentAt: expect.any(Number),
+    },
   ]);
   expect(fakeInboxOf("carol")).toEqual({});
 });

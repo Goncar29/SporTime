@@ -1,4 +1,5 @@
 import type { Contact } from "../../contacts/domain/contact";
+import type { ReceivedRoutines } from "../../routines/application/ports";
 import type { RoutineDraft } from "../../routines/domain/routine";
 import type { StoreFailureKind } from "../../shared/domain/storeFailure";
 import type { SenderClaims, SharedCopy, ShareProblem } from "../domain/sharedCopy";
@@ -63,4 +64,32 @@ export type Preparation =
 export interface RoutineSharing {
   /** Builds the copy and gives each recipient a copy id; writes nothing. */
   prepare(routine: RoutineDraft, recipients: readonly Contact[]): Promise<Preparation>;
+}
+
+/** A copy in the signed-in user's inbox, as stored but with `sentAt` in milliseconds. */
+export interface InboxCopy {
+  id: string;
+  /** Untrusted until receivedRoutine reads it. */
+  data: unknown;
+}
+
+/** The signed-in user's inbox, which only they may read and delete (T26, S12). */
+export interface InboxReader {
+  /**
+   * Reports the copies the server holds, never a list read only from this device's cache (it
+   * may hold copies already received elsewhere), then every change. Returns the unsubscribe
+   * function; a listener stops for good after an error.
+   */
+  subscribe(onCopies: (copies: InboxCopy[]) => void, onError: (error: Error) => void): () => void;
+  /** Deletes a copy. Settles when the server answers, which never happens offline. */
+  remove(copyId: string): Promise<void>;
+}
+
+/** Where a received copy becomes one of the user's own routines. */
+export type ReceivedRoutineStore = ReceivedRoutines;
+
+/** Moves the copies in the signed-in user's inbox into their routines. */
+export interface InboxReceiving {
+  /** Listens to the inbox and receives every copy in it. Returns the function that stops it. */
+  start(): () => void;
 }

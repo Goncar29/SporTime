@@ -15,7 +15,9 @@ import { InstallProvider } from "../install/ui/InstallProvider";
 import type { RoutineLibrary } from "../routines/application/ports";
 import type { Routine, RoutineDraft } from "../routines/domain/routine";
 import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
-import type { Delivery, RoutineSharing } from "../sharing/application/ports";
+import type { Delivery, InboxReceiving, RoutineSharing } from "../sharing/application/ports";
+import { createInboxReceiver } from "../sharing/application/receiveInbox";
+import { createFakeInboxReader } from "../sharing/infrastructure/fakeInboxReader";
 import {
   createFakeRoutineSharing,
   fakeInboxOf,
@@ -37,6 +39,8 @@ interface Stores {
   contacts?: ContactStore;
   /** Without it, a routine's view offers no Share button. */
   sharing?: RoutineSharing;
+  /** Without it, nothing is received from the inbox. */
+  receiving?: InboxReceiving;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
@@ -51,6 +55,7 @@ function setup({
   directory,
   contacts,
   sharing,
+  receiving,
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
   updater = createAppUpdater(() => undefined),
@@ -76,6 +81,7 @@ function setup({
           directory={directory}
           contactStore={contacts}
           sharing={sharing}
+          receiving={receiving}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
@@ -676,7 +682,7 @@ describe("App account data", () => {
       const dialog = screen.getByRole("alertdialog", { name: "Delete account" });
       expect(dialog).toHaveTextContent(/cannot be undone/);
       expect(dialog).toHaveTextContent(
-        /saved workouts, your routines, your finished sessions and your contacts/,
+        /saved workouts, your routines, including those contacts sent you, your finished sessions and your contacts/,
       );
       expect(deleteAccount).not.toHaveBeenCalled();
 
@@ -1778,7 +1784,7 @@ describe("routines", () => {
     expect(items()[0]).toHaveTextContent("Push");
     expect(items()[0]).toHaveTextContent("1 stage");
 
-    click("Edit Push");
+    click("Edit \u2068Push\u2069");
     const edited = exercise("Stage 1", 1);
     expect(within(edited).getByRole("textbox", { name: "Reps" })).toHaveValue("8 - 10");
     expect(within(edited).getByRole("textbox", { name: "Rest" })).toHaveValue("90''");
@@ -1897,8 +1903,8 @@ describe("routines", () => {
       }),
     );
 
-    click("Open Push");
-    const link = screen.getByRole("link", { name: "View youtube.com (Bench press)" });
+    click("Open \u2068Push\u2069");
+    const link = screen.getByRole("link", { name: "View youtube.com (\u2068Bench press\u2069)" });
     expect(link.textContent).toBe("View");
     expect(link).toHaveAttribute("title", "youtube.com");
     expect(link).toHaveAttribute("href", "https://www.youtube.com/watch?v=abc");
@@ -1916,7 +1922,7 @@ describe("routines", () => {
         .map((cell) => cell.textContent),
     ).toEqual(["Exercise", "Link"]);
 
-    click("Edit Push");
+    click("Edit \u2068Push\u2069");
     expect(within(exercise("Stage 1", 1)).getByRole("textbox", { name: "Link" })).toHaveValue(
       "https://www.youtube.com/watch?v=abc",
     );
@@ -1987,7 +1993,7 @@ describe("routines", () => {
     ]);
     setup({ routines });
     openRoutines();
-    click("Open Old");
+    click("Open \u2068Old\u2069");
     expect(screen.getByRole("table", { name: "Stage 1" })).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
@@ -2003,7 +2009,7 @@ describe("routines", () => {
     )();
     setup({ routines });
     openRoutines();
-    click("Edit Old");
+    click("Edit \u2068Old\u2069");
     expect(screen.getByRole("heading", { level: 1, name: "Edit routine" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Routine name" })).toHaveValue("Old");
     type("Routine name", "New");
@@ -2020,7 +2026,7 @@ describe("routines", () => {
     const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
     setup({ routines });
     openRoutines();
-    click("Edit Old");
+    click("Edit \u2068Old\u2069");
     type("Routine name", "Something else");
     click("Cancel");
     expect(routines.update).not.toHaveBeenCalled();
@@ -2031,13 +2037,13 @@ describe("routines", () => {
     const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
     setup({ routines });
     openRoutines();
-    click("Delete Old");
-    const dialog = screen.getByRole("alertdialog", { name: 'Delete "Old"?' });
+    click("Delete \u2068Old\u2069");
+    const dialog = screen.getByRole("alertdialog", { name: 'Delete "\u2068Old\u2069"?' });
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(routines.remove).not.toHaveBeenCalled();
     expect(items()).toHaveLength(1);
 
-    click("Delete Old");
+    click("Delete \u2068Old\u2069");
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
     );
@@ -2067,7 +2073,7 @@ describe("routines", () => {
     routines.update.mockImplementation(() => Promise.reject(refusal("not-found")));
     setup({ routines });
     openRoutines();
-    click("Edit Old");
+    click("Edit \u2068Old\u2069");
     type("Routine name", "New");
     click("Save changes");
     await settle();
@@ -2127,7 +2133,7 @@ describe("routines", () => {
     it("opens from the list with the routine's notes and a table per stage", async () => {
       setup({ routines: await routineLibrary([push]) });
       openRoutines();
-      click("Open Push");
+      click("Open \u2068Push\u2069");
 
       expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Profile" })).toHaveAttribute(
@@ -2165,7 +2171,7 @@ describe("routines", () => {
     it("says when a routine has no stages", async () => {
       setup({ routines: await routineLibrary([{ name: "Old", createdAt: 1_000 }]) });
       openRoutines();
-      click("Open Old");
+      click("Open \u2068Old\u2069");
       expect(screen.getByRole("heading", { level: 1, name: "Old" })).toBeInTheDocument();
       expect(screen.getByText("No stages yet")).toBeInTheDocument();
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -2175,15 +2181,15 @@ describe("routines", () => {
       const routines = await routineLibrary([push]);
       setup({ routines });
       openRoutines();
-      click("Open Push");
-      click("Edit Push");
+      click("Open \u2068Push\u2069");
+      click("Edit \u2068Push\u2069");
       expect(screen.getByRole("heading", { level: 1, name: "Edit routine" })).toBeInTheDocument();
       type("Routine name", "Something else");
       click("Cancel");
       expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
       expect(routines.update).not.toHaveBeenCalled();
 
-      click("Edit Push");
+      click("Edit \u2068Push\u2069");
       type("Routine name", "Push day");
       click("Save changes");
       await settle();
@@ -2197,14 +2203,14 @@ describe("routines", () => {
       const id = idOf(routines);
       setup({ routines });
       openRoutines();
-      click("Open Push");
-      click("Delete Push");
-      const dialog = screen.getByRole("alertdialog", { name: 'Delete "Push"?' });
+      click("Open \u2068Push\u2069");
+      click("Delete \u2068Push\u2069");
+      const dialog = screen.getByRole("alertdialog", { name: 'Delete "\u2068Push\u2069"?' });
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       expect(routines.remove).not.toHaveBeenCalled();
       expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
 
-      click("Delete Push");
+      click("Delete \u2068Push\u2069");
       fireEvent.click(
         within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
       );
@@ -2218,7 +2224,7 @@ describe("routines", () => {
       const id = idOf(routines);
       setup({ routines });
       openRoutines();
-      click("Open Push");
+      click("Open \u2068Push\u2069");
       await act(() => routines.remove(id));
       expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
       expect(screen.getByText(/No routines yet/)).toBeInTheDocument();
@@ -2231,7 +2237,7 @@ describe("routines", () => {
     routines.remove.mockImplementation(() => Promise.reject(new Error("boom")));
     setup({ routines });
     openRoutines();
-    click("Delete Old");
+    click("Delete \u2068Old\u2069");
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
     );
@@ -2820,7 +2826,9 @@ describe("contacts", () => {
     expect(item(0).querySelector("b")).toBeNull();
     // The initial skips what is not a letter.
     expect(item(0)).toHaveTextContent(/^G/);
-    expect(screen.getByRole("button", { name: `Remove ${isolated(tricky)}` })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: `Remove ${isolated(tricky.replace("\u202E", ""))}` }),
+    ).toBeInTheDocument();
   });
 
   it("removes a contact only after confirming", async () => {
@@ -3179,7 +3187,7 @@ describe("sharing a routine (T25, S12, S7)", () => {
   const openLegs = async (name = "Legs") => {
     click("Profile");
     click("Routines");
-    click(`Open ${name}`);
+    click(`Open \u2068${name}\u2069`);
     await settle();
   };
   const recipients = () => screen.getByRole("group", { name: "Choose who gets a copy" });
@@ -3187,10 +3195,37 @@ describe("sharing a routine (T25, S12, S7)", () => {
     fireEvent.click(within(recipients()).getByRole("checkbox", { name: isolated(name) }));
   };
 
+  it("keeps names with a stray isolate end from reordering the question (L64 B1)", async () => {
+    keep([{ ...ana, name: "Ana\u2069\u202e" }]);
+    setup({
+      routines: await routinesWith({ ...legs, name: "Legs\u2069\u202e" }),
+      contacts: createFakeContactStore("me"),
+      sharing: createFakeRoutineSharing(me),
+    });
+    click("Profile");
+    click("Routines");
+    fireEvent.click(screen.getAllByRole("button", { name: /^Open / })[0]!);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: /^Share / }));
+    await settle();
+    fireEvent.click(within(recipients()).getByRole("checkbox"));
+    click("Continue");
+    const question = document.activeElement!;
+    expect(question.tagName).toBe("H2");
+    const outside = (question.textContent ?? "").replace(
+      /\u2068[^\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]*\u2069/gu,
+      "",
+    );
+    expect(outside).not.toMatch(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u);
+    expect(question.textContent).toBe(`Send "${isolated("Legs")}" to ${isolated("Ana")}?`);
+  });
+
   it("is offered in a routine's view only where sharing and contacts are", async () => {
     setup({ routines: await routinesWith(), contacts: createFakeContactStore("me") });
     await openLegs();
-    expect(screen.queryByRole("button", { name: "Share Legs" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Share \u2068Legs\u2069" }),
+    ).not.toBeInTheDocument();
   });
 
   it("picks contacts with their photo or initial, confirms and sends each a copy", async () => {
@@ -3201,7 +3236,7 @@ describe("sharing a routine (T25, S12, S7)", () => {
       sharing: createFakeRoutineSharing(me),
     });
     await openLegs();
-    click("Share Legs");
+    click("Share \u2068Legs\u2069");
     await settle();
 
     expect(screen.getByRole("heading", { level: 1, name: "Share routine" })).toBeInTheDocument();
@@ -3252,7 +3287,7 @@ describe("sharing a routine (T25, S12, S7)", () => {
       sharing: createFakeRoutineSharing(me),
     });
     await openLegs();
-    click("Share Legs");
+    click("Share \u2068Legs\u2069");
     await settle();
     choose("Ana");
     click("Continue");
@@ -3268,7 +3303,7 @@ describe("sharing a routine (T25, S12, S7)", () => {
       sharing: createFakeRoutineSharing(me),
     });
     await openLegs();
-    click("Share Legs");
+    click("Share \u2068Legs\u2069");
     await settle();
     expect(screen.getByText(/You have no contacts yet/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
@@ -3287,7 +3322,7 @@ describe("sharing a routine (T25, S12, S7)", () => {
       sharing: createFakeRoutineSharing(me),
     });
     await openLegs();
-    click("Share Legs");
+    click("Share \u2068Legs\u2069");
     await settle();
     choose("Ana");
     click("Continue");
@@ -3311,7 +3346,7 @@ describe("sharing a routine (T25, S12, S7)", () => {
       sharing: createFakeRoutineSharing(me),
     });
     await openLegs();
-    click("Share Legs");
+    click("Share \u2068Legs\u2069");
     await settle();
     choose("Ana");
     click("Continue");
@@ -3363,7 +3398,7 @@ describe("sharing a routine (T25, S12, S7)", () => {
         sharing: fake.sharing,
       });
       await openLegs();
-      click("Share Legs");
+      click("Share \u2068Legs\u2069");
       await settle();
       choose("Ana");
       choose("Ben");
@@ -3449,8 +3484,8 @@ describe("sharing a routine in Spanish", () => {
     );
     click("Perfil");
     click("Rutinas");
-    click("Ver Piernas");
-    click("Compartir Piernas");
+    click("Ver \u2068Piernas\u2069");
+    click("Compartir \u2068Piernas\u2069");
     await act(() => Promise.resolve());
     const group = screen.getByRole("group", { name: "Elige quién recibe una copia" });
     fireEvent.click(within(group).getByRole("checkbox", { name: isolated("Beto") }));
@@ -3463,5 +3498,68 @@ describe("sharing a routine in Spanish", () => {
       }),
     ).toHaveFocus();
     expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled();
+  });
+});
+
+describe("receiving routines from contacts (T26, S12)", () => {
+  const sent = {
+    fromUid: "alice",
+    fromEmail: "alice@example.com",
+    fromName: "Alice",
+    name: "Piernas",
+    stages: [{ name: "A", exercises: "Sentadilla\t8-10\t90\t\t\t" }],
+    sentAt: 1_750_000_000_000,
+  };
+  const label = "Received from \u2068Alice\u2069 (\u2068alice@example.com\u2069)";
+  const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("sportime.fakeInbox.test", JSON.stringify({ "copy-1": sent }));
+  });
+
+  const receivingInto = (routines: ReturnType<typeof createFakeRoutineLibrary>) =>
+    createInboxReceiver({ inbox: createFakeInboxReader("test"), routines });
+
+  it("saves each copy as the user's own routine, marked with who sent it, and empties the inbox", async () => {
+    const routines = createFakeRoutineLibrary("test");
+    setup({ routines, receiving: receivingInto(routines) });
+    await settle();
+
+    expect(fakeInboxOf("test")).toEqual({});
+    click("Profile");
+    click("Routines");
+    const list = screen.getByRole("list", { name: "Routines" });
+    expect(
+      within(list).getByRole("button", { name: "Open \u2068Piernas\u2069" }),
+    ).toHaveAccessibleDescription(label);
+    click("Open \u2068Piernas\u2069");
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "A" })).toHaveTextContent("Sentadilla");
+  });
+
+  it("receives nothing while the account is signing out, so nothing is written meanwhile", async () => {
+    const routines = createFakeRoutineLibrary("test");
+    setup({ routines, receiving: receivingInto(routines), signingOut: true });
+    await settle();
+    expect(Object.keys(fakeInboxOf("test"))).toEqual(["copy-1"]);
+    expect(localStorage.getItem("sportime.fakeRoutines.test")).toBeNull();
+  });
+
+  it("stops while another tab signs out, and receives again afterwards", async () => {
+    const routines = createFakeRoutineLibrary("test");
+    const { setOtherTabs } = setup({ routines, receiving: receivingInto(routines) });
+    await settle();
+    expect(fakeInboxOf("test")).toEqual({});
+
+    setOtherTabs("signingOut");
+    localStorage.setItem("sportime.fakeInbox.test", JSON.stringify({ "copy-2": sent }));
+    window.dispatchEvent(new StorageEvent("storage", { key: "sportime.fakeInbox.test" }));
+    await settle();
+    expect(Object.keys(fakeInboxOf("test"))).toEqual(["copy-2"]);
+
+    setOtherTabs("idle");
+    await settle();
+    expect(fakeInboxOf("test")).toEqual({});
   });
 });

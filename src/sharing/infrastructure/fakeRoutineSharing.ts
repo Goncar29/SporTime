@@ -3,14 +3,21 @@ import type { InboxWriter, RoutineSharing } from "../application/ports";
 import { createRoutineSharing } from "../application/shareRoutine";
 import type { SharedCopy } from "../domain/sharedCopy";
 
-const inboxKey = (uid: string) => `sportime.fakeInbox.${uid}`;
+/** Tests only: where a user's fake inbox is kept. */
+export const fakeInboxKey = (uid: string) => `sportime.fakeInbox.${uid}`;
+
+/** A copy as the fake server keeps it: with its time of arrival, as the rules set `sentAt`. */
+export type FakeInboxCopy = SharedCopy & { sentAt: number };
 
 const refused = (code: string) => Object.assign(new Error(`Refused: ${code}`), { code });
 
 /** Tests only: the copies in a user's fake inbox, by copy id. */
-export function fakeInboxOf(uid: string): Record<string, SharedCopy> {
+export function fakeInboxOf(uid: string): Record<string, FakeInboxCopy> {
   try {
-    return JSON.parse(localStorage.getItem(inboxKey(uid)) ?? "{}") as Record<string, SharedCopy>;
+    return JSON.parse(localStorage.getItem(fakeInboxKey(uid)) ?? "{}") as Record<
+      string,
+      FakeInboxCopy
+    >;
   } catch {
     return {};
   }
@@ -39,7 +46,11 @@ export function createFakeRoutineSharing(user: User): RoutineSharing {
       if (copyId in copies || !hasContact(user.id, recipientUid)) {
         return Promise.reject(refused("permission-denied"));
       }
-      localStorage.setItem(inboxKey(recipientUid), JSON.stringify({ ...copies, [copyId]: copy }));
+      const stored: FakeInboxCopy = { ...copy, sentAt: Date.now() };
+      localStorage.setItem(
+        fakeInboxKey(recipientUid),
+        JSON.stringify({ ...copies, [copyId]: stored }),
+      );
       return Promise.resolve();
     },
   };

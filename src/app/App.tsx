@@ -19,7 +19,7 @@ import type { Routine } from "../routines/domain/routine";
 import { RoutineEditor } from "../routines/ui/RoutineEditor";
 import { RoutineView } from "../routines/ui/RoutineView";
 import { RoutinesScreen } from "../routines/ui/RoutinesScreen";
-import type { RoutineSharing } from "../sharing/application/ports";
+import type { InboxReceiving, RoutineSharing } from "../sharing/application/ports";
 import { ShareRoutineScreen } from "../sharing/ui/ShareRoutineScreen";
 import type { SubscribeToList } from "../shared/application/liveList";
 import type { StoreFailureKind } from "../shared/domain/storeFailure";
@@ -87,6 +87,11 @@ interface AppProps {
   contactStore?: ContactStore;
   /** Sends copies of routines to contacts; without it (or contacts), no routine offers Share. */
   sharing?: RoutineSharing;
+  /**
+   * Moves routines contacts sent into the user's routines while the app can be used; without it,
+   * nothing is received.
+   */
+  receiving?: InboxReceiving;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -140,6 +145,7 @@ export function App({
   directory,
   contactStore,
   sharing,
+  receiving,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -231,6 +237,10 @@ export function App({
   // A new version of the app reloads the page, which would stop a running workout, or cut a
   // sign-out or a deletion short between its steps.
   useHoldUpdates(active !== null || blocked);
+  // Received routines are saved by themselves (S7), but not while the account's session is ending:
+  // a routine written then could be erased with it or outlive a deleted account. A copy not yet
+  // received stays in the inbox until the next start.
+  useEffect(() => (receiving && !blocked ? receiving.start() : undefined), [receiving, blocked]);
 
   /** Returns the handler for one operation, so the developer's log names what failed. */
   const reportWorkoutFailure = (operation: string) => (error: unknown) => {

@@ -101,12 +101,25 @@
   cursor: pointer;
 }
 
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .name {
   overflow: hidden;
   font-size: 1.25rem;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sender {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 1rem;
 }
 
 .detail {

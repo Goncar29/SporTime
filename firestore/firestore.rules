@@ -140,13 +140,34 @@ service cloud.firestore {
         && (stages.size() < 10 || isStage(stages[9]));
     }
 
+    // Who sent a routine received from a contact (S12, T26), kept on the recipient's own routine as
+    // `receivedFrom` (Sender in src/routines/domain/routine.ts): exactly the sender's uid (taken
+    // from the copy's fromUid, which the inbox rules bind to its writer; never empty, at most 128
+    // characters, no '/' or control character), a name, one line of up to 100 characters that may
+    // be empty (as isDirectoryName), and an email of at most 254 characters with one @, something
+    // on each side and no space, slash or control character (as isContact).
+    // Only the owner writes their routines, so this is their own data: it is checked to stay what
+    // the app shows, never trusted to prove who sent it.
+    // Lengths of the uid and the name are bounded by the patterns, and a value that is not text
+    // fails `matches`, which refuses: fewer evaluated expressions, so the largest routine keeps a
+    // stage of headroom on an edit too (L6).
+    function isSender(sender) {
+      return sender.keys().hasAll(['uid', 'name', 'email'])
+        && sender.keys().hasOnly(['uid', 'name', 'email'])
+        && sender.uid.matches('[^\\p{Cc}/]{1,128}')
+        && sender.name.matches('[^\\p{Cc}]{0,100}')
+        && sender.email.size() <= 254
+        && sender.email.matches('[^\\p{Cc}\\p{Z}/@]+@[^\\p{Cc}\\p{Z}/@]+');
+    }
+
     function isRoutine(data) {
       return data.keys().hasAll(['name', 'stages', 'createdAt'])
-        && data.keys().hasOnly(['name', 'notes', 'stages', 'createdAt'])
+        && data.keys().hasOnly(['name', 'notes', 'stages', 'createdAt', 'receivedFrom'])
         && isLine(data.name, 40)
         && (!('notes' in data) || isNotes(data.notes, 500))
         && isStages(data.stages)
-        && isTimestamp(data.createdAt);
+        && isTimestamp(data.createdAt)
+        && (!('receivedFrom' in data) || isSender(data.receivedFrom));
     }
 
     // A name as the directory keeps it (directoryName): one line of up to 100 characters, possibly

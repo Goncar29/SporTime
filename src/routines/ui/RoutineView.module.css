@@ -60,6 +60,13 @@
   font-weight: 600;
 }
 
+.sender {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 1.125rem;
+}
+
 .notes,
 .stageNotes {
   margin: 0;

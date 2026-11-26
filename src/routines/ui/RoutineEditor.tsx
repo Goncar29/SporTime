@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from "react";
+import { isolate } from "../../i18n/messages/isolate";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import {
   ROUTINE_LIMITS,
@@ -119,6 +120,8 @@ export function RoutineEditor({ routine, onSave, onCancel }: RoutineEditorProps)
       name,
       notes,
       createdAt: routine?.createdAt ?? Date.now(),
+      // A received routine stays marked with who sent it, whatever is changed.
+      receivedFrom: routine?.receivedFrom,
       stages: stages.map((stage) => ({
         name: stage.name,
         notes: stage.notes,
@@ -169,10 +172,14 @@ export function RoutineEditor({ routine, onSave, onCancel }: RoutineEditorProps)
         </label>
 
         {stages.map((stage, stageIndex) => {
-          const stageLabel = stage.name.trim() || t.stageNumber(stageIndex + 1);
+          const stageName = stage.name.trim();
+          // A received routine's stage name was written by its sender: always isolated.
+          const stageLabel = stageName ? isolate(stageName) : t.stageNumber(stageIndex + 1);
           return (
             <fieldset key={stage.key} className={styles.stage}>
-              <legend className={styles.stageTitle}>{stageLabel}</legend>
+              <legend className={styles.stageTitle}>
+                {stageName ? <bdi>{stageName}</bdi> : stageLabel}
+              </legend>
               <div className={styles.stageHeader}>
                 <label className={styles.field}>
                   <span className={styles.label}>{t.stageName}</span>

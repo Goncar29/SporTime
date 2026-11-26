@@ -79,3 +79,39 @@ it("still explains a link that is not https as before", async () => {
   expect(screen.getByRole("button", { name: "Guardar rutina" })).toBeDisabled();
   expect(onSave).not.toHaveBeenCalled();
 });
+
+it("keeps who sent a received routine when it is edited (T26, S12)", async () => {
+  const receivedFrom = { uid: "ana", name: "Ana", email: "ana@example.com" };
+  const { onSave, user } = renderSpanish({
+    id: "c1",
+    name: "Piernas",
+    createdAt: 1_750_000_000_000,
+    stages: [],
+    receivedFrom,
+  });
+  const name = screen.getByRole("textbox", { name: "Nombre de la rutina" });
+  await user.clear(name);
+  await user.type(name, "Mis piernas");
+  await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  expect(onSave).toHaveBeenCalledWith({
+    name: "Mis piernas",
+    createdAt: 1_750_000_000_000,
+    stages: [],
+    receivedFrom,
+  });
+});
+
+it("isolates a stage's own name in its title and its remove button (L62)", () => {
+  renderSpanish({
+    id: "r1",
+    name: "Piernas",
+    createdAt: 1,
+    stages: [{ name: "\u202eBloque", exercises: [] }, { exercises: [] }],
+  });
+  const named = screen.getByRole("group", { name: "\u202eBloque" });
+  expect(named.querySelector("legend > bdi")?.textContent).toBe("\u202eBloque");
+  expect(screen.getByRole("button", { name: "Quitar \u2068Bloque\u2069" })).toBeInTheDocument();
+  // A stage without a name is called by its number, which is the app's own text.
+  expect(screen.getByRole("group", { name: "Etapa 2" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Quitar Etapa 2" })).toBeInTheDocument();
+});

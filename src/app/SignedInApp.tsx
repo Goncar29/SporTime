@@ -9,7 +9,7 @@ import type { ContactStore } from "../contacts/application/ports";
 import type { DirectoryListing } from "../directory/application/ports";
 import type { HistoryLog } from "../history/application/ports";
 import type { RoutineLibrary } from "../routines/application/ports";
-import type { RoutineSharing } from "../sharing/application/ports";
+import type { InboxReceiving, RoutineSharing } from "../sharing/application/ports";
 import type { WorkoutLibrary } from "../workouts/application/ports";
 import { App, type TimerDependencies } from "./App";
 
@@ -29,6 +29,11 @@ export interface UserStores {
    * offered. Never queued: it needs a connection.
    */
   sharingFor?: (user: User) => RoutineSharing;
+  /**
+   * Moves the routines contacts sent from the inbox into `routines`; none where receiving is
+   * not offered.
+   */
+  receiving?: InboxReceiving;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   /** Sends what is pending, then signs out and erases this device's copy of the account. */
@@ -89,6 +94,7 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
       directory={directory}
       contactStore={stores.contacts}
       sharing={sharing}
+      receiving={stores.receiving}
       deleteAccount={deleteAccount}
       deletionConfirmedByRedirect={stores.deletionConfirmedByRedirect}
     />

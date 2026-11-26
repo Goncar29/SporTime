@@ -191,7 +191,7 @@ export const es: Messages = {
   privacySections: [
     {
       heading: "Qué guardamos",
-      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados, tus rutinas y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Tus contactos, las personas que agregas con el email por el que permiten que las encuentren, se guardan con ese email y el nombre y la foto de Google que publicaron, y solo tú puedes verlos. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google; las direcciones nunca se muestran en una lista.",
+      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados, tus rutinas y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Las rutinas que te envía un contacto se guardan entre las tuyas, con el nombre y el email de Google con que te las envió. Tus contactos, las personas que agregas con el email por el que permiten que las encuentren, se guardan con ese email y el nombre y la foto de Google que publicaron, y solo tú puedes verlos. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google; las direcciones nunca se muestran en una lista.",
     },
     {
       heading: "Dónde se guarda",
@@ -207,14 +207,14 @@ export const es: Messages = {
     },
     {
       heading: "Eliminar tus datos",
-      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, tus sesiones terminadas, tus contactos y tu nombre y foto de la búsqueda por email. Quien te haya agregado como contacto conserva el nombre, la foto y el email que vio entonces. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
+      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas, tus contactos y tu nombre y foto de la búsqueda por email. Quien te haya agregado como contacto conserva el nombre, la foto y el email que vio entonces. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
     },
   ],
   privacyContactHeading: "Contacto",
   privacyContactBody: "Para consultas sobre tus datos, o para pedirnos que los borremos, escribe a",
   deleteAccount: "Eliminar cuenta",
   deleteAccountWarning:
-    "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, tus sesiones terminadas y tus contactos. No se puede deshacer.",
+    "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas y tus contactos. No se puede deshacer.",
   deleteAccountConfirmNote:
     "Google puede pedirte que confirmes que eres tú; después la eliminación termina sola.",
   confirmDeleteAccount: "Eliminar mi cuenta",
@@ -245,6 +245,8 @@ export const es: Messages = {
   editRoutine: (name) => `Editar ${name}`,
   deleteRoutine: (name) => `Eliminar ${name}`,
   openRoutine: (name) => `Ver ${name}`,
+  receivedFrom: (name, email) =>
+    name === null ? `Recibida de ${email}` : `Recibida de ${name} (${email})`,
   edit: "Editar",
   noStagesYet: "Sin etapas",
   exerciseColumn: "Ejercicio",
