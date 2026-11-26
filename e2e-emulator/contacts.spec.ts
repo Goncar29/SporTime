@@ -1,13 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  type Account,
   accountExists,
+  addContact,
   asksBeforeLeaving,
   cacheContains,
   clearEmulatorData,
+  contactOf,
+  contactsItem,
+  deleteAccount,
+  directoryEntry,
+  entryOf,
   eventually,
+  findMe,
   googleButton,
   holdWrites,
+  listedAccount,
   markPage,
+  newAccount,
+  openContacts,
+  openedPage,
   openTab,
   reloaded,
   restoreNetwork,
@@ -16,101 +28,16 @@ import {
   signOut,
   stallNetwork,
   startButton,
-  stored,
-  storedEntry,
+  storedContacts,
   storedNames,
-  uniqueName,
 } from "./helpers";
 
 test.beforeEach(clearEmulatorData);
 
-interface Account {
-  name: string;
-  email: string;
-  uid: string;
-}
-
-const openedPage = async (page: Page) => {
-  await page.goto("/");
-  await page.waitForFunction(() => "signInForTest" in window);
-  return page;
-};
-
-/** Signs in a new account on an open page; the emulator's email is `{name}@example.com`. */
-async function newAccount(page: Page, who: string): Promise<Account> {
-  const name = uniqueName(who);
-  const uid = await signInAs(page, name);
-  return { name, email: `${name}@example.com`, uid };
-}
-
-/** What the server holds under an email in the directory, or null. */
-const directoryEntry = async (email: string) => {
-  const fields = await storedEntry(email);
-  return (
-    fields && {
-      uid: fields.uid?.stringValue,
-      name: fields.name?.stringValue,
-      photo: fields.photo?.stringValue,
-    }
-  );
-};
-
-/** What the server holds as the account's contacts, each under its document id. */
-const storedContacts = async (uid: string) =>
-  (await stored(uid, "contacts")).map(({ name, fields }) => ({
-    id: name.split("/").pop(),
-    uid: fields.uid?.stringValue,
-    name: fields.name?.stringValue,
-    photo: fields.photo?.stringValue,
-    email: fields.email?.stringValue,
-  }));
-
-const contactOf = ({ uid, name, email }: Account) => ({ id: uid, uid, name, photo: "", email });
-const entryOf = ({ uid, name }: Account) => ({ uid, name, photo: "" });
-
-const findMe = (page: Page) => page.getByRole("switch", { name: "Let people find me by email" });
-const contactsItem = (page: Page) => page.getByRole("button", { name: /^Contacts/ });
 const contactList = (page: Page) => page.getByRole("list", { name: "Contacts" });
 const contactRow = (page: Page, { name }: Account) =>
   contactList(page).getByRole("listitem").filter({ hasText: name });
 const signOutButton = (page: Page) => page.getByRole("button", { name: "Sign out" });
-
-async function openContacts(page: Page) {
-  await openTab(page, "Profile");
-  await contactsItem(page).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Contacts" })).toBeVisible();
-}
-
-async function addContact(page: Page, email: string) {
-  await page.getByRole("textbox", { name: "Contact's email" }).fill(email);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-}
-
-async function deleteAccount(page: Page) {
-  await openTab(page, "Profile");
-  await page.getByRole("button", { name: "Delete account" }).click();
-  await markPage(page);
-  await page.getByRole("button", { name: "Delete my account" }).click();
-  // Sign-in shows as soon as the account is gone; the page reloads once this device's cache is
-  // cleared, so anything read from the page waits for that.
-  await reloaded(page);
-  await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
-}
-
-/**
- * Signs in a new account, lets people find it by email from Profile, and signs it out again:
- * its directory entry stays on the server, so others can add it.
- */
-async function listedAccount(page: Page, who: string): Promise<Account> {
-  const account = await newAccount(page, who);
-  await openTab(page, "Profile");
-  await expect(findMe(page)).toBeEnabled();
-  await findMe(page).click();
-  await eventually(() => directoryEntry(account.email)).toEqual(entryOf(account));
-  await signOut(page);
-  expect(await directoryEntry(account.email)).toEqual(entryOf(account));
-  return account;
-}
 
 test("the find-by-email switch lists and unlists the account, the same on Profile and Contacts", async ({
   page,

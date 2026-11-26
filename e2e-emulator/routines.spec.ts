@@ -40,8 +40,13 @@ async function createRoutine(page: Page, name: string) {
   await expect(page.getByRole("heading", { level: 1, name: "Routines" })).toBeVisible();
 }
 
+/** A routine's name as its buttons' accessible names hold it: isolated (U+2068/U+2069). */
+const isolated = (name: string) => `\u2068${name}\u2069`;
+
 const listed = (page: Page, name: string) =>
-  page.getByRole("list", { name: "Routines" }).getByRole("button", { name: `Edit ${name}` });
+  page
+    .getByRole("list", { name: "Routines" })
+    .getByRole("button", { name: `Edit ${isolated(name)}`, exact: true });
 
 const BENCH_PRESS = "Press banca\t8-10\t90\t62.5kg\t\t";
 
@@ -72,7 +77,7 @@ test("a routine created, edited and deleted reaches the server", async ({ page }
   await eventually(() => storedRoutines(uid)).toEqual([{ ...created, name: "Empuje B" }]);
   await expect(listed(page, "Empuje B")).toBeVisible();
 
-  await page.getByRole("button", { name: "Delete Empuje B" }).click();
+  await page.getByRole("button", { name: `Delete ${isolated("Empuje B")}`, exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
 
   await eventually(() => storedRoutines(uid)).toEqual([]);

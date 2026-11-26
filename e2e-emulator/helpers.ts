@@ -23,7 +23,7 @@ interface StoredDocument {
 /** Reads what the server really holds, bypassing the rules and the page. */
 export async function stored(
   uid: string,
-  kind: "workouts" | "history" | "routines" | "contacts",
+  kind: "workouts" | "history" | "routines" | "contacts" | "inbox" | "blocked",
 ): Promise<StoredDocument[]> {
   const response = await fetch(`http://${DOCUMENTS}/users/${uid}/${kind}?pageSize=300`, {
     headers: { Authorization: "Bearer owner" },
@@ -40,6 +40,23 @@ export async function storedEntry(email: string): Promise<Record<string, StoredV
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Firestore emulator answered ${response.status}`);
   return ((await response.json()) as StoredDocument).fields;
+}
+
+/**
+ * Writes a document of string fields at a path under `documents`, bypassing the rules and the
+ * page, as data the app did not write itself.
+ */
+export async function writeStored(path: string, fields: Record<string, string>) {
+  const response = await fetch(`http://${DOCUMENTS}/${path}`, {
+    method: "PATCH",
+    headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: Object.fromEntries(
+        Object.entries(fields).map(([key, value]) => [key, { stringValue: value }]),
+      ),
+    }),
+  });
+  if (!response.ok) throw new Error(`Firestore emulator answered ${response.status}`);
 }
 
 /** Deletes a stored document as another device would, bypassing the rules and the page. */
@@ -218,6 +235,104 @@ export async function signOut(page: Page) {
   await page.getByRole("button", { name: "Sign out" }).click();
   await reloaded(page);
   await expect(googleButton(page)).toBeVisible();
+}
+
+/** A signed-in test account; the emulator's email is `{name}@example.com`. */
+export interface Account {
+  name: string;
+  email: string;
+  uid: string;
+}
+
+/** Opens the app on a page, ready to sign in. */
+export const openedPage = async (page: Page) => {
+  await page.goto("/");
+  await page.waitForFunction(() => "signInForTest" in window);
+  return page;
+};
+
+/** Signs in a new account on an open page; the emulator's email is `{name}@example.com`. */
+export async function newAccount(page: Page, who: string): Promise<Account> {
+  const name = uniqueName(who);
+  const uid = await signInAs(page, name);
+  return { name, email: `${name}@example.com`, uid };
+}
+
+/** What the server holds under an email in the directory, or null. */
+export const directoryEntry = async (email: string) => {
+  const fields = await storedEntry(email);
+  return (
+    fields && {
+      uid: fields.uid?.stringValue,
+      name: fields.name?.stringValue,
+      photo: fields.photo?.stringValue,
+    }
+  );
+};
+
+/** What the server holds as the account's contacts, each under its document id. */
+export const storedContacts = async (uid: string) =>
+  (await stored(uid, "contacts")).map(({ name, fields }) => ({
+    id: name.split("/").pop(),
+    uid: fields.uid?.stringValue,
+    name: fields.name?.stringValue,
+    photo: fields.photo?.stringValue,
+    email: fields.email?.stringValue,
+  }));
+
+export const contactOf = ({ uid, name, email }: Account) => ({
+  id: uid,
+  uid,
+  name,
+  photo: "",
+  email,
+});
+export const entryOf = ({ uid, name }: Account) => ({ uid, name, photo: "" });
+
+export const findMe = (page: Page) =>
+  page.getByRole("switch", { name: "Let people find me by email" });
+export const contactsItem = (page: Page) => page.getByRole("button", { name: /^Contacts/ });
+
+export async function openContacts(page: Page) {
+  await openTab(page, "Profile");
+  await contactsItem(page).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Contacts" })).toBeVisible();
+}
+
+export async function addContact(page: Page, email: string) {
+  await page.getByRole("textbox", { name: "Contact's email" }).fill(email);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+}
+
+export async function deleteAccount(page: Page) {
+  await openTab(page, "Profile");
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await markPage(page);
+  await page.getByRole("button", { name: "Delete my account" }).click();
+  // Sign-in shows as soon as the account is gone; the page reloads once this device's cache is
+  // cleared, so anything read from the page waits for that.
+  await reloaded(page);
+  await expect(googleButton(page)).toBeVisible({ timeout: 60_000 });
+}
+
+/** Turns on "Let people find me by email" from Profile and waits for the server's entry. */
+export async function listMe(page: Page, account: Account) {
+  await openTab(page, "Profile");
+  await expect(findMe(page)).toBeEnabled();
+  await findMe(page).click();
+  await eventually(() => directoryEntry(account.email)).toEqual(entryOf(account));
+}
+
+/**
+ * Signs in a new account, lets people find it by email from Profile, and signs it out again:
+ * its directory entry stays on the server, so others can add it.
+ */
+export async function listedAccount(page: Page, who: string): Promise<Account> {
+  const account = await newAccount(page, who);
+  await listMe(page, account);
+  await signOut(page);
+  expect(await directoryEntry(account.email)).toEqual(entryOf(account));
+  return account;
 }
 
 /** Finds text anywhere in this browser's Firestore cache, including its queue of unsent writes. */
