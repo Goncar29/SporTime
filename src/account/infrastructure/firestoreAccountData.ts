@@ -21,6 +21,11 @@ interface Dependencies {
   email: () => string | null;
   /** Drops writes not yet handed to Firestore, so none can recreate data after erasing. */
   discardPendingWrites: () => void;
+  /**
+   * Erases what this device keeps of the account apart from Firestore and the outboxes, such as
+   * which received routines were seen (T27); none where nothing else is kept.
+   */
+  eraseOnDevice?: () => void;
 }
 
 async function eraseCollection(
@@ -64,9 +69,11 @@ export function createFirestoreAccountData({
   userId,
   email,
   discardPendingWrites,
+  eraseOnDevice,
 }: Dependencies): AccountData {
   const erase = async (isCancelled: () => boolean) => {
     discardPendingWrites();
+    eraseOnDevice?.();
     // First, as it is the only thing other users can read. It is read from the server before
     // deleting, and a failed read stops here. Like the listings below, the answer includes this
     // device's writes still on their way, and the delete is sent after them.
@@ -78,6 +85,9 @@ export function createFirestoreAccountData({
     await eraseCollection(db, collection(db, "users", userId, "history"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "routines"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "contacts"), isCancelled);
+    // Who the user blocked (T27). Before the inbox, so a copy a blocked sender got in meanwhile
+    // goes with it.
+    await eraseCollection(db, collection(db, "users", userId, "blocked"), isCancelled);
     // Received routines were erased with the routines. Last, as contacts may still send copies
     // here until the account is gone: this takes every one sent while the rest was erased. One
     // sent after this, before the account is removed, stays, out of anyone's reach.

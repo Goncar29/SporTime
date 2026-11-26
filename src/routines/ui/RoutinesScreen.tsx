@@ -10,6 +10,8 @@ interface RoutinesScreenProps {
   /** Newest first; null until the first answer arrives. */
   routines: readonly Routine[] | null;
   errors: readonly string[];
+  /** Received routines to mark New (T27); none by default. */
+  newIds?: ReadonlySet<string>;
   onBack: () => void;
   onNew: () => void;
   onOpen: (routine: Routine) => void;
@@ -20,11 +22,13 @@ interface RoutinesScreenProps {
 /**
  * The Routines section of Profile: every routine, to open, edit or delete, and a way to add one.
  * A routine's name may have been written by a contact who sent it, so it is always isolated:
- * `<bdi>` where it is shown, U+2068/U+2069 in accessible names and the dialog title.
+ * `<bdi>` where it is shown, U+2068/U+2069 in accessible names and the dialog title. A received
+ * routine not seen before is marked New, which its accessible name says too.
  */
 export function RoutinesScreen({
   routines,
   errors,
+  newIds,
   onBack,
   onNew,
   onOpen,
@@ -63,13 +67,22 @@ export function RoutinesScreen({
               <button
                 type="button"
                 className={styles.summary}
-                aria-label={t.openRoutine(isolate(routine.name))}
+                aria-label={
+                  newIds?.has(routine.id)
+                    ? t.openNewRoutine(isolate(routine.name))
+                    : t.openRoutine(isolate(routine.name))
+                }
                 aria-describedby={routine.receivedFrom ? `${senderIds}-${routine.id}` : undefined}
                 onClick={() => {
                   onOpen(routine);
                 }}
               >
                 <span className={styles.text}>
+                  {newIds?.has(routine.id) && (
+                    <span className={styles.new} aria-hidden="true">
+                      {t.newRoutineMark}
+                    </span>
+                  )}
                   <bdi className={styles.name}>{routine.name}</bdi>
                   {routine.receivedFrom && (
                     <ReceivedFrom

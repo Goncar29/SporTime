@@ -317,3 +317,204 @@ describe("a copy listed twice in one answer (L64)", () => {
     stop();
   });
 });
+
+/** A blocked list the test changes, as the server answers the user's blocked senders. */
+function blockedList(initial: string[] | null = []) {
+  let current = initial;
+  let failure: Error | null = null;
+  const listeners = new Set<{
+    onData: (items: { uid: string }[]) => void;
+    onError: (error: Error) => void;
+  }>();
+  return {
+    subscribeAnswered(onData: (items: { uid: string }[]) => void, onError: (error: Error) => void) {
+      const listener = { onData, onError };
+      listeners.add(listener);
+      if (failure) onError(failure);
+      else if (current) onData(current.map((uid) => ({ uid })));
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set(uids: string[]) {
+      current = uids;
+      listeners.forEach(({ onData }) => {
+        onData(uids.map((uid) => ({ uid })));
+      });
+    },
+    fail(error: Error) {
+      failure = error;
+      listeners.forEach(({ onError }) => {
+        onError(error);
+      });
+    },
+    listenerCount: () => listeners.size,
+  };
+}
+
+const copyFrom = (id: string, fromUid: string): InboxCopy => ({
+  id,
+  data: { ...(inboxCopy(id).data as object), fromUid },
+});
+
+describe("copies from a blocked sender (T27, S7)", () => {
+  it("are never received, and are deleted from the inbox; the others are received", async () => {
+    const fake = server();
+    fake.add(copyFrom("blocked-1", "mallory"), inboxCopy("c1"));
+    const blocked = blockedList(["mallory"]);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    await settle();
+
+    expect([...fake.routines.keys()]).toEqual(["c1"]);
+    expect(fake.copies.size).toBe(0);
+    expect(fake.events).not.toContain("receive blocked-1");
+    expect(fake.events).toContain("remove blocked-1");
+    stop();
+  });
+
+  it("receive nothing until the blocked list is known", async () => {
+    const fake = server();
+    fake.add(copyFrom("blocked-1", "mallory"), inboxCopy("c1"));
+    const blocked = blockedList(null);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    await settle();
+    expect(fake.events).toEqual([]);
+    expect(fake.copies.size).toBe(2);
+
+    blocked.set(["mallory"]);
+    await settle();
+    expect([...fake.routines.keys()]).toEqual(["c1"]);
+    expect(fake.events).not.toContain("receive blocked-1");
+    expect(fake.copies.size).toBe(0);
+    stop();
+  });
+
+  it("follow the list: a sender blocked later is skipped, one unblocked is received again", async () => {
+    const fake = server();
+    const blocked = blockedList(["mallory"]);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    blocked.set(["mallory", "alice"]);
+    fake.add(copyFrom("from-alice", "alice"));
+    await settle();
+    expect(fake.routines.size).toBe(0);
+    expect(fake.copies.size).toBe(0);
+
+    blocked.set([]);
+    fake.add(copyFrom("from-mallory", "mallory"));
+    await settle();
+    expect([...fake.routines.keys()]).toEqual(["from-mallory"]);
+    stop();
+  });
+
+  it("stay in the inbox, untouched, when they cannot be deleted, and are not tried again", async () => {
+    const fake = server();
+    fake.refuseRemove("blocked-1");
+    fake.add(copyFrom("blocked-1", "mallory"));
+    const blocked = blockedList(["mallory"]);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    await settle();
+    fake.report();
+    await settle();
+    expect(fake.routines.size).toBe(0);
+    expect(fake.copies.has("blocked-1")).toBe(true);
+    expect(fake.events).toEqual(["remove blocked-1"]);
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining("blocked sender"),
+      "blocked-1",
+      expect.objectContaining({ code: "permission-denied" }),
+    );
+    stop();
+  });
+
+  it("hold every copy back when the blocked list cannot be read, and report it", async () => {
+    const fake = server();
+    fake.add(inboxCopy("c1"));
+    const blocked = blockedList(null);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    blocked.fail(failure("permission-denied"));
+    await settle();
+    fake.report();
+    await settle();
+    expect(fake.events).toEqual([]);
+    expect(fake.copies.has("c1")).toBe(true);
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining("blocked senders could not be read"),
+      expect.objectContaining({ code: "permission-denied" }),
+    );
+    stop();
+  });
+
+  it("stops listening to both lists when stopped", () => {
+    const fake = server();
+    const blocked = blockedList([]);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    expect(fake.listenerCount()).toBe(1);
+    expect(blocked.listenerCount()).toBe(1);
+    stop();
+    expect(fake.listenerCount()).toBe(0);
+    expect(blocked.listenerCount()).toBe(0);
+  });
+});
+
+describe("which blocked list counts (L69)", () => {
+  it("blocks by exact uid only and never deletes a copy with an unreadable sender", async () => {
+    const fake = server();
+    const unreadable: InboxCopy = {
+      id: "from-7",
+      data: { ...(inboxCopy("x").data as object), fromUid: 7 },
+    };
+    fake.add(copyFrom("from-alice", "alice"), unreadable);
+    const blocked = blockedList(["Alice", "alice ", "7"]);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    await settle();
+    fake.report();
+    await settle();
+
+    expect([...fake.routines.keys()]).toEqual(["from-alice"]);
+    expect(fake.copies.has("from-alice")).toBe(false);
+    expect(fake.copies.has("from-7")).toBe(true);
+    expect(fake.events).not.toContain("remove from-7");
+    expect(fake.events).not.toContain("receive from-7");
+    stop();
+  });
+
+  it("receives nothing after the blocked list fails, even after a first answer", async () => {
+    const fake = server();
+    const blocked = blockedList([]);
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    blocked.fail(failure("unavailable"));
+    fake.add(inboxCopy("c1"), copyFrom("from-mallory", "mallory"));
+    await settle();
+    blocked.set(["mallory"]);
+    fake.report();
+    await settle();
+
+    expect(fake.events).toEqual([]);
+    expect(fake.copies.size).toBe(2);
+    stop();
+  });
+
+  it("waits for a list the server answered: one only from this device's outbox or cache never starts receiving (A1)", async () => {
+    const fake = server();
+    fake.add(copyFrom("from-mallory", "mallory"), inboxCopy("c1"));
+    // Blocked on another device: the server knows; this device's outbox and cache do not yet.
+    const answered = blockedList(null);
+    const local = blockedList([]);
+    type Subscribe = ReturnType<typeof blockedList>["subscribeAnswered"];
+    const blocked = {
+      subscribe: (...args: Parameters<Subscribe>) => local.subscribeAnswered(...args),
+      subscribeAnswered: (...args: Parameters<Subscribe>) => answered.subscribeAnswered(...args),
+    };
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked }).start();
+    await settle();
+    expect(fake.events).toEqual([]);
+    expect(fake.copies.size).toBe(2);
+
+    answered.set(["mallory"]);
+    await settle();
+    expect([...fake.routines.keys()]).toEqual(["c1"]);
+    expect(fake.events).not.toContain("receive from-mallory");
+    expect(fake.copies.size).toBe(0);
+    stop();
+  });
+});

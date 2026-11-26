@@ -22,6 +22,8 @@ interface ContactsScreenProps {
   saveFailures: ContactSaveFailures;
   /** The switch to be found by email, shown at the top; without it, none is offered. */
   findByEmail?: ReactNode;
+  /** Opens the list of blocked senders (T27); without it, none is offered. */
+  onOpenBlocked?: () => void;
   onBack: () => void;
 }
 
@@ -36,6 +38,7 @@ export function ContactsScreen({
   liveContacts,
   saveFailures,
   findByEmail,
+  onOpenBlocked,
   onBack,
 }: ContactsScreenProps) {
   const { t } = useI18n();
@@ -193,6 +196,12 @@ export function ContactsScreen({
             </li>
           ))}
         </ul>
+      )}
+
+      {onOpenBlocked && (
+        <button type="button" className={styles.secondary} onClick={onOpenBlocked}>
+          {t.blocked}
+        </button>
       )}
 
       {pending && (

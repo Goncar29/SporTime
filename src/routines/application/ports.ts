@@ -19,6 +19,18 @@ export interface RoutineLibrary {
   remove(id: string): Promise<void>;
 }
 
+/**
+ * Which received routines the user has seen in the routine list (T27, S7), on this device only;
+ * erased with the account's other data on this device.
+ */
+export interface SeenRoutines {
+  /** The ids seen, or none when nothing usable is kept. */
+  load(): string[];
+  /** Replaces the ids kept. */
+  save(ids: readonly string[]): void;
+  erase(): void;
+}
+
 /** Keeps the routines received from contacts (T26, S12) among the user's own. */
 export interface ReceivedRoutines {
   /**

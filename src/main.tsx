@@ -24,6 +24,8 @@ import {
 } from "./install/infrastructure/browserInstall";
 import { InstallProvider } from "./install/ui/InstallProvider";
 import type { RoutineDraft } from "./routines/domain/routine";
+import type { BlockedSender } from "./sharing/domain/blockedSender";
+import { blockedOutboxKey } from "./sharing/infrastructure/blockedOutboxKey";
 import { startBrowserUpdates } from "./update/infrastructure/browserUpdates";
 import { UpdateProvider } from "./update/ui/UpdateProvider";
 import type { SavedWorkoutDraft } from "./workouts/domain/savedWorkout";
@@ -108,6 +110,9 @@ async function createStoresFactory(
       { createFakeRoutineSharing },
       { createFakeInboxReader },
       { createInboxReceiver },
+      { createFakeBlockedSenders },
+      { createLocalStorageSeenRoutines: seenRoutinesFor },
+      { createFakeLocalAccountData },
     ] = await Promise.all([
       import("./workouts/infrastructure/fakeWorkoutLibrary"),
       import("./history/infrastructure/fakeHistoryLog"),
@@ -117,17 +122,15 @@ async function createStoresFactory(
       import("./sharing/infrastructure/fakeRoutineSharing"),
       import("./sharing/infrastructure/fakeInboxReader"),
       import("./sharing/application/receiveInbox"),
+      import("./sharing/infrastructure/fakeBlockedSenders"),
+      import("./routines/infrastructure/localStorageSeenRoutines"),
+      import("./account/infrastructure/fakeLocalAccountData"),
     ]);
-    // No Firestore here: nothing waits to be sent and nothing is cached, so sign-out stays as it was.
-    const local = {
-      sendPending: () => Promise.resolve("sent" as const),
-      discardPending: () => undefined,
-      eraseOnNextStart: () => undefined,
-      keepOnNextStart: () => undefined,
-      erase: () => Promise.resolve(),
-    };
     return (userId) => {
+      // No Firestore here, yet sign-out erases the seen marks and held blocks like production.
+      const local = createFakeLocalAccountData(userId);
       const routines = createFakeRoutineLibrary(userId);
+      const blocked = createFakeBlockedSenders(userId);
       return {
         workouts: createFakeWorkoutLibrary(userId),
         history: createFakeHistoryLog(userId),
@@ -135,7 +138,13 @@ async function createStoresFactory(
         contacts: createFakeContactStore(userId),
         directoryFor: createFakeDirectoryListing,
         sharingFor: createFakeRoutineSharing,
-        receiving: createInboxReceiver({ inbox: createFakeInboxReader(userId), routines }),
+        receiving: createInboxReceiver({
+          inbox: createFakeInboxReader(userId),
+          routines,
+          blocked,
+        }),
+        seenRoutines: seenRoutinesFor(userId),
+        blocked,
         deleteAccount: () => authGateway.signOut(),
         deletionConfirmedByRedirect: () => Promise.resolve(false),
         signOut: (options) => signOut({ auth, local }, options),
@@ -163,6 +172,8 @@ async function createStoresFactory(
     { createFirestoreInboxReader },
     { createInboxReceiver },
     { createFirebaseSenderIdentity },
+    { createFirestoreBlockedSenders },
+    { createLocalStorageSeenRoutines },
     { deleteAccount },
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
@@ -182,6 +193,8 @@ async function createStoresFactory(
     import("./sharing/infrastructure/firestoreInboxReader"),
     import("./sharing/application/receiveInbox"),
     import("./sharing/infrastructure/firebaseSenderIdentity"),
+    import("./sharing/infrastructure/firestoreBlockedSenders"),
+    import("./routines/infrastructure/localStorageSeenRoutines"),
     import("./account/application/deleteAccount"),
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
@@ -207,12 +220,16 @@ async function createStoresFactory(
     const contactOutbox = createLocalStorageOutboxStore<Contact>(
       `sportime.outbox.contacts.${userId}`,
     );
+    const blockedOutbox = createLocalStorageOutboxStore<BlockedSender>(blockedOutboxKey(userId));
     const discardPendingWrites = () => {
       workoutOutbox.save([]);
       historyOutbox.save([]);
       routineOutbox.save([]);
       contactOutbox.save([]);
+      blockedOutbox.save([]);
     };
+    // Which received routines were seen: on this device only, erased with its other data.
+    const seenRoutines = createLocalStorageSeenRoutines(userId);
     const identity = createFirebaseAccountIdentity(userId);
     // Changes wait while another tab signs out, and are refused once it did (or none without Web Locks).
     const otherTabs = createOtherTabs({
@@ -274,6 +291,18 @@ async function createStoresFactory(
       },
       remove: (uid: string) => otherTabs.confirming(unguardedContacts.remove(uid)),
     };
+    // Through the outbox like contacts, so a block is never lost (T27). Not followed by the
+    // other-tabs sign-out check: use blocked below, never this one.
+    const unguardedBlocked = createFirestoreBlockedSenders(firestore(), userId, {
+      store: blockedOutbox,
+      whenReady,
+      guard: otherTabs.guard,
+    });
+    const blocked = {
+      ...unguardedBlocked,
+      block: (sender: BlockedSender) => otherTabs.confirming(unguardedBlocked.block(sender)),
+      unblock: (uid: string) => otherTabs.confirming(unguardedBlocked.unblock(uid)),
+    };
     // One document, set or deleted, which Firestore's own cache queues offline; no outbox. A
     // sign-out waits for it like any other write, and leaves the entry on the server.
     const directoryFor = (user: Parameters<typeof createFirestoreDirectoryListing>[1]) => {
@@ -301,10 +330,15 @@ async function createStoresFactory(
     const receiving = createInboxReceiver({
       inbox: createFirestoreInboxReader(firestore(), userId, { guard: otherTabs.guard }),
       routines: routineLibrary,
+      // A copy a blocked sender sent before the block is deleted instead (T27).
+      blocked,
     });
     const local = createLocalAccountData({
-      outboxes: [workouts, history, routines, contactStore],
+      outboxes: [workouts, history, routines, contactStore, blocked],
       discardPendingWrites,
+      eraseOnDevice: () => {
+        seenRoutines.erase();
+      },
       serverHasWrites,
       clearCache: clearLocalCache,
       forget: () => {
@@ -341,6 +375,8 @@ async function createStoresFactory(
       directoryFor,
       sharingFor,
       receiving,
+      seenRoutines,
+      blocked,
       // Holds every change, here and in the other tabs, from erasing until the account is gone.
       deleteAccount: () =>
         deleteAccount({
@@ -350,6 +386,9 @@ async function createStoresFactory(
             userId,
             email: () => signedInEmail(userId),
             discardPendingWrites,
+            eraseOnDevice: () => {
+              seenRoutines.erase();
+            },
           }),
           otherTabs,
         }),

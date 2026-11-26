@@ -1,7 +1,9 @@
 import type { Contact } from "../../contacts/domain/contact";
 import type { ReceivedRoutines } from "../../routines/application/ports";
 import type { RoutineDraft } from "../../routines/domain/routine";
+import type { SubscribeToList } from "../../shared/application/liveList";
 import type { StoreFailureKind } from "../../shared/domain/storeFailure";
+import type { BlockedSender } from "../domain/blockedSender";
 import type { SenderClaims, SharedCopy, ShareProblem } from "../domain/sharedCopy";
 
 /** Who is signed in, as their ID token says; the rules compare the copy with the same claims. */
@@ -92,4 +94,27 @@ export type ReceivedRoutineStore = ReceivedRoutines;
 export interface InboxReceiving {
   /** Listens to the inbox and receives every copy in it. Returns the function that stops it. */
   start(): () => void;
+}
+
+/**
+ * Who the signed-in user blocked from sending them routines (S7, T27), by name. Writes apply on
+ * this device right away and sync when online, through an outbox like contacts, so a block is never
+ * lost to a closed page or a missing connection.
+ */
+export interface BlockedSenders {
+  subscribe: SubscribeToList<BlockedSender>;
+  /**
+   * The blocked list for deciding what to receive: reported only once the server has answered it
+   * (never from this device's cache or outbox alone, which may miss a block made on another
+   * device), with the blocks still held on this device on top.
+   */
+  subscribeAnswered: SubscribeToList<BlockedSender>;
+  /**
+   * Blocks a sender: the rules then refuse every copy they send, and the copies they sent before
+   * are not received. Already received routines stay. Held on this device at once; settles when
+   * the server answers, which never happens offline, so callers must not wait for it.
+   */
+  block(sender: BlockedSender): Promise<void>;
+  /** Settles when the server answers, which never happens offline, so callers must not wait for it. */
+  unblock(uid: string): Promise<void>;
 }

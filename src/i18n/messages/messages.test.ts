@@ -240,3 +240,76 @@ it("names routines received from contacts among the data kept and deleted (T26, 
   expect(removed("en")).toContain("your routines, including those contacts sent you,");
   expect(removed("es")).toContain("tus rutinas, también las que te enviaron tus contactos,");
 });
+
+it("names new received routines on the list and the Profile menu (T27, S7)", () => {
+  expect(MESSAGES.en.newRoutineMark).toBe("New");
+  expect(MESSAGES.es.newRoutineMark).toBe("Nueva");
+  expect(MESSAGES.en.openNewRoutine("Push")).toBe("Open Push, new");
+  expect(MESSAGES.es.openNewRoutine("Push")).toBe("Ver Push, nueva");
+  expect(MESSAGES.en.routinesMenuItem(2)).toBe("Routines · 2 new");
+  expect(MESSAGES.en.routinesMenuItem(1)).toBe("Routines · 1 new");
+  expect(MESSAGES.es.routinesMenuItem(2)).toBe("Rutinas · 2 nuevas");
+  expect(MESSAGES.es.routinesMenuItem(1)).toBe("Rutinas · 1 nueva");
+  expect(MESSAGES.en.routinesMenuLabel(2)).toBe("Routines, 2 new routines");
+  expect(MESSAGES.en.routinesMenuLabel(1)).toBe("Routines, 1 new routine");
+  expect(MESSAGES.es.routinesMenuLabel(2)).toBe("Rutinas, 2 rutinas nuevas");
+  expect(MESSAGES.es.routinesMenuLabel(1)).toBe("Rutinas, 1 rutina nueva");
+});
+
+it("names blocking a sender, and says received routines stay (T27, S7)", () => {
+  expect(MESSAGES.en.blockSender("Ana", "ana@example.com")).toBe("Block Ana (ana@example.com)");
+  expect(MESSAGES.en.blockSender(null, "ana@example.com")).toBe("Block ana@example.com");
+  expect(MESSAGES.es.blockSender("Ana", "ana@example.com")).toBe(
+    "Bloquear a Ana (ana@example.com)",
+  );
+  expect(MESSAGES.es.blockSender(null, "ana@example.com")).toBe("Bloquear a ana@example.com");
+  expect(MESSAGES.en.confirmBlockSender("Ana", "ana@example.com")).toBe(
+    "Block Ana (ana@example.com)?",
+  );
+  expect(MESSAGES.es.confirmBlockSender("Ana", "ana@example.com")).toBe(
+    "¿Bloquear a Ana (ana@example.com)?",
+  );
+  for (const language of ["en", "es"] as const) {
+    const messages = MESSAGES[language];
+    expect(messages.blockSenderNote).not.toBe("");
+    for (const text of [
+      messages.blockAction,
+      messages.blocked,
+      messages.noBlocked,
+      messages.unblock,
+      messages.unblockSender("Ana"),
+      messages.blockFailed,
+      messages.unblockFailed,
+      messages.loadBlockedFailed,
+      messages.senderBlocked("Ana", "ana@example.com"),
+    ]) {
+      expect(text).not.toBe("");
+    }
+  }
+  expect(MESSAGES.en.blockSenderNote).toMatch(/won't be able to send you routines/);
+  expect(MESSAGES.en.blockSenderNote).toMatch(/already received stay/);
+  expect(MESSAGES.es.blockSenderNote).toMatch(/no podrá enviarte rutinas/i);
+  expect(MESSAGES.es.blockSenderNote).toMatch(/ya recibiste se quedan/);
+  expect(MESSAGES.es.blocked).toBe("Bloqueados");
+  expect(MESSAGES.en.blocked).toBe("Blocked");
+  expect(MESSAGES.es.unblock).toBe("Desbloquear");
+  expect(MESSAGES.en.unblock).toBe("Unblock");
+  // The sender learns only that a copy was refused, never that they were blocked.
+  for (const language of ["en", "es"] as const) {
+    expect(MESSAGES[language].shareOutcomes.refused).not.toMatch(/block|bloque/i);
+  }
+});
+
+it("names the blocked list among the data kept and deleted (T27)", () => {
+  const kept = (language: "en" | "es") => MESSAGES[language].privacySections[0]!.body;
+  const device = (language: "en" | "es") => MESSAGES[language].privacySections[2]!.body;
+  const removed = (language: "en" | "es") => MESSAGES[language].privacySections.at(-1)!.body;
+  expect(kept("en")).toMatch(/people you block/);
+  expect(kept("es")).toMatch(/personas que bloqueas/);
+  expect(device("en")).toMatch(/received routines you have already seen/);
+  expect(device("es")).toMatch(/rutinas recibidas que ya viste/);
+  expect(removed("en")).toMatch(/the people you blocked/);
+  expect(removed("es")).toMatch(/las personas que bloqueaste/);
+  expect(MESSAGES.en.deleteAccountWarning).toMatch(/the people you blocked/);
+  expect(MESSAGES.es.deleteAccountWarning).toMatch(/las personas que bloqueaste/);
+});

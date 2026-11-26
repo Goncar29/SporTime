@@ -116,6 +116,18 @@
   white-space: nowrap;
 }
 
+/* A received routine not seen before (T27). */
+.new {
+  align-self: flex-start;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .sender {
   overflow-wrap: anywhere;
   color: var(--muted);

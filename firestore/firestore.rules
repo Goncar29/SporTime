@@ -296,7 +296,11 @@ service cloud.firestore {
     // The sender's email must be verified and the recipient one of their contacts (S7 "Solo quien
     // me tiene en contactos": the sender added the recipient). Nothing of anyone's contacts is
     // stored. The name and photo come from the token, which a user may set for their own account,
-    // so the email is the one identity a recipient can rely on.
+    // so the email is the one identity a recipient can rely on. A sender the recipient blocked
+    // (T27: `users/{recipient}/blocked/{sender uid}`, by the uid this rule binds to the sign-in)
+    // is refused like any other refusal, so they learn nothing more than that it was refused.
+    // That exists() is the second document read of a create; the largest copy still fits the
+    // 1000-expression budget with a stage of headroom (11 full stages, as before it).
     function isInboxCopy(recipient, data) {
       return request.auth.uid != recipient
         && request.auth.token.email_verified == true
@@ -312,7 +316,24 @@ service cloud.firestore {
         && data.name.matches('[^\\p{C}\\p{Z}\\x{061C}\\x{08E2}\\x{0890}-\\x{0891}\\x{110BD}\\x{110CD}\\x{13430}-\\x{1345F}\\x{1BCA0}-\\x{1BCA3}\\x{2060}-\\x{206F}\\x{FFF0}-\\x{FFFF}\\x{E0000}-\\x{E0FFF}][^\\p{Cc}]{0,39}')
         && (!('notes' in data) || data.notes.matches('[^\\p{C}\\p{Z}\\x{061C}\\x{08E2}\\x{0890}-\\x{0891}\\x{110BD}\\x{110CD}\\x{13430}-\\x{1345F}\\x{1BCA0}-\\x{1BCA3}\\x{2060}-\\x{206F}\\x{FFF0}-\\x{FFFF}\\x{E0000}-\\x{E0FFF}][^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]{0,499}'))
         && isSharedStages(data.stages)
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/contacts/$(recipient));
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/contacts/$(recipient))
+        && !exists(/databases/$(database)/documents/users/$(recipient)/blocked/$(request.auth.uid));
+    }
+
+    // A sender the owner blocked (S7, T27), kept at `users/{uid}/blocked/{sender uid}` with exactly
+    // the name and email their received routine showed when blocking (toStoredBlockedSender in
+    // src/sharing/domain/blockedSender.ts), checked as isSender checks them: a name of one line of
+    // up to 100 characters that may be empty, and an email of at most 254 characters with one @,
+    // something on each side and no space, slash or control character. The id is a uid as
+    // isSender keeps it (1 to 128 characters, no control character), never the owner's own.
+    function isBlockedSender(uid, senderUid, data) {
+      return data.keys().hasAll(['name', 'email'])
+        && data.keys().hasOnly(['name', 'email'])
+        && senderUid != uid
+        && senderUid.matches('[^\\p{Cc}/]{1,128}')
+        && data.name.matches('[^\\p{Cc}]{0,100}')
+        && data.email.size() <= 254
+        && data.email.matches('[^\\p{Cc}\\p{Z}/@]+@[^\\p{Cc}\\p{Z}/@]+');
     }
 
     // The SDK resends a write when its answer was lost, so an identical rewrite must succeed.
@@ -364,6 +385,13 @@ service cloud.firestore {
     match /users/{recipient}/inbox/{copyId} {
       allow read, delete: if isOwner(recipient);
       allow create: if request.auth != null && isInboxCopy(recipient, request.resource.data);
+    }
+
+    // Who the owner blocked, owner only. Blocking again (an outbox resend, or a newer name) is an
+    // update checked like a create.
+    match /users/{uid}/blocked/{senderUid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isBlockedSender(uid, senderUid, request.resource.data);
     }
 
     match /users/{uid}/history/{entryId} {

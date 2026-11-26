@@ -15,6 +15,8 @@ interface ProfileScreenProps {
   onOpenPrivacy: () => void;
   /** Without it, the Routines section is not offered. */
   onOpenRoutines?: () => void;
+  /** How many received routines are new (T27); none is shown while unknown (null) or zero. */
+  newRoutineCount?: number | null;
   /** Without it, the Contacts section is not offered. */
   onOpenContacts?: () => void;
   /** How many contacts there are; null while unknown, so none is shown. */
@@ -30,6 +32,7 @@ export function ProfileScreen({
   onOpenSettings,
   onOpenPrivacy,
   onOpenRoutines,
+  newRoutineCount = null,
   onOpenContacts,
   contactCount = null,
   findByEmail,
@@ -53,8 +56,12 @@ export function ProfileScreen({
 
       <div className={profile.menu}>
         {onOpenRoutines && (
-          <button className={profile.item} onClick={onOpenRoutines}>
-            {t.routines}
+          <button
+            className={profile.item}
+            onClick={onOpenRoutines}
+            aria-label={newRoutineCount ? t.routinesMenuLabel(newRoutineCount) : undefined}
+          >
+            {newRoutineCount ? t.routinesMenuItem(newRoutineCount) : t.routines}
             <Chevron />
           </button>
         )}

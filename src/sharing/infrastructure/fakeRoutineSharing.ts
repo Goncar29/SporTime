@@ -2,6 +2,7 @@ import type { User } from "../../auth/domain/user";
 import type { InboxWriter, RoutineSharing } from "../application/ports";
 import { createRoutineSharing } from "../application/shareRoutine";
 import type { SharedCopy } from "../domain/sharedCopy";
+import { fakeBlockedOf } from "./fakeBlockedSenders";
 
 /** Tests only: where a user's fake inbox is kept. */
 export const fakeInboxKey = (uid: string) => `sportime.fakeInbox.${uid}`;
@@ -35,15 +36,16 @@ function hasContact(owner: string, contactUid: string): boolean {
 
 /**
  * Tests only: sends copies to inboxes kept in localStorage, refusing like the rules (a recipient
- * who is not a contact, a copy id already used), with the signed-in user as the sender. Never
- * part of a production build.
+ * who is not a contact or who blocked the sender, a copy id already used), with the signed-in user
+ * as the sender. Never part of a production build.
  */
 export function createFakeRoutineSharing(user: User): RoutineSharing {
   const inbox: InboxWriter = {
     create(recipientUid, copyId, copy) {
       if (!navigator.onLine) return Promise.reject(refused("unavailable"));
       const copies = fakeInboxOf(recipientUid);
-      if (copyId in copies || !hasContact(user.id, recipientUid)) {
+      const blocked = fakeBlockedOf(recipientUid).some(({ uid }) => uid === user.id);
+      if (copyId in copies || !hasContact(user.id, recipientUid) || blocked) {
         return Promise.reject(refused("permission-denied"));
       }
       const stored: FakeInboxCopy = { ...copy, sentAt: Date.now() };

@@ -13,6 +13,8 @@ import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { createFakeContactStore } from "../contacts/infrastructure/fakeContactStore";
 import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
+import { createLocalStorageSeenRoutines } from "../routines/infrastructure/localStorageSeenRoutines";
+import { createFakeBlockedSenders } from "../sharing/infrastructure/fakeBlockedSenders";
 import type { InboxReceiving, RoutineSharing } from "../sharing/application/ports";
 import {
   createFakeRoutineSharing,
@@ -39,6 +41,8 @@ interface Options {
   sharingFor?: (user: User) => RoutineSharing;
   /** Receiving an account's inbox; none by default. */
   receivingFor?: (userId: string) => InboxReceiving;
+  /** Whether each account keeps seen routines and a blocked list; neither by default. */
+  withNotice?: boolean;
 }
 
 /** The other tabs' status as the account's stores report it, changed by the test. */
@@ -72,6 +76,7 @@ function setup({
   directoryFor,
   sharingFor,
   receivingFor,
+  withNotice = false,
 }: Options = {}) {
   let report: (user: User | null) => void = () => undefined;
   const gateway = {
@@ -118,6 +123,12 @@ function setup({
     directoryFor,
     sharingFor,
     receiving: receivingFor?.(userId),
+    ...(withNotice
+      ? {
+          seenRoutines: createLocalStorageSeenRoutines(userId),
+          blocked: createFakeBlockedSenders(userId),
+        }
+      : {}),
   });
   render(
     <I18nProvider store={{ get: () => language, set: vi.fn() }} browserLanguages={["en-US"]}>
@@ -636,5 +647,38 @@ describe("receiving routines (T26, S12)", () => {
     expect(events.at(-1)).toBe("start alice");
     switchTo("carol");
     expect(events.slice(-2)).toEqual(["stop alice", "start carol"]);
+  });
+});
+
+describe("new routines and blocked senders (T27)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("follow the signed-in account", async () => {
+    const sender = { uid: "dan", name: "Dan", email: "dan@example.com" };
+    await createFakeRoutineLibrary("alice").receive({
+      id: "r1",
+      name: "Legs",
+      createdAt: 1,
+      stages: [],
+      receivedFrom: sender,
+    });
+    await createFakeBlockedSenders("carol").block(sender);
+    const { switchTo } = setup({ withNotice: true });
+    await click("Profile");
+    expect(screen.getByRole("button", { name: /^Routines\b/ })).toHaveAccessibleName(
+      "Routines, 1 new routine",
+    );
+    await click(/^Contacts\b/);
+    await click("Blocked");
+    expect(screen.getByText(/You haven't blocked anyone/)).toBeInTheDocument();
+
+    switchTo("carol");
+    await click("Profile");
+    expect(screen.getByRole("button", { name: /^Routines\b/ })).toHaveAccessibleName("Routines");
+    await click(/^Contacts\b/);
+    await click("Blocked");
+    expect(screen.getByRole("button", { name: "Unblock ⁨Dan⁩" })).toBeInTheDocument();
   });
 });

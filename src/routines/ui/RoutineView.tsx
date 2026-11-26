@@ -8,7 +8,9 @@ import {
   linkHost,
   normalizeLink,
   type Exercise,
+  senderName,
   type Routine,
+  type Sender,
   type Stage,
 } from "../domain/routine";
 import { ReceivedFrom } from "./ReceivedFrom";
@@ -22,6 +24,19 @@ interface RoutineViewProps {
   onRemove: (routine: Routine) => void;
   /** Opens sending a copy to contacts; without it, no Share button is offered. */
   onShare?: (routine: Routine) => void;
+  /**
+   * Blocks the sender of a received routine (T27), after confirming; without it, or for one's own
+   * routine, no Block button is offered.
+   */
+  onBlock?: (sender: Sender) => void;
+  /** The sender of this received routine is blocked: said instead of offering to block them. */
+  senderBlocked?: boolean;
+}
+
+/** A sender's name, or null when it shows nothing, and email, each isolated for a message. */
+function wordsFor(sender: Sender): readonly [string | null, string] {
+  const name = senderName(sender);
+  return [name === null ? null : isolate(name), isolate(sender.email)];
 }
 
 /** Shown in a cell the exercise leaves empty. */
@@ -39,9 +54,15 @@ export function RoutineView({
   onEdit,
   onRemove,
   onShare,
+  onBlock,
+  senderBlocked = false,
 }: RoutineViewProps) {
   const { t } = useI18n();
   const [confirming, setConfirming] = useState(false);
+  const [confirmingBlock, setConfirmingBlock] = useState(false);
+  const sender = routine.receivedFrom;
+  // The sender's own name (null when it shows nothing) and verified email, isolated: they wrote it.
+  const senderWords = sender && wordsFor(sender);
 
   return (
     <main className={styles.page}>
@@ -64,6 +85,23 @@ export function RoutineView({
         <p className={styles.sender}>
           <ReceivedFrom sender={routine.receivedFrom} />
         </p>
+      )}
+
+      {senderWords && senderBlocked && (
+        <p className={styles.sender}>
+          <bdi>{t.senderBlocked(...senderWords)}</bdi>
+        </p>
+      )}
+      {senderWords && onBlock && !senderBlocked && (
+        <button
+          type="button"
+          className={styles.block}
+          onClick={() => {
+            setConfirmingBlock(true);
+          }}
+        >
+          <bdi>{t.blockSender(...senderWords)}</bdi>
+        </button>
       )}
 
       {routine.notes !== undefined && (
@@ -121,6 +159,21 @@ export function RoutineView({
           }}
           onCancel={() => {
             setConfirming(false);
+          }}
+        />
+      )}
+
+      {confirmingBlock && sender && senderWords && onBlock && (
+        <ConfirmDialog
+          title={t.confirmBlockSender(...senderWords)}
+          message={t.blockSenderNote}
+          confirmLabel={t.blockAction}
+          onConfirm={() => {
+            setConfirmingBlock(false);
+            onBlock(sender);
+          }}
+          onCancel={() => {
+            setConfirmingBlock(false);
           }}
         />
       )}
