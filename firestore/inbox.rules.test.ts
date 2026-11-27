@@ -28,6 +28,7 @@ import {
   type RoutineDraft,
   type StoredRoutine,
 } from "../src/routines/domain/routine";
+import { photoLookAlikes } from "./photoLookAlikes";
 
 /**
  * The shared-routine inbox (T24, S12): `users/{recipient}/inbox/{copyId}` holds independent
@@ -849,4 +850,106 @@ describe("verifier probes (T24)", () => {
     );
     await assertFails(setDoc(doc(signedIn("bob"), inboxPath("bob", "s1")), {}, { merge: true }));
   });
+});
+
+describe("verifier probes (T29)", () => {
+  const carolEntry = { uid: "carol", name: "Carol" };
+  const aliceEntry = { uid: "alice", name: alice.name };
+
+  async function contactEmail(): Promise<unknown> {
+    let email: unknown;
+    await env.withSecurityRulesDisabled(async (context) => {
+      email = (await getDoc(doc(context.firestore(), contactPath("alice", "bob")))).get("email");
+    });
+    return email;
+  }
+
+  it("refuses repointing the contact's email to another entry or the sender's own (W1)", async () => {
+    await seed("directory/carol@example.com", carolEntry);
+    await seed("directory/alice@example.com", aliceEntry);
+    await unseed("directory/bob@example.com");
+    const db = asAlice();
+    for (const email of ["carol@example.com", "alice@example.com"]) {
+      await assertFails(updateDoc(doc(db, contactPath("alice", "bob")), { email }));
+      await assertFails(setDoc(doc(db, contactPath("alice", "bob")), { ...bobContact, email }));
+    }
+    expect(await contactEmail()).toBe("bob@example.com");
+    await refused(copy);
+  });
+
+  it("refuses a copy in the same batch that creates a directory entry for it (W1)", async () => {
+    await unseed("directory/bob@example.com");
+    const db = asAlice();
+    const forBob = writeBatch(db);
+    forBob.set(doc(db, "directory/bob@example.com"), bobEntry);
+    forBob.set(doc(db, inboxPath("bob", "w1-a")), copy);
+    await assertFails(forBob.commit());
+    const throughOwn = writeBatch(db);
+    throughOwn.set(doc(db, "directory/alice@example.com"), aliceEntry);
+    throughOwn.update(doc(db, contactPath("alice", "bob")), { email: "alice@example.com" });
+    throughOwn.set(doc(db, inboxPath("bob", "w1-b")), copy);
+    await assertFails(throughOwn.commit());
+    for (const path of [
+      inboxPath("bob", "w1-a"),
+      inboxPath("bob", "w1-b"),
+      "directory/bob@example.com",
+      "directory/alice@example.com",
+    ]) {
+      expect(await storedAt(path), path).toBe(false);
+    }
+    expect(await contactEmail()).toBe("bob@example.com");
+  });
+
+  it("refuses a copy when the contact holds an odd email, even one the rules never let in (W1)", async () => {
+    for (const email of [
+      "",
+      "BOB@example.com",
+      " bob@example.com",
+      "bob@example.com/x",
+      "x/bob@example.com",
+      "../directory/bob@example.com",
+    ]) {
+      await assertFails(
+        setDoc(doc(asAlice(), contactPath("alice", "bob")), { ...bobContact, email }),
+      );
+      await seed(contactPath("alice", "bob"), { ...bobContact, email });
+      await refused(copy);
+    }
+  }, 60_000);
+
+  it("refuses every Google photo look-alike, even when it is the sign-in's own (W3)", async () => {
+    for (const picture of photoLookAlikes) {
+      await refused({ ...copy, fromPhoto: picture }, asAlice({ picture })).catch(
+        (error: unknown) => {
+          throw new Error(`accepted ${JSON.stringify(picture)}: ${String(error)}`);
+        },
+      );
+    }
+  }, 60_000);
+
+  it("accepts the longest and oddest emails a verified sign-in may hold (W4)", async () => {
+    for (const email of [
+      `${"e".repeat(L.senderEmailLength - 11)}@example.co`,
+      "a/b@example.com",
+      '"al ice"@example.com',
+      '"a@b"@example.com',
+    ]) {
+      await accepted({ ...copy, fromEmail: email }, asAlice({ email }));
+    }
+  });
+
+  it("refuses ports above 65535 with a path, a query, a fragment or leading zeros (W5)", async () => {
+    for (const link of [
+      "https://x.com:65536/a",
+      "https://x.com:65536?a=1",
+      "https://x.com:65536#a",
+      "https://x.com:0065536",
+      "https://x.com:100000/a",
+    ]) {
+      await refused(withLines(lineWithLink(link))).catch((error: unknown) => {
+        throw new Error(`accepted ${link}: ${String(error)}`);
+      });
+    }
+    await accepted(withLines(lineWithLink("https://x.com:65535/a")));
+  }, 60_000);
 });

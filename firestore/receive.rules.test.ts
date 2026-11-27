@@ -38,6 +38,7 @@ import { receivedRoutine } from "../src/sharing/domain/receivedCopy";
 import { buildSharedCopy, type SharedCopy } from "../src/sharing/domain/sharedCopy";
 import { createFirestoreInbox } from "../src/sharing/infrastructure/firestoreInbox";
 import { createFirestoreInboxReader } from "../src/sharing/infrastructure/firestoreInboxReader";
+import { photoLookAlikes } from "./photoLookAlikes";
 
 /**
  * Receiving a shared routine (T26, S12): the sender field on one's own routines
@@ -804,5 +805,32 @@ describe("receiving a copy through the real rules (T26, S12)", () => {
     await assertFails(getDoc(doc(asAlice(), "users/bob/inbox/mine")));
     await assertFails(deleteDoc(doc(asAlice(), "users/bob/inbox/mine")));
     await assertSucceeds(getDoc(doc(asBob(), "users/bob/inbox/mine")));
+  });
+});
+
+describe("verifier probes (T29), on one's own routines", () => {
+  it(
+    "refuses every Google photo look-alike as the sender's photo (W3)",
+    { timeout: 30_000 },
+    async () => {
+      for (const photo of photoLookAlikes) {
+        await assertFails(
+          setDoc(freshRoutine(), { ...routine, receivedFrom: { ...sender, photo } }),
+        ).catch((error: unknown) => {
+          throw new Error(`accepted ${JSON.stringify(photo)}: ${String(error)}`);
+        });
+      }
+    },
+  );
+
+  it("refuses a routine missing its name, stages or creation time", async () => {
+    for (const key of ["name", "stages", "createdAt"] as const) {
+      const { [key]: _gone, ...rest } = routine;
+      await assertFails(setDoc(freshRoutine(), rest)).catch((error: unknown) => {
+        throw new Error(`accepted a routine without ${key}: ${String(error)}`);
+      });
+    }
+    const { exercises: _exercises, ...stageWithoutExercises } = routine.stages[0]!;
+    await assertFails(setDoc(freshRoutine(), { ...routine, stages: [stageWithoutExercises] }));
   });
 });
