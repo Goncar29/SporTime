@@ -18,6 +18,10 @@ import {
 import { withOutbox, type HeldWrites, type OutboxStore } from "../../shared/application/outbox";
 import { storeFailureCode } from "../../shared/domain/storeFailure";
 import { isInLocalCache } from "../../shared/firebase/localCache";
+import {
+  browserConnectivity,
+  type Connectivity,
+} from "../../shared/infrastructure/browserConnectivity";
 import type { ReceivedRoutines, RoutineLibrary } from "../application/ports";
 import { parseRoutine, toStoredRoutine, type Routine, type RoutineDraft } from "../domain/routine";
 
@@ -31,6 +35,8 @@ interface Durability {
   guard?: <T>(write: () => Promise<T>) => Promise<T>;
   /** Waits before asking the server again; tests replace it. */
   wait?: (ms: number) => Promise<void>;
+  /** Whether the browser says it is online; tests replace it. */
+  connectivity?: Connectivity;
 }
 
 const waitFor = (ms: number) =>
@@ -84,7 +90,13 @@ async function explainRefusal(ref: DocumentReference, error: unknown): Promise<u
 export function createFirestoreRoutineLibrary(
   db: Firestore,
   userId: string,
-  { store, whenReady, guard = runAtOnce, wait = waitFor }: Durability,
+  {
+    store,
+    whenReady,
+    guard = runAtOnce,
+    wait = waitFor,
+    connectivity = browserConnectivity,
+  }: Durability,
 ): RoutineLibrary & ReceivedRoutines & HeldWrites {
   const routines = collection(db, "users", userId, "routines");
   const inbox = collection(db, "users", userId, "inbox");
@@ -179,8 +191,10 @@ export function createFirestoreRoutineLibrary(
         );
       // While the server cannot be reached, or another write got there first, it tries again
       // later, so it never settles offline; any other failure, such as a refusal after signing
-      // out, is passed on.
-      for (let delay = FIRST_RETRY_MS; ; delay = Math.min(delay * 2, LAST_RETRY_MS)) {
+      // out, is passed on. While the browser says it is offline it does not try at all (each try
+      // is a read, T36), and tries at once when it is back online.
+      let delay = FIRST_RETRY_MS;
+      for (;;) {
         try {
           // Under the account's lock, like any change: a sign-out or deletion in another tab waits
           // for it, or refuses it before it runs.
@@ -189,7 +203,15 @@ export function createFirestoreRoutineLibrary(
         } catch (error) {
           if (!TRIED_AGAIN.has(storeFailureCode(error) ?? "")) throw error;
         }
-        await wait(delay);
+        if (connectivity.isOnline()) {
+          await wait(delay);
+          delay = Math.min(delay * 2, LAST_RETRY_MS);
+        }
+        // Also when it went offline during the wait.
+        if (!connectivity.isOnline()) {
+          await connectivity.whenOnline();
+          delay = FIRST_RETRY_MS;
+        }
       }
     },
     async remove(id) {
