@@ -34,7 +34,13 @@ import {
   isGooglePhoto,
   normalizeEmail,
 } from "../src/directory/domain/directory";
-import { ROUTINE_LIMITS, toStoredRoutine, type RoutineDraft } from "../src/routines/domain/routine";
+import {
+  ROUTINE_LIMITS,
+  isLocalLink,
+  normalizeLink,
+  toStoredRoutine,
+  type RoutineDraft,
+} from "../src/routines/domain/routine";
 import { MAX_TIMESTAMP_MS } from "../src/shared/domain/timestamp";
 import {
   MAX_ROUND_NAME_LENGTH,
@@ -481,6 +487,19 @@ describe("routine shape", () => {
     }
   });
 
+  it("accepts the largest routine with every link at its longest on a real site", async () => {
+    const site = "https://www.youtube.com/watch?v=";
+    const link = site + "v".repeat(L.linkLength - site.length);
+    expect(normalizeLink(link)).toBe(link);
+    const stages = largest.stages.map((stage) => ({
+      ...stage,
+      exercises: stage.exercises.replaceAll(longestLink, link),
+    }));
+    expect(stages[L.stages - 1]!.exercises.split("\n")).toHaveLength(L.exercisesPerStage);
+    expect(stages[L.stages - 1]!.exercises.endsWith(`\t${link}`)).toBe(true);
+    await assertSucceeds(save({ ...largest, stages }));
+  });
+
   it("limits the number of stages and of exercises in each", async () => {
     await assertFails(save({ ...largest, stages: [...largest.stages, largest.stages[0]] }));
     const line = "x\t\t\t\t\t";
@@ -600,6 +619,149 @@ describe("routine shape", () => {
     ]) {
       await assertFails(save(withLine(line)));
     }
+  });
+
+  describe("links to the local network or an IP address (S12)", () => {
+    const local = [
+      "https://localhost",
+      "https://LocalHost:5173/x",
+      "https://app.localhost",
+      "https://localhost.",
+      "https://192.168.0.1",
+      "https://8.8.8.8",
+      "https://192.168.0.1:8080/admin",
+      "https://8.8.8.8.",
+      "https://3232235521",
+      "https://0xC0A80001",
+      "https://0xc0a80001/x",
+      "https://0xC0.0250.0.1",
+      "https://0300.0250.0.1",
+      "https://127.1",
+      "https://10.1.1",
+      "https://[::1]",
+      "https://[2001:db8::1]:8443/x",
+      "https://[::ffff:192.168.0.1]",
+      "https://router",
+      "https://router:8080/admin",
+      "https://router.",
+      "https://www",
+      "https://nas.local",
+      "https://NAS.LOCAL/fotos",
+      "https://printer.lan",
+      "https://db.internal:8443",
+      "https://box.home.arpa",
+      "https://box.Home.Arpa.",
+      "https://nas\u3002local",
+      "https://192\uff0e168\uff0e0\uff0e1",
+      // Independent verifier probes (L53).
+      "https://192.168.0.1./",
+      "https://0XC0A80001",
+      "https://LOCALHOST",
+      "https://LOCALHOST.:443",
+      "https://printer.LOCAL",
+      "https://a.home.arpa./",
+      "https://127.1:80",
+      "https://4294967295",
+    ];
+    const sites = [
+      "https://youtube.com/watch?v=abc",
+      "https://www.youtube.com/watch?v=abc&t=1s",
+      "https://www.instagram.com/p/C1a2b3c4d5/",
+      "https://youtu.be/abc",
+      "https://localhost.com/x",
+      "https://local.example.org",
+      "https://lan.party.net",
+      "https://123.example.com",
+      "https://0xdead.beef.io",
+      "https://example.io:8443/x",
+      "https://youtube\u3002com",
+      // Independent verifier probes (L53): named sites that only look local.
+      "https://192.168.0.1.nip.io/",
+      "https://localhost.example.com",
+      "https://router.local.example.com:8443/x",
+      "https://3232235521.com",
+      "https://a.0xg",
+      "https://EXAMPLE.COM.",
+    ];
+    const path = routinePath("alice");
+    const line = (link: string) => `Remo\t10\t\t\t\t${link}`;
+    const withLink = (link: string) => withLine(`a\t\t\t\t\thttps://x.com\n${line(link)}`);
+
+    it("refuses each one on create, as the app does", async () => {
+      for (const link of local) {
+        expect(isLocalLink(link), link).toBe(true);
+        await assertFails(save(withLine(line(link))));
+        await assertFails(save(withLink(link)));
+      }
+    });
+
+    it("refuses each one on update", async () => {
+      await seed(path, withLine(line("https://youtu.be/abc")));
+      const db = asUser("alice");
+      for (const link of local) {
+        await assertFails(setDoc(doc(db, path), withLine(line(link))));
+        await assertFails(updateDoc(doc(db, path), { stages: [{ exercises: line(link) }] }));
+      }
+    });
+
+    it("accepts links to named sites on create and update, as the app does", async () => {
+      await seed(path, withLine(line("https://youtu.be/abc")));
+      for (const link of sites) {
+        expect(normalizeLink(link), link).toBe(link);
+        await assertSucceeds(save(withLine(line(link))));
+        await assertSucceeds(save(withLink(link)));
+        await assertSucceeds(setDoc(doc(asUser("alice"), path), withLine(line(link))));
+      }
+    });
+
+    it("refuses a local host in any letter case", async () => {
+      for (const link of ["https://LOCALHOST", "https://Router", "https://0XC0A80001"]) {
+        await assertFails(save(withLine(line(link))));
+      }
+    });
+
+    it("reads only the link field, not notes that look like a link", async () => {
+      await assertSucceeds(save(withLine("Remo\t\t\t\thttps://router/x\thttps://youtu.be/abc")));
+      await assertSucceeds(save(withLine("https://localhost/x\t\t\t\t\t")));
+      await assertSucceeds(save(withLine("Remo\t\t\t\thttps://[::1]\t")));
+    });
+
+    it("keeps every link the app accepts within the rules, and refuses every one it does not", async () => {
+      for (const link of [
+        ...local,
+        ...sites,
+        "https://you%2Ecom",
+        "https://youtube\u2024com",
+        "https://a.1..",
+        "https://x.0x",
+        "https://www.",
+        "https://.com",
+      ]) {
+        const accepted = normalizeLink(link) === link;
+        const stored = toStoredRoutine({
+          name: "R",
+          createdAt: 1,
+          stages: [{ exercises: [{ name: "Remo", link }] }],
+        });
+        expect(stored.stages[0]!.exercises, link).toBe(
+          accepted ? `Remo\t\t\t\t\t${link}` : "Remo\t\t\t\t\t",
+        );
+        await assertSucceeds(save(stored));
+        if (accepted) await assertSucceeds(save(withLine(line(link))));
+        if (isLocalLink(link)) await assertFails(save(withLine(line(link))));
+      }
+    });
+
+    it("keeps a routine stored with one: it can be deleted or resent, and saved once fixed", async () => {
+      const stored = withLine(line("https://192.168.0.1/video"));
+      await seed(path, stored);
+      const db = asUser("alice");
+      await assertSucceeds(getDoc(doc(db, path)));
+      await assertSucceeds(setDoc(doc(db, path), stored));
+      await assertFails(setDoc(doc(db, path), { ...stored, name: "Renombrada" }));
+      await assertSucceeds(setDoc(doc(db, path), { ...withLine(line("")), name: "Renombrada" }));
+      await assertSucceeds(deleteDoc(doc(db, path)));
+    });
   });
 
   it("accepts multibyte text the app writes, and edits of the largest routine", async () => {

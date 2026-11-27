@@ -213,6 +213,7 @@ export const en: Messages = {
   invalidWeight: "Use a number like 62.5.",
   exerciseLink: "Link",
   invalidLink: "Use a full link that starts with https://.",
+  localLink: "Use a website link, not a local network or IP address.",
   viewLink: "View",
   viewLinkTo: (host) => `View ${host}`,
   viewExerciseLink: (host, exercise) => `View ${host} (${exercise})`,

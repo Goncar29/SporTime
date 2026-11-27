@@ -29,7 +29,11 @@ export interface Exercise {
   /** Present exactly when `weight` is. */
   weightUnit?: WeightUnit;
   notes?: string;
-  /** An https link, checked by `normalizeLink`, opened from the routine's view. */
+  /**
+   * An https link, checked by `normalizeLink`, opened from the routine's view. A routine stored
+   * before links to the local network were refused may still hold one (`isLocalLink`): it is
+   * kept so the editor can show it to be fixed, but it is never opened nor stored again.
+   */
   link?: string;
 }
 
@@ -179,23 +183,79 @@ export function parseWeightInput(text: string): number | null | undefined {
  */
 const SAFE_LINK = /^https:\/\/[^@/?#\\\p{C}\p{Z}]+(?:[/?#\\][^\p{C}\p{Z}]*)?$/u;
 
-/** Reads a typed link: undefined when empty, null when it is not a safe https link. */
-export function normalizeLink(raw: string): string | null | undefined {
+/** The characters a browser reads as the dot between two parts of a host name. */
+const DOT = String.raw`[.\u3002\uFF0E\uFF61]`;
+
+/**
+ * A link, as typed, whose host is not a named internet site: bracketed (an IPv6 address), ending
+ * in a number or a 0x number (the browser reads it as an IPv4 address, or not at all), localhost
+ * or a local network suffix, or a single name with no dot. `firestore/firestore.rules` refuses
+ * the same text with the same pattern, so the app never saves a link the rules refuse.
+ */
+const LOCAL_HOST_AS_TYPED = new RegExp(
+  String.raw`^https://(?:\[.*|(?:[^:/?#\\]*${DOT})?(?:[0-9]+|0x[0-9a-f]*|localhost|local|lan|internal|home${DOT}arpa)${DOT}?|[^.\u3002\uFF0E\uFF61:/?#\\]+${DOT}?)(?:[:/?#\\].*)?$`,
+  "iu",
+);
+
+/** The suffixes that name a machine on a local network, never a site on the internet. */
+const LOCAL_SUFFIXES = ["localhost", "local", "lan", "internal", "home.arpa"];
+
+/**
+ * The host as the browser reads it, after it turns other number forms into an IPv4 address and
+ * other dots and letters into plain ones (https://3232235521 opens 192.168.0.1).
+ */
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.replace(/\.$/, "");
+  return (
+    host.startsWith("[") ||
+    /(?:^|\.)[0-9]+$/.test(host) ||
+    !host.includes(".") ||
+    LOCAL_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))
+  );
+}
+
+type LinkReading =
+  | { kind: "empty" }
+  | { kind: "unsafe" }
+  | { kind: "local"; text: string }
+  | { kind: "site"; text: string };
+
+function readLink(raw: string): LinkReading {
   const text = wellFormed(raw).trim();
-  if (text === "") return undefined;
-  if (text.length > ROUTINE_LIMITS.linkLength || !SAFE_LINK.test(text)) return null;
+  if (text === "") return { kind: "empty" };
+  if (text.length > ROUTINE_LIMITS.linkLength || !SAFE_LINK.test(text)) return { kind: "unsafe" };
   let url: URL;
   try {
     url = new URL(text);
   } catch {
-    return null;
+    return { kind: "unsafe" };
   }
-  const safe =
-    url.protocol === "https:" &&
-    url.username === "" &&
-    url.password === "" &&
-    namesVisibleSite(url.hostname.replace(/^www\./, ""));
-  return safe ? text : null;
+  if (url.protocol !== "https:" || url.username !== "" || url.password !== "") {
+    return { kind: "unsafe" };
+  }
+  // Checked before the visible name, so a bracketed IPv6 address is reported as local.
+  if (LOCAL_HOST_AS_TYPED.test(text) || isLocalHost(url.hostname)) return { kind: "local", text };
+  return namesVisibleSite(url.hostname.replace(/^www\./, ""))
+    ? { kind: "site", text }
+    : { kind: "unsafe" };
+}
+
+/**
+ * Reads a typed link: undefined when empty, null when it is not a safe https link to a named
+ * internet site (a link to the local network or an IP address is refused too, see `isLocalLink`).
+ */
+export function normalizeLink(raw: string): string | null | undefined {
+  const link = readLink(raw);
+  return link.kind === "empty" ? undefined : link.kind === "site" ? link.text : null;
+}
+
+/**
+ * True for a link that would be a safe https link but points to the local network or an IP
+ * address: localhost, an IPv4 or IPv6 address in any form, a name with no dot, or a name ending
+ * in .local, .lan, .internal or .home.arpa. `normalizeLink` refuses it.
+ */
+export function isLocalLink(raw: string): boolean {
+  return readLink(raw).kind === "local";
 }
 
 /**
@@ -211,8 +271,12 @@ export function linkHost(link: string): string {
   return new URL(link).hostname.replace(/^www\./, "");
 }
 
-/** Keeps only valid fields of untrusted data; null when none is left. */
-export function sanitizeExercise(raw: unknown): Exercise | null {
+/**
+ * Keeps only valid fields of untrusted data; null when none is left. A link to the local network
+ * is kept unless `forStorage`: a routine read keeps it so the editor asks to fix it, while what is
+ * stored never holds it, because the rules refuse it.
+ */
+export function sanitizeExercise(raw: unknown, forStorage = false): Exercise | null {
   if (typeof raw !== "object" || raw === null) return null;
   const source = raw as Record<string, unknown>;
   const exercise: Exercise = {};
@@ -233,12 +297,12 @@ export function sanitizeExercise(raw: unknown): Exercise | null {
   }
   const notes = singleLine(source.notes, ROUTINE_LIMITS.exerciseNotesLength);
   if (notes !== undefined) exercise.notes = notes;
-  const link = typeof source.link === "string" ? normalizeLink(source.link) : undefined;
-  if (typeof link === "string") exercise.link = link;
+  const link = typeof source.link === "string" ? readLink(source.link) : undefined;
+  if (link?.kind === "site" || (link?.kind === "local" && !forStorage)) exercise.link = link.text;
   return Object.keys(exercise).length > 0 ? exercise : null;
 }
 
-function exerciseFromLine(line: string): Exercise | null {
+function exerciseFromLine(line: string, forStorage: boolean): Exercise | null {
   const fields = line.split(FIELD_SEPARATOR);
   // Five fields: a line written before links existed.
   if (fields.length !== 5 && fields.length !== 6) return null;
@@ -253,15 +317,18 @@ function exerciseFromLine(line: string): Exercise | null {
   const parsedReps = /^\d+(-\d+)?$/.test(reps) ? parseRepsInput(reps) : {};
   const parsedRest = /^\d+$/.test(rest) ? parseRestInput(rest) : undefined;
   const parsedWeight = /^(\d+(?:\.\d)?)(kg|lb)$/.exec(weight);
-  return sanitizeExercise({
-    name,
-    ...parsedReps,
-    restSeconds: parsedRest,
-    weight: parsedWeight ? Number(parsedWeight[1]) : undefined,
-    weightUnit: parsedWeight?.[2],
-    notes,
-    link,
-  });
+  return sanitizeExercise(
+    {
+      name,
+      ...parsedReps,
+      restSeconds: parsedRest,
+      weight: parsedWeight ? Number(parsedWeight[1]) : undefined,
+      weightUnit: parsedWeight?.[2],
+      notes,
+      link,
+    },
+    forStorage,
+  );
 }
 
 function exerciseToLine(exercise: Exercise): string {
@@ -284,7 +351,7 @@ function exerciseToLine(exercise: Exercise): string {
 }
 
 /** Reads a stage in the app's shape or the stored one; null when nothing in it is valid. */
-function sanitizeStage(raw: unknown): Stage | null {
+function sanitizeStage(raw: unknown, forStorage: boolean): Stage | null {
   if (typeof raw !== "object" || raw === null) return null;
   const source = raw as Record<string, unknown>;
   const list: unknown[] = Array.isArray(source.exercises)
@@ -294,7 +361,10 @@ function sanitizeStage(raw: unknown): Stage | null {
       : [];
   const exercises = list
     .flatMap(
-      (item) => (typeof item === "string" ? exerciseFromLine(item) : sanitizeExercise(item)) ?? [],
+      (item) =>
+        (typeof item === "string"
+          ? exerciseFromLine(item, forStorage)
+          : sanitizeExercise(item, forStorage)) ?? [],
     )
     .slice(0, ROUTINE_LIMITS.exercisesPerStage);
   const stage: Stage = { exercises };
@@ -305,13 +375,15 @@ function sanitizeStage(raw: unknown): Stage | null {
   return name !== undefined || notes !== undefined || exercises.length > 0 ? stage : null;
 }
 
-function sanitizeRoutine(raw: unknown): RoutineDraft | null {
+function sanitizeRoutine(raw: unknown, forStorage: boolean): RoutineDraft | null {
   if (typeof raw !== "object" || raw === null) return null;
   const source = raw as Record<string, unknown>;
   const name = singleLine(source.name, ROUTINE_LIMITS.nameLength);
   if (name === undefined || !isTimestamp(source.createdAt)) return null;
   const stages = Array.isArray(source.stages)
-    ? source.stages.flatMap((stage) => sanitizeStage(stage) ?? []).slice(0, ROUTINE_LIMITS.stages)
+    ? source.stages
+        .flatMap((stage) => sanitizeStage(stage, forStorage) ?? [])
+        .slice(0, ROUTINE_LIMITS.stages)
     : [];
   const routine: RoutineDraft = { name, stages, createdAt: source.createdAt };
   const notes = multiLine(source.notes, ROUTINE_LIMITS.notesLength);
@@ -321,13 +393,17 @@ function sanitizeRoutine(raw: unknown): RoutineDraft | null {
 
 /** Reads a routine from untrusted data, stored or as the app keeps it, or null when unusable. */
 export function parseRoutine(id: string, raw: unknown): Routine | null {
-  const routine = sanitizeRoutine(raw);
+  const routine = sanitizeRoutine(raw, false);
   return routine ? { id, ...routine } : null;
 }
 
-/** The routine to write to Firestore, without empty fields, exercises or stages. */
+/**
+ * The routine to write to Firestore, without empty fields, exercises or stages. A link to the
+ * local network is left out (the editor never saves one; this keeps an older queued write from
+ * being refused by the rules).
+ */
 export function toStoredRoutine(draft: RoutineDraft): StoredRoutine {
-  const routine = sanitizeRoutine(draft);
+  const routine = sanitizeRoutine(draft, true);
   if (!routine) throw new Error("A routine needs a name and a creation time");
   const stored: StoredRoutine = {
     name: routine.name,

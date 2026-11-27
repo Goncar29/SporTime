@@ -137,3 +137,20 @@ it("has no link column for a stage where no exercise has a safe link", () => {
       .map((row) => row.children.length),
   ).toEqual([2, 2, 2]);
 });
+
+it("shows no Ver button for a stored link to the local network or an IP address", () => {
+  renderSpanish([
+    {
+      exercises: [
+        { name: "Remo", repsMin: 8, link: "https://192.168.0.1/video" },
+        { name: "Curl", link: "https://router/admin" },
+      ],
+    },
+  ]);
+  const table = screen.getByRole("table", { name: "Etapa 1" });
+  expect(within(table).queryByRole("link")).not.toBeInTheDocument();
+  expect(within(table).getAllByRole("columnheader").map(spokenText)).toEqual([
+    "Ejercicio",
+    "Repeticiones",
+  ]);
+});

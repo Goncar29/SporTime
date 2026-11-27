@@ -5,6 +5,7 @@ import {
   WEIGHT_UNITS,
   formatReps,
   formatRest,
+  isLocalLink,
   normalizeLink,
   normalizeRoutineName,
   parseRepsInput,
@@ -427,7 +428,8 @@ function ExerciseRow({ position, exercise, onChange, onRemove }: ExerciseRowProp
       </label>
       {errors.link && (
         <p id={`${id}-link`} className={styles.fieldError}>
-          {t.invalidLink}
+          {/* A link to the local network may come from a routine stored before it was refused. */}
+          {isLocalLink(exercise.link) ? t.localLink : t.invalidLink}
         </p>
       )}
     </fieldset>

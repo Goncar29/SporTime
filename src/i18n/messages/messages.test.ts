@@ -131,3 +131,10 @@ describe("contacts messages", () => {
     );
   });
 });
+
+it("explains a link to the local network or an IP address in both languages", () => {
+  expect(MESSAGES.en.localLink).toBe("Use a website link, not a local network or IP address.");
+  expect(MESSAGES.es.localLink).toBe(
+    "Usa el enlace de un sitio web, no una dirección de red local o IP.",
+  );
+});
