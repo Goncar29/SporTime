@@ -25,7 +25,51 @@ const firestore = vi.hoisted(() => ({
   deleted: { deleteField: true },
   /** What happened, in order, including cache reads. */
   calls: [] as string[],
+  /** The options of every transaction run. */
+  transactions: [] as unknown[],
+  /** What committed transactions wrote, as [path, data]. */
+  transactionWrites: [] as [string, unknown][],
+  /** When set, a transaction's commit is refused with this code. */
+  commitFailure: null as string | null,
+  /** When set, the next commit is applied on the server but its answer is lost. */
+  loseNextAnswer: false,
 }));
+
+const failed = (code: string) => Object.assign(new Error(code), { code });
+
+/**
+ * A server-side transaction: reads go to the server (never this device's cache), and its writes
+ * are applied on the server when it commits, or not at all; nothing is kept on this device.
+ */
+async function runTransaction(
+  _db: unknown,
+  update: (transaction: {
+    get: (ref: { path: string }) => Promise<{ exists: () => boolean }>;
+    set: (ref: { path: string }, data: unknown) => void;
+  }) => Promise<unknown>,
+  options?: unknown,
+) {
+  firestore.transactions.push(options);
+  if (!firestore.serverReachable) throw failed(firestore.serverError);
+  const sets: [string, unknown][] = [];
+  const result = await update({
+    get: (ref) => Promise.resolve({ exists: () => firestore.onServer.has(ref.path) }),
+    set(ref, data) {
+      sets.push([ref.path, data]);
+    },
+  });
+  if (firestore.commitFailure !== null) throw failed(firestore.commitFailure);
+  for (const [path, data] of sets) {
+    firestore.calls.push(`transaction set ${path}`);
+    firestore.onServer.add(path);
+    firestore.transactionWrites.push([path, data]);
+  }
+  if (firestore.loseNextAnswer) {
+    firestore.loseNextAnswer = false;
+    throw failed("unavailable");
+  }
+  return result;
+}
 
 vi.mock("firebase/firestore", () => ({
   collection: (_db: unknown, ...path: string[]) => ({ path: path.join("/") }),
@@ -65,6 +109,7 @@ vi.mock("firebase/firestore", () => ({
         })
       : Promise.reject(Object.assign(new Error("offline"), { code: firestore.serverError })),
   onSnapshot: () => () => undefined,
+  runTransaction: (...args: Parameters<typeof runTransaction>) => runTransaction(...args),
   orderBy: () => ({}),
   query: () => ({}),
   setDoc: firestore.setDoc,
@@ -339,7 +384,7 @@ describe("update", () => {
   });
 });
 
-describe("receive (T26, S12)", () => {
+describe("receive (T26, S12; T29 W2)", () => {
   const COPY_PATH = "users/u1/routines/copy-1";
   const received: Routine = {
     ...routine,
@@ -348,16 +393,19 @@ describe("receive (T26, S12)", () => {
     receivedFrom: { uid: "alice", name: "Alice", email: "alice@example.com" },
   };
   const { id: _copyId, ...receivedDraft } = received;
-  const denied = () => Object.assign(new Error("refused"), { code: "permission-denied" });
 
   beforeEach(() => {
     firestore.cached.clear();
     firestore.onServer.clear();
     firestore.pendingHere.clear();
     firestore.serverReachable = true;
+    firestore.serverError = "unavailable";
     firestore.calls.length = 0;
+    firestore.transactions.length = 0;
+    firestore.transactionWrites.length = 0;
+    firestore.commitFailure = null;
+    firestore.loseNextAnswer = false;
     firestore.setDoc.mockReset();
-    // The server stores it and answers.
     firestore.setDoc.mockImplementation((ref: { path: string }) => {
       firestore.calls.push(`setDoc ${ref.path}`);
       firestore.cached.add(ref.path);
@@ -370,50 +418,50 @@ describe("receive (T26, S12)", () => {
     firestore.setDoc.mockReset().mockResolvedValue(undefined);
     firestore.serverReachable = true;
     firestore.serverError = "unavailable";
+    firestore.commitFailure = null;
+    firestore.loseNextAnswer = false;
     firestore.pendingHere.clear();
   });
 
-  it("stores the routine under the copy's id, with its sender, and settles once the server has it", async () => {
+  it("stores the routine under the copy's id with a create-only server transaction, never setDoc or the outbox (W2)", async () => {
     const { library, store } = setup({ guard: recordingGuard() });
     await expect(library.receive(received)).resolves.toBeUndefined();
-    expect(firestore.setDoc).toHaveBeenCalledOnce();
-    expect(firestore.setDoc).toHaveBeenCalledWith(
-      { path: COPY_PATH },
-      toStoredRoutine(receivedDraft),
-    );
+    expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
     expect(toStoredRoutine(receivedDraft).receivedFrom).toEqual(received.receivedFrom);
-    // Through the outbox, holding the account's lock like any other save.
-    expect(firestore.calls[0]).toBe("lock");
+    // Nothing that Firestore could hold on this device and send later.
+    expect(firestore.setDoc).not.toHaveBeenCalled();
     expect(store.load()).toEqual([]);
+    // One attempt per try: a retried commit is decided here, after reading the server again.
+    expect(firestore.transactions).toEqual([{ maxAttempts: 1 }]);
+    // Under the account's lock, like any other write.
+    expect(firestore.calls[0]).toBe("lock");
+    expect(firestore.calls.indexOf(`transaction set ${COPY_PATH}`)).toBeLessThan(
+      firestore.calls.indexOf("unlock"),
+    );
   });
 
   it("leaves a routine the server already holds as it is: received before, maybe edited since", async () => {
     firestore.onServer.add(COPY_PATH);
     const { library } = setup();
     await expect(library.receive(received)).resolves.toBeUndefined();
+    expect(firestore.transactionWrites).toEqual([]);
     expect(firestore.setDoc).not.toHaveBeenCalled();
   });
 
-  it("writes nothing for a routine another tab is still storing, and does not confirm it yet", async () => {
+  it("reads only the server: a write held on this device alone does not count as stored", async () => {
     firestore.cached.add(COPY_PATH);
     firestore.pendingHere.add(COPY_PATH);
     const { library } = setup();
-    await expect(library.receive(received)).rejects.toMatchObject({ code: "not-confirmed" });
-    expect(firestore.setDoc).not.toHaveBeenCalled();
+    await expect(library.receive(received)).resolves.toBeUndefined();
+    expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
   });
 
-  it("does not confirm a routine the server answered for but does not hold", async () => {
-    // Another tab's write, already in this device's cache, was then dropped.
-    firestore.cached.add(COPY_PATH);
-    const { library } = setup();
-    await expect(library.receive(received)).rejects.toMatchObject({ code: "not-confirmed" });
-    expect(firestore.setDoc).not.toHaveBeenCalled();
-  });
-
-  it("passes the server's refusal on", async () => {
-    firestore.setDoc.mockImplementation(() => Promise.reject(denied()));
+  it("passes the server's refusal on, having written nothing", async () => {
+    firestore.commitFailure = "permission-denied";
     const { library } = setup();
     await expect(library.receive(received)).rejects.toMatchObject({ code: "permission-denied" });
+    expect(firestore.onServer.has(COPY_PATH)).toBe(false);
+    expect(firestore.setDoc).not.toHaveBeenCalled();
   });
 
   /** A wait the test ends, recording how long the library asked to wait. */
@@ -426,7 +474,7 @@ describe("receive (T26, S12)", () => {
     return { waits, wait };
   }
 
-  it("writes nothing while the server cannot be asked, and stores it once it can (L64 A2)", async () => {
+  it("writes nothing while the server cannot be reached, never settling, and stores it once it can (W2)", async () => {
     firestore.serverReachable = false;
     const { waits, wait } = manualWait();
     const { library, store } = setup({ wait });
@@ -437,6 +485,7 @@ describe("receive (T26, S12)", () => {
     await settle();
     waits[0]!.end();
     await settle();
+    expect(firestore.transactionWrites).toEqual([]);
     expect(firestore.setDoc).not.toHaveBeenCalled();
     expect(store.load()).toEqual([]);
     expect(settled).toBe(false);
@@ -447,10 +496,7 @@ describe("receive (T26, S12)", () => {
     waits[1]!.end();
     await settle();
     await settle();
-    expect(firestore.setDoc).toHaveBeenCalledWith(
-      { path: COPY_PATH },
-      toStoredRoutine(receivedDraft),
-    );
+    expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
     expect(settled).toBe(true);
   });
 
@@ -461,25 +507,38 @@ describe("receive (T26, S12)", () => {
     const { library } = setup({ wait });
     const receiving = library.receive(received);
     await settle();
-    expect(firestore.setDoc).not.toHaveBeenCalled();
+    expect(firestore.transactionWrites).toEqual([]);
     firestore.serverReachable = true;
     waits[0]!.end();
     await expect(receiving).resolves.toBeUndefined();
-    expect(firestore.setDoc).not.toHaveBeenCalled();
+    expect(firestore.transactionWrites).toEqual([]);
   });
 
-  it("writes nothing, and passes it on, when the server refuses to say", async () => {
+  it("settles once a commit whose answer was lost is found on the server, writing it once (W2)", async () => {
+    firestore.loseNextAnswer = true;
+    const { waits, wait } = manualWait();
+    const { library } = setup({ wait });
+    const receiving = library.receive(received);
+    await settle();
+    waits[0]!.end();
+    await expect(receiving).resolves.toBeUndefined();
+    expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
+    expect(firestore.transactions).toHaveLength(2);
+  });
+
+  it("writes nothing, and passes it on, when the server refuses to answer", async () => {
     firestore.serverReachable = false;
     firestore.serverError = "permission-denied";
     const { library } = setup();
     await expect(library.receive(received)).rejects.toMatchObject({ code: "permission-denied" });
-    expect(firestore.setDoc).not.toHaveBeenCalled();
+    expect(firestore.transactionWrites).toEqual([]);
   });
 
   it("writes nothing when the lock refuses, and passes the refusal on", async () => {
     const refusal = new Error("signed out in another tab");
     const { library, store } = setup({ guard: () => Promise.reject(refusal) });
     await expect(library.receive(received)).rejects.toBe(refusal);
+    expect(firestore.transactions).toEqual([]);
     expect(firestore.setDoc).not.toHaveBeenCalled();
     expect(store.load()).toEqual([]);
   });

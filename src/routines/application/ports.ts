@@ -19,15 +19,26 @@ export interface RoutineLibrary {
   remove(id: string): Promise<void>;
 }
 
+/**
+ * Which received routines the user has seen in the routine list (T27, S7), on this device only;
+ * erased with the account's other data on this device.
+ */
+export interface SeenRoutines {
+  /** The ids seen, or none when nothing usable is kept. */
+  load(): string[];
+  /** Replaces the ids kept. */
+  save(ids: readonly string[]): void;
+  erase(): void;
+}
+
 /** Keeps the routines received from contacts (T26, S12) among the user's own. */
 export interface ReceivedRoutines {
   /**
-   * Stores `routine` under its id, through the outbox like any save, unless a routine with that
-   * id is already stored (received before, and maybe edited since), which is left as it is. It is
-   * written only after the server itself says no such routine exists; while the server cannot be
-   * asked, nothing is written.
-   * Resolves only once the server holds that routine with no change of this device waiting;
-   * rejects when it was refused, or when that cannot be confirmed (code `not-confirmed`).
+   * Stores `routine` under its id unless a routine with that id is already stored (received
+   * before, and maybe edited since), which is left as it is. Only the server decides, in one
+   * write that creates it only if absent and is never held on this device to be sent later
+   * (T29 W2): while the server cannot be reached, nothing is written.
+   * Resolves only once the server holds that routine; rejects when it was refused.
    * Never settles offline.
    */
   receive(routine: Routine): Promise<void>;

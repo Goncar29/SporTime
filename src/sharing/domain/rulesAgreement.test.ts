@@ -103,6 +103,16 @@ describe("what the inbox rules accept, the app accepts", () => {
       "https://localhost.example.com",
       "https://router.local.example.com:8443/x",
       "https://192.168.0.1.nip.io/",
+      // Every port a browser opens (T29 W5).
+      "https://x.com:0",
+      "https://x.com:443/a",
+      "https://x.com:00080",
+      "https://x.com:9999",
+      "https://x.com:59999",
+      "https://x.com:64999",
+      "https://x.com:65499",
+      "https://x.com:65529",
+      "https://x.com:65535",
     ]) {
       accepts(withLines(lineWithLink(link)), link);
       accepts(withLines(`a\t\t\t\t\thttps://x.com\n${lineWithLink(link)}`), link);
@@ -380,6 +390,9 @@ describe("what the inbox rules refuse, the app refuses", () => {
       "https://www.",
       "https://x.com:abc",
       "https://x.com:123456",
+      "https://x.com:65536",
+      "https://x.com:70000",
+      "https://x.com:99999",
       "https://x_y.com",
     ]) {
       refuses(withLines(lineWithLink(link)), link);

@@ -5,7 +5,16 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { Timestamp, doc, getDoc, setDoc, type Firestore } from "firebase/firestore";
+import {
+  Timestamp,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  type Firestore,
+} from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { ROUTINE_LIMITS, toStoredRoutine, type RoutineDraft } from "../src/routines/domain/routine";
 import {
@@ -14,6 +23,7 @@ import {
   type SenderClaims,
   type SharedCopy,
 } from "../src/sharing/domain/sharedCopy";
+import { createRoutineSharing } from "../src/sharing/application/shareRoutine";
 import { createFirestoreInbox } from "../src/sharing/infrastructure/firestoreInbox";
 
 /**
@@ -109,6 +119,8 @@ beforeEach(async () => {
     photo: "",
     email: "bob@example.com",
   });
+  // Bob lets people find him by email, so copies may reach him (T29 W1).
+  await seed("directory/bob@example.com", { uid: "bob", name: "Bob" });
 });
 
 afterAll(async () => {
@@ -217,6 +229,71 @@ describe("a copy written by the app's adapter (T25, S12)", () => {
     const copy = build(piernas, aliceToken);
     await assertFails(send(copy, aliceToken, "carol", "carol1"));
     expect(await stored(inboxPath("carol", "carol1"))).toBeUndefined();
+  });
+
+  it("is accepted from a sign-in whose email has a slash, a space or a quoted @ (T29 W4)", async () => {
+    for (const email of ["a/b@example.com", '"al ice"@example.com', '"a@b"@example.com']) {
+      const token = tokenOf({ email });
+      const copy = build(piernas, token);
+      expect(copy.fromEmail).toBe(email);
+      const id = `w4-${++nextId}`;
+      await assertSucceeds(send(copy, token, "bob", id));
+      await expectStored(id, copy);
+    }
+  });
+});
+
+describe("a recipient who can no longer be found by email (T29 W1)", () => {
+  /** Alice shares with Bob through the app's sharing, as the share screen does. */
+  async function shareWithBob() {
+    const sharing = createRoutineSharing({
+      identity: { claims: () => Promise.resolve(claimsOf(aliceToken)) },
+      inbox: createFirestoreInbox(asAlice(aliceToken)),
+      online: () => true,
+    });
+    const prepared = await sharing.prepare(piernas, [
+      { uid: "bob", name: "Bob", photo: "", email: "bob@example.com" },
+    ]);
+    if (prepared.kind !== "ready") throw new Error(prepared.kind);
+    return prepared.share.send();
+  }
+
+  async function bobsInbox() {
+    let size = 0;
+    await env.withSecurityRulesDisabled(async (context) => {
+      const inbox = collection(context.firestore() as unknown as Firestore, "users/bob/inbox");
+      size = (await getDocs(inbox)).size;
+    });
+    return size;
+  }
+
+  async function unlistBob() {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await deleteDoc(
+        doc(context.firestore() as unknown as Firestore, "directory/bob@example.com"),
+      );
+    });
+  }
+
+  it("is told only that it was refused, and nothing is stored, once the switch is off or the account gone", async () => {
+    await unlistBob();
+    const [delivery] = await shareWithBob();
+    expect(delivery).toMatchObject({ outcome: "refused" });
+    expect(delivery?.failure).toBeUndefined();
+    expect(await bobsInbox()).toBe(0);
+  });
+
+  it("is refused when another account now holds that email's entry", async () => {
+    await seed("directory/bob@example.com", { uid: "mallory", name: "Mallory" });
+    const [delivery] = await shareWithBob();
+    expect(delivery?.outcome).toBe("refused");
+    expect(await bobsInbox()).toBe(0);
+  });
+
+  it("is sent while the recipient can be found by email", async () => {
+    const [delivery] = await shareWithBob();
+    expect(delivery?.outcome).toBe("sent");
+    expect(await bobsInbox()).toBe(1);
   });
 });
 

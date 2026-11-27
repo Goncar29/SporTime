@@ -14,12 +14,20 @@ import { useContactSaveFailures } from "../contacts/ui/useContactSaveFailures";
 import type { DirectoryListing } from "../directory/application/ports";
 import { FindByEmailSwitch } from "../directory/ui/FindByEmailSwitch";
 import { useI18n } from "../i18n/ui/I18nProvider";
-import type { RoutineLibrary } from "../routines/application/ports";
+import type { RoutineLibrary, SeenRoutines } from "../routines/application/ports";
 import type { Routine } from "../routines/domain/routine";
 import { RoutineEditor } from "../routines/ui/RoutineEditor";
 import { RoutineView } from "../routines/ui/RoutineView";
 import { RoutinesScreen } from "../routines/ui/RoutinesScreen";
-import type { InboxReceiving, RoutineSharing } from "../sharing/application/ports";
+import { useNewRoutines } from "../routines/ui/useNewRoutines";
+import type {
+  BlockedSenders,
+  InboxReceiving,
+  RoutineSharing,
+  UnopenedCopy,
+} from "../sharing/application/ports";
+import { blockedSenderOf, isBlocked, type BlockedSender } from "../sharing/domain/blockedSender";
+import { BlockedScreen } from "../sharing/ui/BlockedScreen";
 import { ShareRoutineScreen } from "../sharing/ui/ShareRoutineScreen";
 import type { SubscribeToList } from "../shared/application/liveList";
 import type { StoreFailureKind } from "../shared/domain/storeFailure";
@@ -92,6 +100,15 @@ interface AppProps {
    * nothing is received.
    */
   receiving?: InboxReceiving;
+  /**
+   * Which received routines were seen on this device (T27); without it, none is marked new.
+   */
+  seenRoutines?: SeenRoutines;
+  /**
+   * Who the user blocked from sending them routines (T27); without it, nobody can be blocked and
+   * Contacts offers no blocked list.
+   */
+  blocked?: BlockedSenders;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -108,14 +125,15 @@ interface AppProps {
 }
 
 /**
- * Settings, Privacy, Contacts and Routines, with its view and editor, open from Profile, so its
- * tab stays marked while they are shown.
+ * Settings, Privacy, Contacts, with the blocked list, and Routines, with its view and editor, open
+ * from Profile, so its tab stays marked while they are shown.
  */
 type Screen =
   | Tab
   | "settings"
   | "privacy"
   | "contacts"
+  | "blocked"
   | "routines"
   | "routineView"
   | "routineEditor"
@@ -125,6 +143,7 @@ const tabOf = (screen: Screen): Tab =>
   screen === "settings" ||
   screen === "privacy" ||
   screen === "contacts" ||
+  screen === "blocked" ||
   screen === "routines" ||
   screen === "routineView" ||
   screen === "routineEditor" ||
@@ -136,6 +155,16 @@ const tabOf = (screen: Screen): Tab =>
 const noRoutines: SubscribeToList<Routine> = () => () => undefined;
 /** Stands in for a missing contact list the same way. */
 const noContacts: SubscribeToList<Contact> = () => () => undefined;
+/** Stands in for a missing blocked list the same way. */
+const noBlocked: SubscribeToList<BlockedSender> = () => () => undefined;
+
+/** The screens of the Routines section, where routines marked new stay marked (T27). */
+const ROUTINE_SCREENS: readonly Screen[] = [
+  "routines",
+  "routineView",
+  "routineEditor",
+  "routineShare",
+];
 
 export function App({
   timer,
@@ -146,6 +175,8 @@ export function App({
   contactStore,
   sharing,
   receiving,
+  seenRoutines,
+  blocked: blockedSenders,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -169,6 +200,19 @@ export function App({
   const contactCount =
     liveContacts.failed || liveContacts.items === null ? null : liveContacts.items.length;
   const contactSaveFailures = useContactSaveFailures();
+  // Read here, so a received routine's view knows whether its sender is blocked.
+  const liveBlocked = useLiveList(
+    blockedSenders?.subscribe ?? noBlocked,
+    "Loading blocked senders",
+  );
+  /** The sender whose block was refused, shown only on their routines (a refusal may come late). */
+  const [blockFailedFor, setBlockFailedFor] = useState<string | null>(null);
+  const [unblockFailed, setUnblockFailed] = useState(false);
+  // Received routines not seen yet are counted on Profile and marked in the list (T27, S7).
+  const newRoutines = useNewRoutines(seenRoutines, routineList.failed ? null : routineList.items, {
+    listShown: screen === "routines",
+    inSection: ROUTINE_SCREENS.includes(screen),
+  });
   // Refusals shown on Contacts are let go once it is left; one arriving later waits for it.
   const shownScreen = useRef<Screen>(screen);
   const { clear: clearContactSaveFailures } = contactSaveFailures;
@@ -239,8 +283,17 @@ export function App({
   useHoldUpdates(active !== null || blocked);
   // Received routines are saved by themselves (S7), but not while the account's session is ending:
   // a routine written then could be erased with it or outlive a deleted account. A copy not yet
-  // received stays in the inbox until the next start.
-  useEffect(() => (receiving && !blocked ? receiving.start() : undefined), [receiving, blocked]);
+  // received stays in the inbox until the next start. One that cannot be opened is shown in
+  // Routines by its sender, to delete it or block them (T29 W5).
+  const [unopened, setUnopened] = useState<readonly UnopenedCopy[]>([]);
+  useEffect(() => {
+    if (!receiving || blocked) return undefined;
+    const stop = receiving.start(setUnopened);
+    return () => {
+      stop();
+      setUnopened([]);
+    };
+  }, [receiving, blocked]);
 
   /** Returns the handler for one operation, so the developer's log names what failed. */
   const reportWorkoutFailure = (operation: string) => (error: unknown) => {
@@ -416,6 +469,24 @@ export function App({
     setScreen(viewedRoutineId === null ? "routines" : "routineView");
   };
 
+  const blockSender = (sender: BlockedSender) => {
+    setBlockFailedFor(null);
+    // Not awaited: the server never answers offline, and the block already counts here.
+    blockedSenders?.block(blockedSenderOf(sender)).catch((error: unknown) => {
+      reportStoreFailure("Blocking a sender", error);
+      setBlockFailedFor(sender.uid);
+    });
+  };
+
+  const unblockSender = ({ uid }: BlockedSender) => {
+    setUnblockFailed(false);
+    // Not awaited, as above.
+    blockedSenders?.unblock(uid).catch((error: unknown) => {
+      reportStoreFailure("Unblocking a sender", error);
+      setUnblockFailed(true);
+    });
+  };
+
   const removeRoutine = ({ id }: Routine) => {
     setRoutineFailure(null);
     // Not awaited: the server never answers offline, and the write is already queued.
@@ -460,6 +531,7 @@ export function App({
                 setScreen("routines");
               })
             }
+            newRoutineCount={newRoutines.count}
             onOpenContacts={
               contactStore &&
               (() => {
@@ -484,7 +556,29 @@ export function App({
                   <FindByEmailSwitch listing={directory} note={t.findByEmailContactsHint} />
                 )
               }
+              onOpenBlocked={
+                blockedSenders &&
+                (() => {
+                  // The listener stops for good after an error, so opening the list reads again.
+                  if (liveBlocked.failed) liveBlocked.retry();
+                  setUnblockFailed(false);
+                  setScreen("blocked");
+                })
+              }
               onBack={openProfile}
+            />
+          )
+        );
+      case "blocked":
+        return (
+          blockedSenders && (
+            <BlockedScreen
+              liveBlocked={liveBlocked}
+              errors={unblockFailed ? [t.unblockFailed] : []}
+              onUnblock={unblockSender}
+              onBack={() => {
+                setScreen("contacts");
+              }}
             />
           )
         );
@@ -493,7 +587,27 @@ export function App({
           routines && (
             <RoutinesScreen
               routines={routineList.failed ? (routineList.items ?? []) : routineList.items}
-              errors={routineErrors}
+              errors={
+                blockFailedFor !== null &&
+                unopened.some(({ sender }) => sender.uid === blockFailedFor)
+                  ? [...routineErrors, t.blockFailed]
+                  : routineErrors
+              }
+              newIds={newRoutines.marked}
+              unopened={unopened}
+              onDeleteUnopened={
+                receiving &&
+                ((copyId) => {
+                  setRoutineFailure(null);
+                  // Not awaited: the server never answers offline; it is no longer shown meanwhile.
+                  receiving
+                    .discard(copyId)
+                    .catch(
+                      reportRoutineFailure("delete", "Deleting a routine that cannot be opened"),
+                    );
+                })
+              }
+              onBlock={blockedSenders && blockSender}
               onBack={openProfile}
               onNew={() => {
                 setViewedRoutineId(null);
@@ -518,8 +632,16 @@ export function App({
             <RoutineView
               key={viewedRoutine.id}
               routine={viewedRoutine}
-              errors={routineErrors}
-              onBack={openRoutineList}
+              errors={
+                blockFailedFor !== null && viewedRoutine.receivedFrom?.uid === blockFailedFor
+                  ? [...routineErrors, t.blockFailed]
+                  : routineErrors
+              }
+              onBack={() => {
+                // Seen here, so leaving dismisses it; one for another sender waits for theirs.
+                if (viewedRoutine.receivedFrom?.uid === blockFailedFor) setBlockFailedFor(null);
+                openRoutineList();
+              }}
               onEdit={openRoutineEditor}
               onRemove={(routine) => {
                 removeRoutine(routine);
@@ -534,6 +656,11 @@ export function App({
                   setSharedRoutine(routine);
                   setScreen("routineShare");
                 })
+              }
+              onBlock={blockedSenders && blockSender}
+              senderBlocked={
+                viewedRoutine.receivedFrom !== undefined &&
+                isBlocked(liveBlocked.items, viewedRoutine.receivedFrom.uid)
               }
             />
           )

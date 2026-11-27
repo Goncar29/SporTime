@@ -254,4 +254,43 @@ export interface Messages {
   /** What became of one recipient's copy; `failed` is followed by its reason when known. */
   shareOutcomes: Record<DeliveryOutcome, string>;
   shareDone: string;
+  /** The mark on a received routine not seen before in the list (T27, S7). */
+  newRoutineMark: string;
+  /** The accessible name of a new routine in the list; `name` arrives isolated. */
+  openNewRoutine(name: string): string;
+  /** The Profile menu item with how many received routines are new, such as "Routines · 2 new". */
+  routinesMenuItem(newCount: number): string;
+  /** Its accessible name, starting with `routines`, with the count in words. */
+  routinesMenuLabel(newCount: number): string;
+  /**
+   * Blocking the sender of a received routine (T27, S7). `name` and `email` arrive isolated;
+   * `name` is null when the sender has none, and then only the email is said.
+   */
+  blockSender(name: string | null, email: string): string;
+  confirmBlockSender(name: string | null, email: string): string;
+  /** What blocking does: no more routines from them, and the received ones stay. */
+  blockSenderNote: string;
+  blockAction: string;
+  /** Said on a received routine whose sender is blocked; arguments as for `blockSender`. */
+  senderBlocked(name: string | null, email: string): string;
+  blockFailed: string;
+  /** The blocked list, reached from Contacts. */
+  blocked: string;
+  noBlocked: string;
+  unblock: string;
+  /** The accessible name of Unblock for one person; `name` arrives isolated. */
+  unblockSender(name: string): string;
+  unblockFailed: string;
+  loadBlockedFailed: string;
+  /** The list of copies a contact sent that could not be opened (T29 W5), in Routines. */
+  unopenedRoutines: string;
+  /**
+   * One such copy, by its sender; arguments as for `blockSender` (isolated, `name` null when the
+   * sender has none).
+   */
+  unopenedRoutine(name: string | null, email: string): string;
+  /** The accessible name of its Delete button; arguments as for `unopenedRoutine`. */
+  deleteUnopenedRoutine(name: string | null, email: string): string;
+  /** The visible text of the button that blocks its sender. */
+  blockSenderAction: string;
 }

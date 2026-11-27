@@ -7,6 +7,11 @@ interface Dependencies {
   outboxes: HeldWrites[];
   /** Drops writes not yet handed to Firestore. Only the account's outbox keys. */
   discardPendingWrites: () => void;
+  /**
+   * Erases what else this device keeps of the account, such as which received routines were seen
+   * (T27); none where nothing else is kept.
+   */
+  eraseOnDevice?: () => void;
   /** Settles once the server confirmed every write Firestore holds. */
   serverHasWrites: () => Promise<void>;
   /** Stops Firestore and erases its cache on this device. */
@@ -62,6 +67,7 @@ function withTimeout(work: Promise<SendResult>): Promise<SendResult> {
 export function createLocalAccountData({
   outboxes,
   discardPendingWrites,
+  eraseOnDevice,
   serverHasWrites,
   clearCache,
   forget,
@@ -77,6 +83,7 @@ export function createLocalAccountData({
     keepOnNextStart: () => clearOnNextStart?.unmark(),
     async erase() {
       discardPendingWrites();
+      eraseOnDevice?.();
       try {
         await clearCache();
       } finally {

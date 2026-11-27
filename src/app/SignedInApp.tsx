@@ -8,8 +8,8 @@ import { useAuth } from "../auth/ui/AuthGate";
 import type { ContactStore } from "../contacts/application/ports";
 import type { DirectoryListing } from "../directory/application/ports";
 import type { HistoryLog } from "../history/application/ports";
-import type { RoutineLibrary } from "../routines/application/ports";
-import type { InboxReceiving, RoutineSharing } from "../sharing/application/ports";
+import type { RoutineLibrary, SeenRoutines } from "../routines/application/ports";
+import type { BlockedSenders, InboxReceiving, RoutineSharing } from "../sharing/application/ports";
 import type { WorkoutLibrary } from "../workouts/application/ports";
 import { App, type TimerDependencies } from "./App";
 
@@ -34,6 +34,16 @@ export interface UserStores {
    * not offered.
    */
   receiving?: InboxReceiving;
+  /**
+   * Which received routines were seen on this device, erased with it on sign-out; none where
+   * nothing is marked new.
+   */
+  seenRoutines?: SeenRoutines;
+  /**
+   * Who the user blocked from sending them routines; erased with the account, and from this
+   * device on sign-out. None where blocking is not offered.
+   */
+  blocked?: BlockedSenders;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   /** Sends what is pending, then signs out and erases this device's copy of the account. */
@@ -95,6 +105,8 @@ export function SignedInApp({ timer, storesFor, account, reload = reloadPage }: 
       contactStore={stores.contacts}
       sharing={sharing}
       receiving={stores.receiving}
+      seenRoutines={stores.seenRoutines}
+      blocked={stores.blocked}
       deleteAccount={deleteAccount}
       deletionConfirmedByRedirect={stores.deletionConfirmedByRedirect}
     />

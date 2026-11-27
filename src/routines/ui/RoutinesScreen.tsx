@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { isolate } from "../../i18n/messages/isolate";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
-import type { Routine } from "../domain/routine";
+import { senderName, type Routine, type Sender } from "../domain/routine";
 import { ReceivedFrom } from "./ReceivedFrom";
 import styles from "./RoutinesScreen.module.css";
 
@@ -10,6 +10,16 @@ interface RoutinesScreenProps {
   /** Newest first; null until the first answer arrives. */
   routines: readonly Routine[] | null;
   errors: readonly string[];
+  /** Received routines to mark New (T27); none by default. */
+  newIds?: ReadonlySet<string>;
+  /**
+   * Copies a contact sent that could not be opened (T29 W5), each named by its sender, to delete
+   * or to block the sender; none by default.
+   */
+  unopened?: readonly { id: string; sender: Sender }[];
+  onDeleteUnopened?: (copyId: string) => void;
+  /** Blocks a sender, after confirming; without it, no Block sender is offered. */
+  onBlock?: (sender: Sender) => void;
   onBack: () => void;
   onNew: () => void;
   onOpen: (routine: Routine) => void;
@@ -20,11 +30,16 @@ interface RoutinesScreenProps {
 /**
  * The Routines section of Profile: every routine, to open, edit or delete, and a way to add one.
  * A routine's name may have been written by a contact who sent it, so it is always isolated:
- * `<bdi>` where it is shown, U+2068/U+2069 in accessible names and the dialog title.
+ * `<bdi>` where it is shown, U+2068/U+2069 in accessible names and the dialog title. A received
+ * routine not seen before is marked New, which its accessible name says too.
  */
 export function RoutinesScreen({
   routines,
   errors,
+  newIds,
+  unopened = [],
+  onDeleteUnopened,
+  onBlock,
   onBack,
   onNew,
   onOpen,
@@ -33,7 +48,13 @@ export function RoutinesScreen({
 }: RoutinesScreenProps) {
   const { t } = useI18n();
   const [pending, setPending] = useState<Routine | null>(null);
+  const [blocking, setBlocking] = useState<Sender | null>(null);
   const senderIds = useId();
+  /** A sender's own name (null when it shows nothing) and verified email, isolated: they wrote it. */
+  const wordsFor = (sender: Sender) => {
+    const name = senderName(sender);
+    return [name === null ? null : isolate(name), isolate(sender.email)] as const;
+  };
 
   return (
     <main className={styles.page}>
@@ -50,6 +71,44 @@ export function RoutinesScreen({
         </p>
       ))}
 
+      {unopened.length > 0 && (
+        <ul className={styles.unopened} aria-label={t.unopenedRoutines}>
+          {unopened.map(({ id, sender }) => (
+            <li key={id} className={styles.notice}>
+              <p className={styles.noticeText}>
+                <bdi>{t.unopenedRoutine(...wordsFor(sender))}</bdi>
+              </p>
+              <div className={styles.noticeActions}>
+                {onDeleteUnopened && (
+                  <button
+                    type="button"
+                    className={styles.noticeAction}
+                    aria-label={t.deleteUnopenedRoutine(...wordsFor(sender))}
+                    onClick={() => {
+                      onDeleteUnopened(id);
+                    }}
+                  >
+                    {t.confirmDelete}
+                  </button>
+                )}
+                {onBlock && (
+                  <button
+                    type="button"
+                    className={styles.noticeAction}
+                    aria-label={t.blockSender(...wordsFor(sender))}
+                    onClick={() => {
+                      setBlocking(sender);
+                    }}
+                  >
+                    {t.blockSenderAction}
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <button type="button" className={styles.primary} onClick={onNew}>
         {t.newRoutine}
       </button>
@@ -63,13 +122,22 @@ export function RoutinesScreen({
               <button
                 type="button"
                 className={styles.summary}
-                aria-label={t.openRoutine(isolate(routine.name))}
+                aria-label={
+                  newIds?.has(routine.id)
+                    ? t.openNewRoutine(isolate(routine.name))
+                    : t.openRoutine(isolate(routine.name))
+                }
                 aria-describedby={routine.receivedFrom ? `${senderIds}-${routine.id}` : undefined}
                 onClick={() => {
                   onOpen(routine);
                 }}
               >
                 <span className={styles.text}>
+                  {newIds?.has(routine.id) && (
+                    <span className={styles.new} aria-hidden="true">
+                      {t.newRoutineMark}
+                    </span>
+                  )}
                   <bdi className={styles.name}>{routine.name}</bdi>
                   {routine.receivedFrom && (
                     <ReceivedFrom
@@ -126,6 +194,21 @@ export function RoutinesScreen({
           }}
           onCancel={() => {
             setPending(null);
+          }}
+        />
+      )}
+
+      {blocking && onBlock && (
+        <ConfirmDialog
+          title={t.confirmBlockSender(...wordsFor(blocking))}
+          message={t.blockSenderNote}
+          confirmLabel={t.blockAction}
+          onConfirm={() => {
+            setBlocking(null);
+            onBlock(blocking);
+          }}
+          onCancel={() => {
+            setBlocking(null);
           }}
         />
       )}

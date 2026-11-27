@@ -165,6 +165,9 @@ describe("links in a copy (T25, S12, S9)", () => {
       "https://in-addr.arpa",
       "https://x.ARPA",
       "https://example.com:123456",
+      // A port above 65535, which no browser opens (T29 W5).
+      "https://example.com:65536",
+      "https://example.com:99999",
       "https://example.com:70000",
       "https://x.com:abc",
       "https://192.168.0.1",
@@ -359,6 +362,16 @@ describe("the sender's identity (T25, L56 A3)", () => {
     ]);
     expect(problemsOf(piernas, { ...alice, email: undefined })).toEqual([{ kind: "senderEmail" }]);
     expect(problemsOf(piernas, { ...alice, email: "" })).toEqual([{ kind: "senderEmail" }]);
+  });
+
+  it("sends from any email a verified sign-in may hold, and refuses one the recipient could not keep (T29 W4)", () => {
+    for (const email of ["a/b@example.com", '"al ice"@example.com', '"a@b"@example.com']) {
+      expect(copyOf(piernas, { ...alice, email }).fromEmail).toBe(email);
+    }
+    // Longer than a recipient keeps, or with a control character: refused before sending.
+    for (const email of [`${"e".repeat(ROUTINE_LIMITS.senderEmailLength)}@x.co`, "a\u0007@b.co"]) {
+      expect(problemsOf(piernas, { ...alice, email }), email).toEqual([{ kind: "senderEmail" }]);
+    }
   });
 
   it("names the sender's problems before the routine's", () => {

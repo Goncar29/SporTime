@@ -181,5 +181,25 @@ describe("createLocalAccountData", () => {
       expect(deps.forget).toHaveBeenCalledOnce();
       expect(outboxKeys()).toEqual([null, null]);
     });
+
+    it("erases what else the device keeps of the account, such as seen routines (T27)", async () => {
+      const { deps } = setup();
+      localStorage.setItem("sportime.seenRoutines.u1", JSON.stringify(["r1"]));
+      const data = createLocalAccountData({
+        ...deps,
+        eraseOnDevice: () => {
+          localStorage.removeItem("sportime.seenRoutines.u1");
+        },
+      });
+      data.discardPending();
+      // Dropping unsent changes keeps it: only erasing does.
+      expect(localStorage.getItem("sportime.seenRoutines.u1")).not.toBeNull();
+      await data.erase();
+      expect(localStorage.getItem("sportime.seenRoutines.u1")).toBeNull();
+      expect(outboxKeys()).toEqual([null, null]);
+      Object.entries(DEVICE_SETTINGS).forEach(([key, value]) => {
+        expect(localStorage.getItem(key)).toBe(value);
+      });
+    });
   });
 });

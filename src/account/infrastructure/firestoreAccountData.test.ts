@@ -207,6 +207,38 @@ describe("createFirestoreAccountData", () => {
     expect(server.get("users/u1/routines")).toEqual(["r1"]);
   });
 
+  it("erases the blocked list (T27), before the inbox, and no other account's", async () => {
+    for (const name of ["workouts", "history", "routines", "contacts", "blocked", "inbox"]) {
+      server.set(`users/u1/${name}`, [name]);
+    }
+    server.set("users/u2/blocked", ["u1"]);
+
+    await accountData(null).erase();
+
+    expect(server.get("users/u1/blocked")).toEqual([]);
+    expect(server.get("users/u2/blocked")).toEqual(["u1"]);
+    expect(directory.calls.filter((call) => call.startsWith("batch")).slice(-2)).toEqual([
+      "batch users/u1/blocked",
+      "batch users/u1/inbox",
+    ]);
+  });
+
+  it("erases what this device keeps of the account, such as seen routines (T27)", async () => {
+    localStorage.setItem("sportime.seenRoutines.u1", JSON.stringify(["r1"]));
+    localStorage.setItem("sportime.seenRoutines.u2", JSON.stringify(["r2"]));
+    await createFirestoreAccountData({
+      db: {} as never,
+      userId: "u1",
+      email: () => null,
+      discardPendingWrites: () => undefined,
+      eraseOnDevice: () => {
+        localStorage.removeItem("sportime.seenRoutines.u1");
+      },
+    }).erase();
+    expect(localStorage.getItem("sportime.seenRoutines.u1")).toBeNull();
+    expect(localStorage.getItem("sportime.seenRoutines.u2")).not.toBeNull();
+  });
+
   it("erases the rest for an account without an email", async () => {
     server.set("users/u1/workouts", ["w1"]);
 

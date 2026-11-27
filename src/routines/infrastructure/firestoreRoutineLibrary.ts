@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   writeBatch,
@@ -43,6 +44,18 @@ const LAST_RETRY_MS = 30_000;
 
 const runAtOnce = <T>(write: () => Promise<T>) => write();
 
+/**
+ * Why a received routine's transaction is tried again: the server could not be reached or its
+ * answer was lost, or another write changed the routine between the read and the commit.
+ */
+const TRIED_AGAIN = new Set([
+  "unavailable",
+  "deadline-exceeded",
+  "aborted",
+  "failed-precondition",
+  "already-exists",
+]);
+
 /** The server's answer, kept apart so the guard does not wait for it. */
 function answerLater(answer: Promise<void>): { answer: Promise<void> } {
   // Read after the guard ends; until then a refusal must not count as unhandled.
@@ -67,44 +80,6 @@ async function explainRefusal(ref: DocumentReference, error: unknown): Promise<u
     cause: error,
   });
 }
-
-/**
- * Whether the server holds the routine, or null when it cannot be asked (offline). The answer
- * includes this device's changes still on their way; `confirmed` counts only a routine with none.
- */
-async function onServer(ref: DocumentReference, confirmed: boolean): Promise<boolean | null> {
-  try {
-    const snapshot = await getDocFromServer(ref);
-    return snapshot.exists() && (!confirmed || !snapshot.metadata.hasPendingWrites);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Whether the server holds the routine, counting this device's changes on their way. Only the
- * server's own answer counts (L64 A2): this device's cache may lack a routine received and edited
- * elsewhere. While the server cannot be reached it asks again later, so it never settles offline;
- * any other failure, such as a refusal after signing out, is passed on.
- */
-async function serverHolds(
-  ref: DocumentReference,
-  wait: (ms: number) => Promise<void>,
-): Promise<boolean> {
-  for (let delay = FIRST_RETRY_MS; ; delay = Math.min(delay * 2, LAST_RETRY_MS)) {
-    try {
-      return (await getDocFromServer(ref)).exists();
-    } catch (error) {
-      if (storeFailureCode(error) !== "unavailable") throw error;
-    }
-    await wait(delay);
-  }
-}
-
-const notConfirmed = () =>
-  Object.assign(new Error("The server does not hold the received routine yet"), {
-    code: "not-confirmed",
-  });
 
 export function createFirestoreRoutineLibrary(
   db: Firestore,
@@ -185,21 +160,37 @@ export function createFirestoreRoutineLibrary(
     },
     async receive({ id, ...draft }) {
       const ref = doc(routines, id);
-      // Received before, maybe edited since, or being stored by another tab: never written again.
-      // Written only once the server itself says there is no such routine (L64 A2); until it can
-      // be asked nothing is written, so an edit made elsewhere is never overwritten.
-      if (!(await serverHolds(ref, wait))) {
-        const { answer } = await guard(async () => {
-          // Under the copy's id; one already held or cached here is not written twice.
-          const saved = answerLater(outbox.add(draft, id));
-          await outbox.flushNow();
-          return saved;
-        });
-        await answer;
+      const stored = toStoredRoutine(draft);
+      // One server transaction that reads the routine and creates it only if it is absent (T29
+      // W2). Unlike setDoc through the outbox, it is never held on this device to be sent later:
+      // it reaches the server now or fails, so a routine received before and edited elsewhere
+      // (L64 A2) can never be overwritten by a write replayed later, and offline nothing is
+      // written. If another device creates it between the read and the commit, the server refuses
+      // the commit and the next try finds it there. One attempt per try: each try is decided here,
+      // after reading the server again, also when a commit's answer was lost.
+      const createIfAbsent = () =>
+        runTransaction(
+          db,
+          async (transaction) => {
+            if ((await transaction.get(ref)).exists()) return;
+            transaction.set(ref, stored);
+          },
+          { maxAttempts: 1 },
+        );
+      // While the server cannot be reached, or another write got there first, it tries again
+      // later, so it never settles offline; any other failure, such as a refusal after signing
+      // out, is passed on.
+      for (let delay = FIRST_RETRY_MS; ; delay = Math.min(delay * 2, LAST_RETRY_MS)) {
+        try {
+          // Under the account's lock, like any change: a sign-out or deletion in another tab waits
+          // for it, or refuses it before it runs.
+          await guard(createIfAbsent);
+          return;
+        } catch (error) {
+          if (!TRIED_AGAIN.has(storeFailureCode(error) ?? "")) throw error;
+        }
+        await wait(delay);
       }
-      // The outbox settles at once for a routine already in this device's cache, which may not have
-      // reached the server yet, so the server itself must say it holds it.
-      if ((await onServer(ref, true)) !== true) throw notConfirmed();
     },
     async remove(id) {
       const ref = doc(routines, id);

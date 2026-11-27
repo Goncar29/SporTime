@@ -5,18 +5,23 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
+import { deleteApp, initializeApp } from "firebase/app";
 import {
   Timestamp,
+  connectFirestoreEmulator,
   deleteDoc,
   disableNetwork,
   doc,
   enableNetwork,
   getDoc,
+  getFirestore,
   setDoc,
+  terminate,
   updateDoc,
   type Firestore,
 } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { DIRECTORY_LIMITS } from "../src/directory/domain/directory";
 import {
   ROUTINE_LIMITS,
   parseRoutine,
@@ -33,6 +38,7 @@ import { receivedRoutine } from "../src/sharing/domain/receivedCopy";
 import { buildSharedCopy, type SharedCopy } from "../src/sharing/domain/sharedCopy";
 import { createFirestoreInbox } from "../src/sharing/infrastructure/firestoreInbox";
 import { createFirestoreInboxReader } from "../src/sharing/infrastructure/firestoreInboxReader";
+import { photoLookAlikes } from "./photoLookAlikes";
 
 /**
  * Receiving a shared routine (T26, S12): the sender field on one's own routines
@@ -59,6 +65,8 @@ const asAlice = () =>
 const asBob = () => env.authenticatedContext("bob", bobToken).firestore() as unknown as Firestore;
 
 const sender = { uid: "alice", name: "Alice Liddell", email: "Alice@Example.com" };
+/** The sender as a received routine keeps them, with the Google photo the copy came with (T29 W3). */
+const senderWithPhoto = { ...sender, photo: aliceToken.picture };
 
 async function seed(path: string, data: object) {
   await env.withSecurityRulesDisabled(async (context) => {
@@ -116,11 +124,17 @@ function fullRoutine(stages: number = L.stages): RoutineDraft {
   };
 }
 
-/** The longest sender the app keeps: a 128-character uid, a 100-character name and a 254-character email. */
+const PHOTO_BASE = "https://lh3.googleusercontent.com/";
+
+/**
+ * The longest sender the app keeps: a 128-character uid, a 100-character name, a 254-character
+ * email and a 500-character Google photo (T29 W3).
+ */
 const longestSender = {
   uid: "u".repeat(L.senderUidLength),
   name: "N".repeat(L.senderNameLength),
   email: `${"e".repeat(L.senderEmailLength - 11)}@example.co`,
+  photo: PHOTO_BASE + "p".repeat(DIRECTORY_LIMITS.photoLength - PHOTO_BASE.length),
 };
 
 beforeAll(async () => {
@@ -138,6 +152,8 @@ beforeEach(async () => {
     photo: "",
     email: "bob@example.com",
   });
+  // Bob lets people find him by email, so copies may reach him (T29 W1).
+  await seed("directory/bob@example.com", { uid: "bob", name: "Bob" });
 });
 
 afterAll(async () => {
@@ -178,6 +194,32 @@ describe("the sender of a received routine, on one's own routines (T26, S12)", (
     );
   });
 
+  it("is accepted with the sender's Google photo (T29 W3)", async () => {
+    await assertSucceeds(setDoc(freshRoutine(), { ...routine, receivedFrom: senderWithPhoto }));
+    await assertSucceeds(
+      setDoc(freshRoutine(), {
+        ...routine,
+        receivedFrom: { ...sender, photo: "https://googleusercontent.com/x" },
+      }),
+    );
+    const ref = freshRoutine();
+    await seed(ref.path, routine);
+    await assertSucceeds(updateDoc(ref, { receivedFrom: senderWithPhoto }));
+  });
+
+  it("is accepted with any email a verified sign-in may hold: '/', spaces, a quoted @ (T29 W4)", async () => {
+    for (const email of [
+      "a/b@example.com",
+      '"al ice"@example.com',
+      '"a@b"@example.com',
+      "a\u00a0b@example.com",
+    ]) {
+      await assertSucceeds(
+        setDoc(freshRoutine(), { ...routine, receivedFrom: { ...sender, email } }),
+      );
+    }
+  });
+
   it("is kept on an edit, and may be added or left unchanged by an update", async () => {
     const ref = freshRoutine();
     await seed(ref.path, routine);
@@ -197,7 +239,23 @@ describe("the sender of a received routine, on one's own routines (T26, S12)", (
     ["no uid", { name: "Alice", email: "a@b.co" }],
     ["no name", { uid: "a", email: "a@b.co" }],
     ["no email", { uid: "a", name: "Alice" }],
-    ["an extra key (photo)", { ...sender, photo: "https://lh3.googleusercontent.com/a" }],
+    ["an extra key", { ...sender, picture: "https://lh3.googleusercontent.com/a" }],
+    ["a photo that is not text", { ...sender, photo: 5 }],
+    ["a null photo", { ...sender, photo: null }],
+    ["an empty photo", { ...sender, photo: "" }],
+    ["a photo not on googleusercontent.com", { ...sender, photo: "https://example.com/a.png" }],
+    ["a look-alike photo host", { ...sender, photo: "https://googleusercontent.com.evil.co/a" }],
+    ["a photo with credentials", { ...sender, photo: "https://a@lh3.googleusercontent.com/a" }],
+    ["a photo with a port", { ...sender, photo: "https://lh3.googleusercontent.com:8443/a" }],
+    ["an http photo", { ...sender, photo: "http://lh3.googleusercontent.com/a" }],
+    ["a space in the photo", { ...sender, photo: "https://lh3.googleusercontent.com/a b" }],
+    [
+      "a photo of 501 characters",
+      {
+        ...sender,
+        photo: PHOTO_BASE + "p".repeat(DIRECTORY_LIMITS.photoLength - PHOTO_BASE.length + 1),
+      },
+    ],
     ["a uid that is not text", { ...sender, uid: 5 }],
     ["a null uid", { ...sender, uid: null }],
     ["a list as the uid", { ...sender, uid: ["alice"] }],
@@ -223,13 +281,10 @@ describe("the sender of a received routine, on one's own routines (T26, S12)", (
     ["an email that is not text", { uid: "a", name: "A", email: 5 }],
     ["an empty email", { uid: "a", name: "A", email: "" }],
     ["an email without @", { uid: "a", name: "A", email: "alice.example.com" }],
-    ["an email with two @", { uid: "a", name: "A", email: "a@b@c.co" }],
     ["an email without a user", { uid: "a", name: "A", email: "@b.co" }],
     ["an email without a domain", { uid: "a", name: "A", email: "a@" }],
-    ["a space in the email", { uid: "a", name: "A", email: "a b@c.co" }],
-    ["a no-break space in the email", { uid: "a", name: "A", email: "a\u00a0b@c.co" }],
-    ["a slash in the email", { uid: "a", name: "A", email: "a/b@c.co" }],
     ["a control character in the email", { uid: "a", name: "A", email: "a\u0007@c.co" }],
+    ["a C1 control in the email", { uid: "a", name: "A", email: "a\u0085@c.co" }],
     ["a line break in the email", { uid: "a", name: "A", email: "a@c.co\n" }],
     [
       "an email of 255 characters",
@@ -276,6 +331,7 @@ describe("the sender of a received routine, on one's own routines (T26, S12)", (
     const largest = toStoredRoutine({ ...fullRoutine(), receivedFrom: longestSender });
     expect(largest.stages).toHaveLength(L.stages);
     expect(largest.receivedFrom).toEqual(longestSender);
+    expect(longestSender.photo).toHaveLength(DIRECTORY_LIMITS.photoLength);
     const ref = freshRoutine();
     await assertSucceeds(setDoc(ref, largest));
     await assertSucceeds(setDoc(ref, largest));
@@ -352,8 +408,12 @@ describe("rule budget with the sender field (T26, L6)", () => {
       // Measured for T26 with the uid (L62): 12 full stages fit without the sender field and 11
       // with the longest uid, name and email, on create and on edit. The uid first cost the edit
       // its headroom (10), won back by bounding the uid and name lengths in their patterns.
+      // T29 adds the longest Google photo to the longest sender.
       const own = await fullStagesThatFit();
       const received = await fullStagesThatFit(longestSender);
+      console.warn(
+        `Own routine: ${own.create}/${own.update} full stages fit (create/edit); with the longest sender and photo: ${received.create}/${received.update}`,
+      );
       expect(own.create).toBeGreaterThan(L.stages);
       expect(own.update).toBeGreaterThan(L.stages);
       expect(received.create).toBeGreaterThan(L.stages);
@@ -421,7 +481,7 @@ describe("receiving a copy through the real rules (T26, S12)", () => {
     expect(received).toMatchObject({
       id: "copy-1",
       createdAt: sentAt.toMillis(),
-      receivedFrom: sender,
+      receivedFrom: senderWithPhoto,
     });
     const { id, ...draft } = received!;
     await assertSucceeds(setDoc(doc(bob, "users/bob/routines", id), toStoredRoutine(draft)));
@@ -432,7 +492,7 @@ describe("receiving a copy through the real rules (T26, S12)", () => {
       notes: copy.notes,
       stages: copy.stages,
       createdAt: sentAt.toMillis(),
-      receivedFrom: sender,
+      receivedFrom: senderWithPhoto,
     });
   });
 
@@ -477,11 +537,9 @@ describe("receiving a copy through the real rules (T26, S12)", () => {
         stop();
       }
       const routine = await stored("users/bob/routines/copy-2");
-      expect(routine).toMatchObject({
-        name: "Piernas",
-        stages: copy.stages,
-        receivedFrom: sender,
-      });
+      expect(routine).toMatchObject({ name: "Piernas", stages: copy.stages });
+      // The sender's Google photo stays with the routine (T29 W3).
+      expect(routine?.receivedFrom).toEqual(senderWithPhoto);
     },
   );
 
@@ -579,22 +637,46 @@ describe("receiving a copy through the real rules (T26, S12)", () => {
   );
 
   it(
-    "never settles offline, and stores the routine once back online (L64)",
+    "never settles offline, writes nothing that could be sent later, and stores it once back online (L64, T29 W2)",
     { timeout: 30_000 },
     async () => {
-      const bob = asBob();
-      await disableNetwork(bob);
+      // Offline as a browser is: every call to the server fails. disableNetwork only stops
+      // Firestore's listeners and queued writes, not a transaction, so a client of a server that
+      // cannot be reached stands for it.
+      const app = initializeApp({ projectId: "demo-sportime" }, "offline-receiver");
+      const unreachable = getFirestore(app);
+      connectFirestoreEmulator(unreachable, "127.0.0.1", 9);
+      let running = true;
+      let tries = 0;
+      const offline = createFirestoreRoutineLibrary(unreachable, "bob", {
+        store: memoryStore(),
+        whenReady: () => Promise.resolve(true),
+        // Tries again at once while the test runs, and never after it.
+        wait: () =>
+          new Promise<void>((resolve) => {
+            tries += 1;
+            if (running) setTimeout(resolve, 50);
+          }),
+      });
       let settled = false;
-      const receiving = libraryFor(bob)
+      void offline
         .receive(receivedAs("offline"))
         .finally(() => {
           settled = true;
-        });
-      await sleep(1_500);
-      expect(settled).toBe(false);
+        })
+        .catch(() => undefined);
+      try {
+        await eventually(() => Promise.resolve(tries >= 3), "three tries while offline");
+        expect(settled).toBe(false);
+        expect(await stored("users/bob/routines/offline")).toBeUndefined();
+      } finally {
+        running = false;
+        await terminate(unreachable);
+        await deleteApp(app);
+      }
+      // Nothing was held to be sent later: back online, only a new receive stores it, once.
       expect(await stored("users/bob/routines/offline")).toBeUndefined();
-      await enableNetwork(bob);
-      await receiving;
+      await libraryFor(asBob()).receive(receivedAs("offline"));
       expect(await stored("users/bob/routines/offline")).toEqual(routine);
     },
   );
@@ -613,6 +695,93 @@ describe("receiving a copy through the real rules (T26, S12)", () => {
       await enableNetwork(bob);
       await receiving;
       expect(await stored("users/bob/routines/elsewhere")).toEqual(edited);
+    },
+  );
+
+  it(
+    "receives a sender whose email has a slash, a space or a quoted @ (T29 W4)",
+    { timeout: 30_000 },
+    async () => {
+      const emails = ["a/b@example.com", '"al ice"@example.com', '"a@b"@example.com'];
+      for (const [index, email] of emails.entries()) {
+        const result = buildSharedCopy(piernas, { uid: "alice", email, emailVerified: true });
+        if (!("copy" in result)) throw new Error(JSON.stringify(result.problems));
+        const alice = env
+          .authenticatedContext("alice", { email, email_verified: true })
+          .firestore() as unknown as Firestore;
+        await assertSucceeds(createFirestoreInbox(alice).create("bob", `w4-${index}`, result.copy));
+      }
+      const stop = receiveAsBob();
+      try {
+        for (const index of emails.keys()) {
+          await eventually(
+            async () => (await stored(`users/bob/inbox/w4-${index}`)) === undefined,
+            "the copy to leave the inbox",
+          );
+        }
+      } finally {
+        stop();
+      }
+      for (const [index, email] of emails.entries()) {
+        expect((await stored(`users/bob/routines/w4-${index}`))?.receivedFrom).toEqual({
+          uid: "alice",
+          name: "",
+          email,
+        });
+      }
+    },
+  );
+
+  it(
+    "reports a copy the rules accept but the app cannot open, by its sender, and deletes it when asked (T29 W5)",
+    { timeout: 30_000 },
+    async () => {
+      // A link of 304 characters: the rules take up to 592, the app opens at most 300 (L56 A2).
+      const copy = copyOf(piernas);
+      const long = `https://x.com/${"e".repeat(290)}`;
+      const unopenable = {
+        ...copy,
+        stages: [{ exercises: `Remo\t10\t\t\t\t${long}` }],
+      };
+      await assertSucceeds(createFirestoreInbox(asAlice()).create("bob", "odd", unopenable));
+      const bob = asBob();
+      const routines = libraryFor(bob);
+      const receiver = createInboxReceiver({
+        inbox: createFirestoreInboxReader(bob, "bob"),
+        routines,
+      });
+      const reported: string[][] = [];
+      const stop = receiver.start((copies) => {
+        reported.push(copies.map(({ id, sender: from }) => `${id} ${from.uid} ${from.email}`));
+      });
+      try {
+        await eventually(
+          () => Promise.resolve(reported.some((list) => list.length === 1)),
+          "the copy to be reported",
+        );
+        expect(reported.at(-1)).toEqual([`odd alice ${aliceToken.email}`]);
+        expect(await stored("users/bob/routines/odd")).toBeUndefined();
+        expect(await stored("users/bob/inbox/odd")).toBeDefined();
+        await receiver.discard("odd");
+        expect(await stored("users/bob/inbox/odd")).toBeUndefined();
+      } finally {
+        stop();
+      }
+    },
+  );
+
+  it(
+    "stores a received routine with a create-only server write, never queued on this device (T29 W2)",
+    { timeout: 30_000 },
+    async () => {
+      const bob = asBob();
+      await libraryFor(bob).receive(receivedAs("w2"));
+      expect(await stored("users/bob/routines/w2")).toEqual(routine);
+      // Received again after an edit made elsewhere: the server's routine stays as it is.
+      const edited = { ...routine, name: "Editada en otro lado" };
+      await seed("users/bob/routines/w2", edited);
+      await libraryFor(bob).receive(receivedAs("w2"));
+      expect(await stored("users/bob/routines/w2")).toEqual(edited);
     },
   );
 
@@ -636,5 +805,32 @@ describe("receiving a copy through the real rules (T26, S12)", () => {
     await assertFails(getDoc(doc(asAlice(), "users/bob/inbox/mine")));
     await assertFails(deleteDoc(doc(asAlice(), "users/bob/inbox/mine")));
     await assertSucceeds(getDoc(doc(asBob(), "users/bob/inbox/mine")));
+  });
+});
+
+describe("verifier probes (T29), on one's own routines", () => {
+  it(
+    "refuses every Google photo look-alike as the sender's photo (W3)",
+    { timeout: 30_000 },
+    async () => {
+      for (const photo of photoLookAlikes) {
+        await assertFails(
+          setDoc(freshRoutine(), { ...routine, receivedFrom: { ...sender, photo } }),
+        ).catch((error: unknown) => {
+          throw new Error(`accepted ${JSON.stringify(photo)}: ${String(error)}`);
+        });
+      }
+    },
+  );
+
+  it("refuses a routine missing its name, stages or creation time", async () => {
+    for (const key of ["name", "stages", "createdAt"] as const) {
+      const { [key]: _gone, ...rest } = routine;
+      await assertFails(setDoc(freshRoutine(), rest)).catch((error: unknown) => {
+        throw new Error(`accepted a routine without ${key}: ${String(error)}`);
+      });
+    }
+    const { exercises: _exercises, ...stageWithoutExercises } = routine.stages[0]!;
+    await assertFails(setDoc(freshRoutine(), { ...routine, stages: [stageWithoutExercises] }));
   });
 });

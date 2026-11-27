@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vite-plus/test";
 import { ROUTINE_LIMITS, toStoredRoutine, type RoutineDraft } from "../../routines/domain/routine";
-import { receivedRoutine } from "./receivedCopy";
+import { copySender, receivedRoutine } from "./receivedCopy";
 import { buildSharedCopy, type SenderClaims, type SharedCopy } from "./sharedCopy";
 
 const L = ROUTINE_LIMITS;
@@ -84,11 +84,16 @@ describe("receivedRoutine (T26, S12)", () => {
         },
         { name: "Solo el nombre", exercises: [] },
       ],
-      receivedFrom: { uid: "alice", name: "Alice Liddell", email: "Alice@Example.com" },
+      receivedFrom: {
+        uid: "alice",
+        name: "Alice Liddell",
+        email: "Alice@Example.com",
+        photo: alice.picture,
+      },
     });
   });
 
-  it("stores exactly what was sent, with the sender kept as data and no photo", () => {
+  it("stores exactly what was sent, with the sender and their Google photo kept as data (T29 W3)", () => {
     const copy = copyOf();
     const { id: _id, ...draft } = receivedRoutine("copy-1", inboxData(copy))!;
     expect(toStoredRoutine(draft)).toEqual({
@@ -96,8 +101,20 @@ describe("receivedRoutine (T26, S12)", () => {
       notes: copy.notes,
       stages: copy.stages,
       createdAt: SENT_AT,
-      receivedFrom: { uid: "alice", name: "Alice Liddell", email: "Alice@Example.com" },
+      receivedFrom: {
+        uid: "alice",
+        name: "Alice Liddell",
+        email: "Alice@Example.com",
+        photo: alice.picture,
+      },
     });
+  });
+
+  it("receives a sender whose email has a slash, a space or a quoted @, as the inbox took it (T29 W4)", () => {
+    for (const email of ["a/b@example.com", '"al ice"@example.com', '"a@b"@example.com']) {
+      const copy = copyOf(piernas, { ...alice, email });
+      expect(receivedRoutine("c", inboxData(copy))?.receivedFrom?.email, email).toBe(email);
+    }
   });
 
   it("keeps the sender's uid, which the inbox rules bound to who wrote the copy", () => {
@@ -181,9 +198,7 @@ describe("receivedRoutine (T26, S12)", () => {
     for (const changes of [
       { fromEmail: "" },
       { fromEmail: "no-at-sign" },
-      { fromEmail: "a b@example.com" },
-      { fromEmail: "a@b@c" },
-      { fromEmail: "a/b@example.com" },
+      { fromEmail: "a\u0007b@example.com" },
       { fromEmail: `${"a".repeat(250)}@b.co` },
       { fromEmail: 7 },
       { fromName: "Ali\u0007ce" },
@@ -197,6 +212,8 @@ describe("receivedRoutine (T26, S12)", () => {
       { fromUid: "a\u0007b" },
       { fromUid: "u".repeat(L.senderUidLength + 1) },
       { fromPhoto: 3 },
+      { fromPhoto: "https://example.com/a.png" },
+      { fromPhoto: "" },
     ]) {
       expect(
         receivedRoutine("c", inboxData(copyOf(), changes)),
@@ -231,6 +248,41 @@ describe("receivedRoutine (T26, S12)", () => {
       { stages: Array.from({ length: L.stages + 1 }, () => stage) },
     ]) {
       expect(receivedRoutine("c", inboxData(copy, changes)), JSON.stringify(changes)).toBeNull();
+    }
+  });
+});
+
+describe("copySender: who sent a copy the app cannot open (T29 W5)", () => {
+  it("is read from a copy of another shape, so it can be shown, deleted or its sender blocked", () => {
+    const newer = inboxData(copyOf(), { version: 2 });
+    expect(receivedRoutine("c", newer)).toBeNull();
+    expect(copySender(newer)).toEqual({
+      uid: "alice",
+      name: "Alice Liddell",
+      email: "Alice@Example.com",
+      photo: alice.picture,
+    });
+    expect(
+      copySender({ fromUid: "u", fromEmail: "u@example.com", stages: "broken", fromName: 7 }),
+    ).toEqual({ uid: "u", name: "", email: "u@example.com" });
+    expect(
+      copySender({ fromUid: "u", fromEmail: "u@example.com", fromPhoto: "https://x.co/a" }),
+    ).toEqual({ uid: "u", name: "", email: "u@example.com" });
+  });
+
+  it("is null when the copy cannot say who sent it: no usable uid or email", () => {
+    for (const data of [
+      null,
+      "not a copy",
+      [],
+      { fromUid: "u" },
+      { fromEmail: "u@example.com" },
+      { fromUid: "a/b", fromEmail: "u@example.com" },
+      { fromUid: 7, fromEmail: "u@example.com" },
+      { fromUid: "u", fromEmail: "no-at-sign" },
+      { fromUid: "u", fromEmail: "a\u0007@b.co" },
+    ]) {
+      expect(copySender(data), JSON.stringify(data)).toBeNull();
     }
   });
 });

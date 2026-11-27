@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { deleteAccount as deleteAccountOf } from "../account/application/deleteAccount";
 import type { OtherTabsStatus } from "../account/application/ports";
@@ -12,11 +12,22 @@ import { createFakeDirectoryListing } from "../directory/infrastructure/fakeDire
 import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { InstallProvider } from "../install/ui/InstallProvider";
-import type { RoutineLibrary } from "../routines/application/ports";
+import type { RoutineLibrary, SeenRoutines } from "../routines/application/ports";
 import type { Routine, RoutineDraft } from "../routines/domain/routine";
 import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
-import type { Delivery, InboxReceiving, RoutineSharing } from "../sharing/application/ports";
+import { createLocalStorageSeenRoutines } from "../routines/infrastructure/localStorageSeenRoutines";
+import type {
+  BlockedSenders,
+  Delivery,
+  InboxReceiving,
+  RoutineSharing,
+} from "../sharing/application/ports";
 import { createInboxReceiver } from "../sharing/application/receiveInbox";
+import type { BlockedSender } from "../sharing/domain/blockedSender";
+import {
+  createFakeBlockedSenders,
+  fakeBlockedOf,
+} from "../sharing/infrastructure/fakeBlockedSenders";
 import { createFakeInboxReader } from "../sharing/infrastructure/fakeInboxReader";
 import {
   createFakeRoutineSharing,
@@ -41,6 +52,10 @@ interface Stores {
   sharing?: RoutineSharing;
   /** Without it, nothing is received from the inbox. */
   receiving?: InboxReceiving;
+  /** Without it, no received routine is marked new. */
+  seenRoutines?: SeenRoutines;
+  /** Without it, no sender can be blocked. */
+  blocked?: BlockedSenders;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
@@ -56,6 +71,8 @@ function setup({
   contacts,
   sharing,
   receiving,
+  seenRoutines,
+  blocked,
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
   updater = createAppUpdater(() => undefined),
@@ -82,6 +99,8 @@ function setup({
           contactStore={contacts}
           sharing={sharing}
           receiving={receiving}
+          seenRoutines={seenRoutines}
+          blocked={blocked}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
@@ -3071,7 +3090,7 @@ describe("contacts", () => {
       openContacts();
       expect(toggle()).not.toBeChecked();
       expect(toggle()).toHaveAccessibleDescription(
-        /^Turn it on so others can add you as a contact\. Anyone signed in/,
+        /^Turn it on so others can add you as a contact and send you routines\. Anyone signed in/,
       );
       // Before the add form.
       expect(
@@ -3166,6 +3185,10 @@ describe("sharing a routine (T25, S12, S7)", () => {
   };
   const keep = (contacts: Contact[]) => {
     localStorage.setItem("sportime.fakeContacts.me", JSON.stringify(contacts));
+    // They still let people find them by email, so copies may reach them (T29 W1).
+    for (const { uid, name, photo, email } of contacts) {
+      localStorage.setItem(`sportime.fakeDirectory.${email}`, JSON.stringify({ uid, name, photo }));
+    }
   };
   const legs = {
     name: "Legs",
@@ -3561,5 +3584,526 @@ describe("receiving routines from contacts (T26, S12)", () => {
     setOtherTabs("idle");
     await settle();
     expect(fakeInboxOf("test")).toEqual({});
+  });
+});
+
+describe("new received routines (T27, S7)", () => {
+  const alice = { uid: "alice", name: "Alice", email: "alice@example.com" };
+  const received = (id: string, name: string): Routine => ({
+    id,
+    name,
+    createdAt: 1_750_000_000_000,
+    stages: [{ name: "A", exercises: [{ name: "Squat", repsMin: 8 }] }],
+    receivedFrom: alice,
+  });
+  const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  const routinesMenu = () => screen.getByRole("button", { name: /^Routines\b/ });
+  const list = () => screen.getByRole("list", { name: "Routines" });
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const library = async () => {
+    const routines = createFakeRoutineLibrary("test");
+    await routines.save({ name: "Mine", createdAt: 1, stages: [] });
+    await routines.receive(received("r1", "Piernas"));
+    await routines.receive(received("r2", "Brazos"));
+    return routines;
+  };
+
+  it("counts received routines not yet seen on the Profile menu, said in its name", async () => {
+    setup({ routines: await library(), seenRoutines: createLocalStorageSeenRoutines("test") });
+    click("Profile");
+    expect(routinesMenu()).toHaveTextContent(/^Routines · 2 new$/);
+    expect(routinesMenu()).toHaveAccessibleName("Routines, 2 new routines");
+  });
+
+  it("marks them New in the list, in their accessible names, and never one's own", async () => {
+    setup({ routines: await library(), seenRoutines: createLocalStorageSeenRoutines("test") });
+    click("Profile");
+    click(/^Routines\b/);
+    await settle();
+    const piernas = within(list()).getByRole("button", { name: "Open \u2068Piernas\u2069, new" });
+    expect(piernas).toHaveTextContent("New");
+    expect(
+      within(list()).getByRole("button", { name: "Open \u2068Brazos\u2069, new" }),
+    ).toHaveTextContent("New");
+    const mine = within(list()).getByRole("button", { name: "Open \u2068Mine\u2069" });
+    expect(mine).not.toHaveTextContent("New");
+  });
+
+  it("keeps the marks while the routines are open, and drops them once Routines is left", async () => {
+    const seenRoutines = createLocalStorageSeenRoutines("test");
+    setup({ routines: await library(), seenRoutines });
+    click("Profile");
+    click(/^Routines\b/);
+    await settle();
+    // Seen now, on this device.
+    expect([...seenRoutines.load()].sort()).toEqual(["r1", "r2"]);
+
+    click("Open \u2068Piernas\u2069, new");
+    await settle();
+    click("Back");
+    await settle();
+    expect(
+      within(list()).getByRole("button", { name: "Open \u2068Brazos\u2069, new" }),
+    ).toBeInTheDocument();
+
+    click("Back");
+    expect(routinesMenu()).toHaveTextContent(/^Routines$/);
+    expect(routinesMenu()).toHaveAccessibleName("Routines");
+    click("Routines");
+    await settle();
+    expect(
+      within(list()).getByRole("button", { name: "Open \u2068Brazos\u2069" }),
+    ).not.toHaveTextContent("New");
+  });
+
+  it("remembers what was seen on this device, per account, after the app starts again", async () => {
+    const routines = await library();
+    setup({ routines, seenRoutines: createLocalStorageSeenRoutines("test") });
+    click("Profile");
+    click(/^Routines\b/);
+    await settle();
+    cleanup();
+
+    await routines.receive(received("r3", "Core"));
+    setup({ routines, seenRoutines: createLocalStorageSeenRoutines("test") });
+    click("Profile");
+    expect(routinesMenu()).toHaveTextContent(/^Routines · 1 new$/);
+    expect(routinesMenu()).toHaveAccessibleName("Routines, 1 new routine");
+    cleanup();
+
+    setup({ routines, seenRoutines: createLocalStorageSeenRoutines("someone-else") });
+    click("Profile");
+    expect(routinesMenu()).toHaveTextContent(/^Routines · 3 new$/);
+  });
+
+  it("marks a routine received while the list is open, and counts it when it arrives elsewhere", async () => {
+    const routines = await library();
+    setup({ routines, seenRoutines: createLocalStorageSeenRoutines("test") });
+    click("Profile");
+    click(/^Routines\b/);
+    await settle();
+    await act(() => routines.receive(received("r3", "Core")));
+    await settle();
+    expect(
+      within(list()).getByRole("button", { name: "Open \u2068Core\u2069, new" }),
+    ).toBeInTheDocument();
+    click("Back");
+    expect(routinesMenu()).toHaveTextContent(/^Routines$/);
+
+    await act(() => routines.receive(received("r4", "Pecho")));
+    expect(routinesMenu()).toHaveTextContent(/^Routines · 1 new$/);
+  });
+
+  it("shows nothing new without a place to keep what was seen", async () => {
+    setup({ routines: await library() });
+    click("Profile");
+    expect(routinesMenu()).toHaveTextContent(/^Routines$/);
+    click("Routines");
+    await settle();
+    expect(
+      within(list()).getByRole("button", { name: "Open \u2068Piernas\u2069" }),
+    ).not.toHaveTextContent("New");
+  });
+
+  it("is translated", async () => {
+    const store = { get: () => "es" as const, set: vi.fn() };
+    const routines = await library();
+    render(
+      <I18nProvider store={store} browserLanguages={["es"]}>
+        <UpdateProvider updater={createAppUpdater(() => undefined)}>
+          <App
+            timer={{
+              clock: { now: () => 0 },
+              cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+              voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+              soundStore: { get: () => null, set: vi.fn() },
+              screenAwake: { acquire: vi.fn(), release: vi.fn() },
+            }}
+            workouts={createFakeWorkoutLibrary("test")}
+            history={createFakeHistoryLog("test")}
+            routines={routines}
+            seenRoutines={createLocalStorageSeenRoutines("test")}
+            deleteAccount={() => Promise.resolve()}
+            deletionConfirmedByRedirect={() => Promise.resolve(false)}
+          />
+        </UpdateProvider>
+      </I18nProvider>,
+    );
+    click("Perfil");
+    const menu = screen.getByRole("button", { name: /^Rutinas\b/ });
+    expect(menu).toHaveTextContent(/^Rutinas · 2 nuevas$/);
+    expect(menu).toHaveAccessibleName("Rutinas, 2 rutinas nuevas");
+    fireEvent.click(menu);
+    await settle();
+    expect(
+      screen.getByRole("button", { name: "Ver \u2068Piernas\u2069, nueva" }),
+    ).toHaveTextContent("Nueva");
+  });
+});
+
+describe("blocking a sender (T27, S7)", () => {
+  const alice = { uid: "alice", name: "Alice", email: "alice@example.com" };
+  const received = (sender = alice): Routine => ({
+    id: "r1",
+    name: "Piernas",
+    createdAt: 1_750_000_000_000,
+    stages: [{ name: "A", exercises: [{ name: "Squat", repsMin: 8 }] }],
+    receivedFrom: sender,
+  });
+  const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  const blockLabel = "Block \u2068Alice\u2069 (\u2068alice@example.com\u2069)";
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const openReceived = async (sender = alice) => {
+    const routines = createFakeRoutineLibrary("me");
+    await routines.save({ name: "Mine", createdAt: 1, stages: [] });
+    await routines.receive(received(sender));
+    const blocked = createFakeBlockedSenders("me");
+    const spied = {
+      ...blocked,
+      block: vi.fn((sender: BlockedSender) => blocked.block(sender)),
+      unblock: vi.fn((uid: string) => blocked.unblock(uid)),
+    };
+    setup({ routines, blocked: spied, contacts: createFakeContactStore("me") });
+    click("Profile");
+    click("Routines");
+    click("Open \u2068Piernas\u2069");
+    await settle();
+    return { routines, blocked: spied };
+  };
+
+  it("is offered on a received routine, naming the sender, and never on one's own", async () => {
+    await openReceived();
+    expect(screen.getByRole("button", { name: blockLabel })).toHaveTextContent(blockLabel);
+    click("Back");
+    click("Open \u2068Mine\u2069");
+    expect(screen.queryByRole("button", { name: /^Block/ })).not.toBeInTheDocument();
+  });
+
+  it("names a sender without a name by their email", async () => {
+    await openReceived({ ...alice, name: "" });
+    expect(
+      screen.getByRole("button", { name: "Block \u2068alice@example.com\u2069" }),
+    ).toBeInTheDocument();
+  });
+
+  it("asks first, saying they won't send routines and received ones stay; Cancel blocks nothing", async () => {
+    const { blocked } = await openReceived();
+    click(blockLabel);
+    const dialog = screen.getByRole("alertdialog", { name: `${blockLabel}?` });
+    expect(dialog).toHaveAccessibleDescription(
+      "They won't be able to send you routines. The routines you already received stay. You can unblock them from Contacts.",
+    );
+    click("Cancel");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(blocked.block).not.toHaveBeenCalled();
+    expect(fakeBlockedOf("me")).toEqual([]);
+  });
+
+  it("blocks by uid with the name and email shown, and keeps the received routine", async () => {
+    const { blocked } = await openReceived();
+    click(blockLabel);
+    click("Block");
+    await settle();
+    expect(blocked.block).toHaveBeenCalledWith(alice);
+    expect(fakeBlockedOf("me")).toEqual([alice]);
+    expect(screen.queryByRole("button", { name: blockLabel })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "You blocked \u2068Alice\u2069 (\u2068alice@example.com\u2069): they can't send you routines.",
+      ),
+    ).toBeInTheDocument();
+    // The routine stays.
+    expect(screen.getByRole("heading", { level: 1, name: "Piernas" })).toBeInTheDocument();
+    click("Back");
+    expect(screen.getByRole("button", { name: "Open \u2068Piernas\u2069" })).toBeInTheDocument();
+  });
+
+  it("says so when the block is refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { blocked } = await openReceived();
+    blocked.block.mockImplementation(() => Promise.reject(refusal("permission-denied")));
+    click(blockLabel);
+    click("Block");
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't block that person. Try again.",
+    );
+  });
+
+  it("shows a late block refusal only on that sender's routines, never on another's (L69 A4)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { routines, blocked } = await openReceived();
+    await routines.receive({
+      ...received({ uid: "carol", name: "Carol", email: "carol@example.com" }),
+      id: "r2",
+      name: "Brazos",
+    });
+    let refuse!: () => void;
+    blocked.block.mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          refuse = () => {
+            reject(refusal("permission-denied"));
+          };
+        }),
+    );
+    click(blockLabel);
+    click("Block");
+    click("Back");
+    click("Open \u2068Brazos\u2069");
+    await act(async () => {
+      refuse();
+      await Promise.resolve();
+    });
+    await settle();
+    expect(screen.getByRole("heading", { level: 1, name: "Brazos" })).toBeInTheDocument();
+    expect(screen.queryByText("We couldn't block that person. Try again.")).not.toBeInTheDocument();
+
+    click("Back");
+    click("Open \u2068Piernas\u2069");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't block that person. Try again.",
+    );
+  });
+
+  it("lists who is blocked from Contacts, isolated, and unblocks them", async () => {
+    localStorage.setItem(
+      "sportime.fakeBlocked.me",
+      JSON.stringify({
+        alice: { name: "Alice", email: "alice@example.com" },
+        mal: { name: "Mal\u2069\u202e", email: "mal@example.com" },
+        nameless: { name: "", email: "zed@example.com" },
+      }),
+    );
+    const blocked = createFakeBlockedSenders("me");
+    const spied = { ...blocked, unblock: vi.fn((uid: string) => blocked.unblock(uid)) };
+    setup({ blocked: spied, contacts: createFakeContactStore("me") });
+    click("Profile");
+    click(/^Contacts\b/);
+    click("Blocked");
+    expect(screen.getByRole("heading", { level: 1, name: "Blocked" })).toBeInTheDocument();
+    const items = within(screen.getByRole("list", { name: "Blocked" })).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    const [first] = items;
+    expect(first!.querySelector("bdi")).toHaveTextContent("Alice");
+    expect(first).toHaveTextContent("alice@example.com");
+    // A name holding bidi controls is shown inside <bdi>, and named with them removed.
+    expect(screen.getByText("Mal\u2069\u202e").tagName).toBe("BDI");
+    expect(screen.getByRole("button", { name: "Unblock \u2068Mal\u2069" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Unblock \u2068zed@example.com\u2069" }),
+    ).toBeInTheDocument();
+
+    click("Unblock \u2068Alice\u2069");
+    await settle();
+    expect(spied.unblock).toHaveBeenCalledWith("alice");
+    expect(fakeBlockedOf("me").map(({ uid }) => uid)).toEqual(["mal", "nameless"]);
+    expect(
+      screen.queryByRole("button", { name: "Unblock \u2068Alice\u2069" }),
+    ).not.toBeInTheDocument();
+
+    click("Back");
+    expect(screen.getByRole("heading", { level: 1, name: "Contacts" })).toBeInTheDocument();
+  });
+
+  it("says when nobody is blocked", () => {
+    setup({ blocked: createFakeBlockedSenders("me"), contacts: createFakeContactStore("me") });
+    click("Profile");
+    click(/^Contacts\b/);
+    click("Blocked");
+    expect(
+      screen.getByText(
+        "You haven't blocked anyone. You can block someone from a routine they sent you.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Blocked" })).not.toBeInTheDocument();
+  });
+
+  it("says when unblocking is refused", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    localStorage.setItem(
+      "sportime.fakeBlocked.me",
+      JSON.stringify({ alice: { name: "Alice", email: "alice@example.com" } }),
+    );
+    const blocked = createFakeBlockedSenders("me");
+    setup({
+      blocked: { ...blocked, unblock: () => Promise.reject(refusal("permission-denied")) },
+      contacts: createFakeContactStore("me"),
+    });
+    click("Profile");
+    click(/^Contacts\b/);
+    click("Blocked");
+    click("Unblock \u2068Alice\u2069");
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't unblock that person.");
+  });
+
+  it("offers no blocked list without a place to keep it", () => {
+    setup({ contacts: createFakeContactStore("me") });
+    click("Profile");
+    click(/^Contacts\b/);
+    expect(screen.queryByRole("button", { name: "Blocked" })).not.toBeInTheDocument();
+  });
+
+  it("deletes a blocked sender's copies from the inbox instead of receiving them", async () => {
+    const sent = (fromUid: string) => ({
+      fromUid,
+      fromEmail: `${fromUid}@example.com`,
+      fromName: fromUid,
+      name: `From ${fromUid}`,
+      stages: [{ name: "A", exercises: "Sentadilla\t8-10\t90\t\t\t" }],
+      sentAt: 1_750_000_000_000,
+    });
+    localStorage.setItem(
+      "sportime.fakeInbox.me",
+      JSON.stringify({ c1: sent("alice"), c2: sent("carol") }),
+    );
+    const blocked = createFakeBlockedSenders("me");
+    await blocked.block(alice);
+    const routines = createFakeRoutineLibrary("me");
+    setup({
+      routines,
+      blocked,
+      receiving: createInboxReceiver({ inbox: createFakeInboxReader("me"), routines, blocked }),
+    });
+    await settle();
+    expect(fakeInboxOf("me")).toEqual({});
+    click("Profile");
+    click("Routines");
+    expect(screen.getByRole("button", { name: "Open \u2068From carol\u2069" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Open \u2068From alice\u2069" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("is translated", async () => {
+    const routines = createFakeRoutineLibrary("me");
+    await routines.receive(received());
+    render(
+      <I18nProvider store={{ get: () => "es" as const, set: vi.fn() }} browserLanguages={["es"]}>
+        <UpdateProvider updater={createAppUpdater(() => undefined)}>
+          <App
+            timer={{
+              clock: { now: () => 0 },
+              cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+              voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+              soundStore: { get: () => null, set: vi.fn() },
+              screenAwake: { acquire: vi.fn(), release: vi.fn() },
+            }}
+            workouts={createFakeWorkoutLibrary("test")}
+            history={createFakeHistoryLog("test")}
+            routines={routines}
+            blocked={createFakeBlockedSenders("me")}
+            contactStore={createFakeContactStore("me")}
+            deleteAccount={() => Promise.resolve()}
+            deletionConfirmedByRedirect={() => Promise.resolve(false)}
+          />
+        </UpdateProvider>
+      </I18nProvider>,
+    );
+    click("Perfil");
+    click("Rutinas");
+    click("Ver \u2068Piernas\u2069");
+    await settle();
+    const label = "Bloquear a \u2068Alice\u2069 (\u2068alice@example.com\u2069)";
+    click(label);
+    expect(screen.getByRole("alertdialog", { name: `¿${label}?` })).toHaveAccessibleDescription(
+      "No podrá enviarte rutinas. Las rutinas que ya recibiste se quedan. Puedes desbloquearlo desde Contactos.",
+    );
+    click("Bloquear");
+    await settle();
+    click("Volver");
+    click("Perfil");
+    click(/^Contactos\b/);
+    click("Bloqueados");
+    expect(
+      screen.getByRole("button", { name: "Desbloquear a \u2068Alice\u2069" }),
+    ).toHaveTextContent("Desbloquear");
+  });
+});
+
+describe("a received copy the app cannot open (T29 W5)", () => {
+  const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  /** A copy of a newer shape: its sender can be read, its routine cannot. */
+  const unopenable = (fromUid: string) => ({
+    fromUid,
+    fromEmail: `${fromUid}@example.com`,
+    fromName: "Mallory",
+    name: "Rara",
+    stages: [{ name: "A", exercises: "Sentadilla\t8-10\t90\t\t\t" }],
+    sentAt: 1_750_000_000_000,
+    version: 2,
+  });
+  const notice =
+    "\u2068Mallory\u2069 (\u2068mallory@example.com\u2069) sent you a routine that couldn't be opened.";
+
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem(
+      "sportime.fakeInbox.me",
+      JSON.stringify({ odd: unopenable("mallory"), unnamed: { name: "No sender" } }),
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function start() {
+    const routines = createFakeRoutineLibrary("me");
+    const blocked = createFakeBlockedSenders("me");
+    setup({
+      routines,
+      blocked,
+      receiving: createInboxReceiver({ inbox: createFakeInboxReader("me"), routines, blocked }),
+    });
+    return { routines, blocked };
+  }
+
+  it("is shown in Routines with its sender, and deleted with Delete", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    start();
+    await settle();
+    // One nobody can be named for is deleted by itself.
+    expect(Object.keys(fakeInboxOf("me"))).toEqual(["odd"]);
+    click("Profile");
+    click("Routines");
+    expect(screen.getByText(notice)).toBeInTheDocument();
+    click("Delete the routine from \u2068Mallory\u2069 (\u2068mallory@example.com\u2069)");
+    await settle();
+    expect(fakeInboxOf("me")).toEqual({});
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    expect(localStorage.getItem("sportime.fakeRoutines.me")).toBeNull();
+  });
+
+  it("blocks its sender with Block sender, after confirming, and is deleted then", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    start();
+    await settle();
+    click("Profile");
+    click("Routines");
+    click("Block \u2068Mallory\u2069 (\u2068mallory@example.com\u2069)");
+    const dialog = screen.getByRole("alertdialog", {
+      name: "Block \u2068Mallory\u2069 (\u2068mallory@example.com\u2069)?",
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Block" }));
+    await settle();
+    await settle();
+    expect(fakeBlockedOf("me")).toEqual([
+      { uid: "mallory", name: "Mallory", email: "mallory@example.com" },
+    ]);
+    expect(fakeInboxOf("me")).toEqual({});
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
   });
 });

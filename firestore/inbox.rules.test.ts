@@ -28,6 +28,7 @@ import {
   type RoutineDraft,
   type StoredRoutine,
 } from "../src/routines/domain/routine";
+import { photoLookAlikes } from "./photoLookAlikes";
 
 /**
  * The shared-routine inbox (T24, S12): `users/{recipient}/inbox/{copyId}` holds independent
@@ -145,6 +146,8 @@ async function seed(path: string, data: object) {
 }
 
 const bobContact = { uid: "bob", name: "Bob", photo: "", email: "bob@example.com" };
+/** Bob lets people find him by email (T29 W1: a copy goes only to someone still findable). */
+const bobEntry = { uid: "bob", name: "Bob" };
 
 beforeAll(async () => {
   env = await initializeTestEnvironment({
@@ -156,6 +159,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await env.clearFirestore();
   await seed(contactPath("alice", "bob"), bobContact);
+  await seed("directory/bob@example.com", bobEntry);
 });
 
 afterAll(async () => {
@@ -333,6 +337,45 @@ describe("who may send (T24, S12, S7)", () => {
   it("refuses a sender whose email is not verified", async () => {
     await refused(copy, asAlice({ email_verified: false }));
     await refused(copy, asAlice({ email_verified: undefined }));
+  });
+});
+
+/** Deletes a stored document, bypassing the rules, as the recipient's own app would. */
+async function unseed(path: string) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await deleteDoc(doc(context.firestore(), path));
+  });
+}
+
+describe("the recipient must still be findable by email (T29 W1)", () => {
+  it("refuses a recipient who turned find-by-email off, or whose account was deleted", async () => {
+    // Turning the switch off and deleting the account both remove the directory entry.
+    await unseed("directory/bob@example.com");
+    await refused(copy);
+  });
+
+  it("refuses when the entry under the contact's email now belongs to another account", async () => {
+    await seed("directory/bob@example.com", { uid: "carol", name: "Carol" });
+    await refused(copy);
+  });
+
+  it("looks the entry up under the email the sender's contact holds, not any other", async () => {
+    await seed(contactPath("alice", "bob"), { ...bobContact, email: "old-bob@example.com" });
+    await refused(copy);
+    await seed("directory/old-bob@example.com", bobEntry);
+    await accepted(copy);
+  });
+
+  it("accepts again once the recipient turns find-by-email back on", async () => {
+    await unseed("directory/bob@example.com");
+    await refused(copy);
+    await seed("directory/bob@example.com", bobEntry);
+    await accepted(copy);
+  });
+
+  it("still needs the recipient in the sender's contacts: an entry alone is not enough", async () => {
+    await seed("directory/carol@example.com", { uid: "carol", name: "Carol" });
+    await refused(copy, asAlice(), "carol");
   });
 });
 
@@ -663,9 +706,30 @@ describe("links in a copy (T24, S12, S9)", () => {
       "https://www.",
       "https://x.com:abc",
       "https://x.com:123456",
+      // A port above 65535 opens nothing, so the recipient's app could never open it (T29 W5).
+      "https://x.com:65536",
+      "https://x.com:70000",
+      "https://x.com:99999",
       "https://x_y.com",
     ]) {
       await refused(withLines(lineWithLink(link)));
+    }
+  }, 60_000);
+
+  it("accepts every port a browser opens, 0 to 65535 (T29 W5)", async () => {
+    for (const link of [
+      "https://x.com:0",
+      "https://x.com:443/a",
+      "https://x.com:00080",
+      "https://x.com:9999",
+      "https://x.com:59999",
+      "https://x.com:64999",
+      "https://x.com:65499",
+      "https://x.com:65529",
+      "https://x.com:65535",
+    ]) {
+      expect(normalizeLink(link), link).toBe(link);
+      await accepted(withLines(lineWithLink(link)));
     }
   }, 60_000);
 
@@ -786,4 +850,106 @@ describe("verifier probes (T24)", () => {
     );
     await assertFails(setDoc(doc(signedIn("bob"), inboxPath("bob", "s1")), {}, { merge: true }));
   });
+});
+
+describe("verifier probes (T29)", () => {
+  const carolEntry = { uid: "carol", name: "Carol" };
+  const aliceEntry = { uid: "alice", name: alice.name };
+
+  async function contactEmail(): Promise<unknown> {
+    let email: unknown;
+    await env.withSecurityRulesDisabled(async (context) => {
+      email = (await getDoc(doc(context.firestore(), contactPath("alice", "bob")))).get("email");
+    });
+    return email;
+  }
+
+  it("refuses repointing the contact's email to another entry or the sender's own (W1)", async () => {
+    await seed("directory/carol@example.com", carolEntry);
+    await seed("directory/alice@example.com", aliceEntry);
+    await unseed("directory/bob@example.com");
+    const db = asAlice();
+    for (const email of ["carol@example.com", "alice@example.com"]) {
+      await assertFails(updateDoc(doc(db, contactPath("alice", "bob")), { email }));
+      await assertFails(setDoc(doc(db, contactPath("alice", "bob")), { ...bobContact, email }));
+    }
+    expect(await contactEmail()).toBe("bob@example.com");
+    await refused(copy);
+  });
+
+  it("refuses a copy in the same batch that creates a directory entry for it (W1)", async () => {
+    await unseed("directory/bob@example.com");
+    const db = asAlice();
+    const forBob = writeBatch(db);
+    forBob.set(doc(db, "directory/bob@example.com"), bobEntry);
+    forBob.set(doc(db, inboxPath("bob", "w1-a")), copy);
+    await assertFails(forBob.commit());
+    const throughOwn = writeBatch(db);
+    throughOwn.set(doc(db, "directory/alice@example.com"), aliceEntry);
+    throughOwn.update(doc(db, contactPath("alice", "bob")), { email: "alice@example.com" });
+    throughOwn.set(doc(db, inboxPath("bob", "w1-b")), copy);
+    await assertFails(throughOwn.commit());
+    for (const path of [
+      inboxPath("bob", "w1-a"),
+      inboxPath("bob", "w1-b"),
+      "directory/bob@example.com",
+      "directory/alice@example.com",
+    ]) {
+      expect(await storedAt(path), path).toBe(false);
+    }
+    expect(await contactEmail()).toBe("bob@example.com");
+  });
+
+  it("refuses a copy when the contact holds an odd email, even one the rules never let in (W1)", async () => {
+    for (const email of [
+      "",
+      "BOB@example.com",
+      " bob@example.com",
+      "bob@example.com/x",
+      "x/bob@example.com",
+      "../directory/bob@example.com",
+    ]) {
+      await assertFails(
+        setDoc(doc(asAlice(), contactPath("alice", "bob")), { ...bobContact, email }),
+      );
+      await seed(contactPath("alice", "bob"), { ...bobContact, email });
+      await refused(copy);
+    }
+  }, 60_000);
+
+  it("refuses every Google photo look-alike, even when it is the sign-in's own (W3)", async () => {
+    for (const picture of photoLookAlikes) {
+      await refused({ ...copy, fromPhoto: picture }, asAlice({ picture })).catch(
+        (error: unknown) => {
+          throw new Error(`accepted ${JSON.stringify(picture)}: ${String(error)}`);
+        },
+      );
+    }
+  }, 60_000);
+
+  it("accepts the longest and oddest emails a verified sign-in may hold (W4)", async () => {
+    for (const email of [
+      `${"e".repeat(L.senderEmailLength - 11)}@example.co`,
+      "a/b@example.com",
+      '"al ice"@example.com',
+      '"a@b"@example.com',
+    ]) {
+      await accepted({ ...copy, fromEmail: email }, asAlice({ email }));
+    }
+  });
+
+  it("refuses ports above 65535 with a path, a query, a fragment or leading zeros (W5)", async () => {
+    for (const link of [
+      "https://x.com:65536/a",
+      "https://x.com:65536?a=1",
+      "https://x.com:65536#a",
+      "https://x.com:0065536",
+      "https://x.com:100000/a",
+    ]) {
+      await refused(withLines(lineWithLink(link))).catch((error: unknown) => {
+        throw new Error(`accepted ${link}: ${String(error)}`);
+      });
+    }
+    await accepted(withLines(lineWithLink("https://x.com:65535/a")));
+  }, 60_000);
 });

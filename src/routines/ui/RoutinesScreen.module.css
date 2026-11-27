@@ -78,20 +78,39 @@
   list-style: none;
 }
 
+/*
+ * A routine's card (T31): the summary button is the whole card, so all of it opens the routine;
+ * Edit and Delete sit over its top end at a fixed size. The New mark and the name (with the stage
+ * count) stay clear of them; a received routine's sender line takes its own row under them,
+ * across the whole card, so it never squeezes beside the buttons nor stretches them.
+ */
 .item {
-  display: flex;
-  gap: 8px;
+  --action-size: 52px;
+  --action-gap: 8px;
+  --card-pad-block: 8px;
+  --card-pad-inline: 14px;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--action-size) var(--action-size);
+  column-gap: var(--action-gap);
 }
 
 .summary {
-  flex: 1;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  /* Name, stage count, then the room Edit and Delete take over the card's end. */
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto
+    calc(var(--action-size) * 2 + var(--action-gap) - var(--card-pad-inline));
+  /* New mark, name row (as tall as the buttons inside the padding), sender line. */
+  grid-template-rows: auto minmax(calc(var(--action-size) - var(--card-pad-block) * 2), auto) auto;
+  align-items: center;
+  column-gap: 12px;
   min-width: 0;
-  min-height: 52px;
-  padding: 8px 14px;
+  min-height: var(--action-size);
+  padding: var(--card-pad-block) var(--card-pad-inline);
   border: 0;
   border-radius: 12px;
   color: var(--text);
@@ -101,14 +120,15 @@
   cursor: pointer;
 }
 
+/* Its New mark, name and sender line are placed on the card's grid. */
 .text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  display: contents;
 }
 
 .name {
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
   overflow: hidden;
   font-size: 1.25rem;
   font-weight: 600;
@@ -116,24 +136,50 @@
   white-space: nowrap;
 }
 
+/* A received routine not seen before (T27). */
+.new {
+  grid-row: 1;
+  grid-column: 1;
+  justify-self: start;
+  margin-bottom: 2px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Starts below Edit and Delete, so it can use the whole card; a long email breaks to fit. */
 .sender {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  margin-top: calc(var(--card-pad-block) + 4px);
   overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 1rem;
 }
 
 .detail {
-  flex-shrink: 0;
+  grid-row: 2;
+  grid-column: 2;
   color: var(--muted);
   font-size: 1.125rem;
 }
 
 .iconButton {
+  position: relative;
+  z-index: 1;
   display: flex;
-  flex-shrink: 0;
+  grid-row: 1;
+  grid-column: 2;
   align-items: center;
+  align-self: start;
   justify-content: center;
-  width: 52px;
+  box-sizing: border-box;
+  width: var(--action-size);
+  height: var(--action-size);
   border: 1px solid var(--line);
   border-radius: 12px;
   color: var(--muted);
@@ -141,6 +187,11 @@
   font: inherit;
   font-size: 1.5rem;
   cursor: pointer;
+}
+
+/* Delete, after Edit, at the card's end. */
+.iconButton:last-child {
+  grid-column: 3;
 }
 
 .icon {
@@ -152,6 +203,56 @@
 .primary:focus-visible,
 .summary:focus-visible,
 .iconButton:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Copies a contact sent that could not be opened (T29 W5), each with Delete and Block sender. */
+.unopened {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.noticeText {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 1.125rem;
+}
+
+.noticeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.noticeAction {
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.noticeAction:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }

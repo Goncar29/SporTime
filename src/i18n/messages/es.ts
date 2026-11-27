@@ -16,7 +16,7 @@ function shareProblem(problem: ShareProblem): string {
     case "senderName":
       return "Tu nombre de Google tiene más de 100 caracteres o caracteres que no se pueden enviar. Cámbialo en tu cuenta de Google e inténtalo de nuevo.";
     case "senderEmail":
-      return "Tu cuenta de Google no tiene un email verificado, así que no puedes compartir rutinas.";
+      return "Tu cuenta de Google no tiene un email verificado que se pueda enviar con una rutina (hasta 254 caracteres, sin caracteres de control), así que no puedes compartir rutinas.";
     case "routineName":
       return `Revisa el nombre de la rutina: debe empezar con un carácter visible y tener hasta ${ROUTINE_LIMITS.nameLength} caracteres.`;
     case "routineNotes":
@@ -191,7 +191,7 @@ export const es: Messages = {
   privacySections: [
     {
       heading: "Qué guardamos",
-      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados, tus rutinas y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Las rutinas que te envía un contacto se guardan entre las tuyas, con el nombre y el email de Google con que te las envió. Tus contactos, las personas que agregas con el email por el que permiten que las encuentren, se guardan con ese email y el nombre y la foto de Google que publicaron, y solo tú puedes verlos. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google; las direcciones nunca se muestran en una lista.",
+      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados, tus rutinas y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Las rutinas que te envía un contacto se guardan entre las tuyas, con el nombre, el email y la foto de Google con que te las envió. Tus contactos, las personas que agregas con el email por el que permiten que las encuentren, se guardan con ese email y el nombre y la foto de Google que publicaron, y solo tú puedes verlos. Las personas que bloqueas, desde una rutina que te enviaron, se guardan con el nombre y el email de Google de esa rutina, y también solo tú puedes verlas. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google, y tus contactos podrán enviarte rutinas; las direcciones nunca se muestran en una lista. Al desactivarlo, nadie más puede enviarte rutinas.",
     },
     {
       heading: "Dónde se guarda",
@@ -199,7 +199,7 @@ export const es: Messages = {
     },
     {
       heading: "En este dispositivo",
-      body: "Mientras la sesión está abierta, este navegador conserva tu nombre, correo y dirección de la foto, una copia de tus entrenamientos guardados, rutinas, sesiones terminadas y contactos, y lo que aún no se haya enviado, para que la app funcione sin conexión. Todo eso se borra de este dispositivo al cerrar sesión: lo que falte enviar se envía antes, y si no se puede, la app avisa antes de borrarlo. Tu idioma y tus ajustes de sonido se quedan aquí.",
+      body: "Mientras la sesión está abierta, este navegador conserva tu nombre, correo y dirección de la foto, una copia de tus entrenamientos guardados, rutinas, sesiones terminadas, contactos y personas bloqueadas, una marca de las rutinas recibidas que ya viste, y lo que aún no se haya enviado, para que la app funcione sin conexión. Todo eso se borra de este dispositivo al cerrar sesión: lo que falte enviar se envía antes, y si no se puede, la app avisa antes de borrarlo. Tu idioma y tus ajustes de sonido se quedan aquí.",
     },
     {
       heading: "Lo que no hacemos",
@@ -207,14 +207,14 @@ export const es: Messages = {
     },
     {
       heading: "Eliminar tus datos",
-      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas, tus contactos y tu nombre y foto de la búsqueda por email. Quien te haya agregado como contacto conserva el nombre, la foto y el email que vio entonces. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
+      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas, tus contactos, las personas que bloqueaste y tu nombre y foto de la búsqueda por email. Quien te haya agregado como contacto conserva el nombre, la foto y el email que vio entonces. Las rutinas que compartiste se quedan con las personas a las que se las enviaste, con tu nombre, email y foto de Google. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
     },
   ],
   privacyContactHeading: "Contacto",
   privacyContactBody: "Para consultas sobre tus datos, o para pedirnos que los borremos, escribe a",
   deleteAccount: "Eliminar cuenta",
   deleteAccountWarning:
-    "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas y tus contactos. No se puede deshacer.",
+    "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas y tus contactos, y las personas que bloqueaste. Las rutinas que compartiste se quedan con las personas a las que se las enviaste, con tu nombre, email y foto de Google. No se puede deshacer.",
   deleteAccountConfirmNote:
     "Google puede pedirte que confirmes que eres tú; después la eliminación termina sola.",
   confirmDeleteAccount: "Eliminar mi cuenta",
@@ -280,8 +280,9 @@ export const es: Messages = {
   viewExerciseLink: (host, exercise) => `Ver ${host} (${exercise})`,
   findByEmail: "Permitir que me encuentren por email",
   findByEmailHint:
-    "Quien haya iniciado sesión y escriba tu email exacto verá tu nombre y foto de Google.",
-  findByEmailContactsHint: "Actívalo para que otros puedan agregarte como contacto.",
+    "Quien haya iniciado sesión y escriba tu email exacto verá tu nombre y foto de Google. Si lo desactivas, nadie podrá enviarte rutinas.",
+  findByEmailContactsHint:
+    "Actívalo para que otros puedan agregarte como contacto y enviarte rutinas.",
   findByEmailChangeFailed: "No pudimos cambiar si te pueden encontrar por email.",
   findByEmailLoadFailed: "No pudimos comprobar si te pueden encontrar por email.",
   contacts: "Contactos",
@@ -340,4 +341,32 @@ export const es: Messages = {
     failed: "No se envió.",
   },
   shareDone: "Listo",
+  newRoutineMark: "Nueva",
+  openNewRoutine: (name) => `Ver ${name}, nueva`,
+  routinesMenuItem: (newCount) => `Rutinas · ${newCount} ${newCount === 1 ? "nueva" : "nuevas"}`,
+  routinesMenuLabel: (newCount) =>
+    `Rutinas, ${newCount} ${newCount === 1 ? "rutina nueva" : "rutinas nuevas"}`,
+  blockSender: (name, email) =>
+    name === null ? `Bloquear a ${email}` : `Bloquear a ${name} (${email})`,
+  confirmBlockSender: (name, email) =>
+    name === null ? `¿Bloquear a ${email}?` : `¿Bloquear a ${name} (${email})?`,
+  blockSenderNote:
+    "No podrá enviarte rutinas. Las rutinas que ya recibiste se quedan. Puedes desbloquearlo desde Contactos.",
+  blockAction: "Bloquear",
+  senderBlocked: (name, email) =>
+    `Bloqueaste a ${name === null ? email : `${name} (${email})`}: no puede enviarte rutinas.`,
+  blockFailed: "No pudimos bloquear a esa persona. Inténtalo de nuevo.",
+  blocked: "Bloqueados",
+  noBlocked:
+    "No has bloqueado a nadie. Puedes bloquear a alguien desde una rutina que te haya enviado.",
+  unblock: "Desbloquear",
+  unblockSender: (name) => `Desbloquear a ${name}`,
+  unblockFailed: "No pudimos desbloquear a esa persona.",
+  loadBlockedFailed: "No pudimos cargar a quién bloqueaste.",
+  unopenedRoutines: "Rutinas que no se pudieron abrir",
+  unopenedRoutine: (name, email) =>
+    `${name === null ? email : `${name} (${email})`} te envió una rutina que no se pudo abrir.`,
+  deleteUnopenedRoutine: (name, email) =>
+    `Eliminar la rutina de ${name === null ? email : `${name} (${email})`}`,
+  blockSenderAction: "Bloquear remitente",
 };
