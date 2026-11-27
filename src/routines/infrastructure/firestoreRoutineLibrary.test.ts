@@ -605,6 +605,54 @@ describe("receive (T26, S12; T29 W2)", () => {
     });
   });
 
+  describe("errors that are not about the network (T36, L99)", () => {
+    for (const code of ["failed-precondition", "aborted", "already-exists"]) {
+      it(`gives up after 5 tries in total on ${code}, writing nothing, and passes it on`, async () => {
+        firestore.commitFailure = code;
+        const { waits, wait } = manualWait();
+        const { library } = setup({ wait, connectivity: fakeConnectivity(true) });
+        let outcome: unknown = "pending";
+        library.receive(received).then(
+          () => {
+            outcome = "stored";
+          },
+          (error: unknown) => {
+            outcome = error;
+          },
+        );
+        for (let ended = 0; ended < 4; ended += 1) {
+          await settle();
+          waits[ended]!.end();
+        }
+        await settle();
+        await settle();
+        expect(firestore.transactions).toHaveLength(5);
+        // Still waiting with backoff between tries; no sixth wait or try.
+        expect(waits.map(({ ms }) => ms)).toEqual([1_000, 2_000, 4_000, 8_000]);
+        expect(outcome).toMatchObject({ code });
+        expect(firestore.transactionWrites).toEqual([]);
+      });
+    }
+
+    it("keeps trying, unbounded, while the server cannot be reached", async () => {
+      firestore.serverReachable = false;
+      const { waits, wait } = manualWait();
+      const { library } = setup({ wait, connectivity: fakeConnectivity(true) });
+      void library.receive(received);
+      for (let ended = 0; ended < 8; ended += 1) {
+        await settle();
+        waits[ended]!.end();
+      }
+      await settle();
+      expect(firestore.transactions).toHaveLength(9);
+      firestore.serverReachable = true;
+      waits[8]!.end();
+      await settle();
+      await settle();
+      expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
+    });
+  });
+
   it("writes nothing, and passes it on, when the server refuses to answer", async () => {
     firestore.serverReachable = false;
     firestore.serverError = "permission-denied";

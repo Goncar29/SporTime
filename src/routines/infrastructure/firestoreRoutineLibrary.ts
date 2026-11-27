@@ -51,16 +51,19 @@ const LAST_RETRY_MS = 30_000;
 const runAtOnce = <T>(write: () => Promise<T>) => write();
 
 /**
- * Why a received routine's transaction is tried again: the server could not be reached or its
- * answer was lost, or another write changed the routine between the read and the commit.
+ * Why a received routine's transaction is tried again, for as long as it takes: the server could
+ * not be reached or its answer was lost.
  */
-const TRIED_AGAIN = new Set([
-  "unavailable",
-  "deadline-exceeded",
-  "aborted",
-  "failed-precondition",
-  "already-exists",
-]);
+const UNREACHED = new Set(["unavailable", "deadline-exceeded"]);
+
+/**
+ * Why it is tried again a few times only: another write changed the routine between the read and
+ * the commit, or the server refused the commit's precondition. Each try is a read, so a conflict
+ * that does not clear stops after this many such failures (T36, L99); the copy then stays in the
+ * inbox to be received on the next page load.
+ */
+const CONFLICTS = new Set(["aborted", "failed-precondition", "already-exists"]);
+const MOST_CONFLICTS = 5;
 
 /** The server's answer, kept apart so the guard does not wait for it. */
 function answerLater(answer: Promise<void>): { answer: Promise<void> } {
@@ -192,8 +195,10 @@ export function createFirestoreRoutineLibrary(
       // While the server cannot be reached, or another write got there first, it tries again
       // later, so it never settles offline; any other failure, such as a refusal after signing
       // out, is passed on. While the browser says it is offline it does not try at all (each try
-      // is a read, T36), and tries at once when it is back online.
+      // is a read, T36), and tries at once when it is back online. A conflict is tried again at
+      // most MOST_CONFLICTS times in all, then passed on too.
       let delay = FIRST_RETRY_MS;
+      let conflicts = 0;
       for (;;) {
         try {
           // Under the account's lock, like any change: a sign-out or deletion in another tab waits
@@ -201,7 +206,13 @@ export function createFirestoreRoutineLibrary(
           await guard(createIfAbsent);
           return;
         } catch (error) {
-          if (!TRIED_AGAIN.has(storeFailureCode(error) ?? "")) throw error;
+          const code = storeFailureCode(error) ?? "";
+          if (CONFLICTS.has(code)) {
+            conflicts += 1;
+            if (conflicts >= MOST_CONFLICTS) throw error;
+          } else if (!UNREACHED.has(code)) {
+            throw error;
+          }
         }
         if (connectivity.isOnline()) {
           await wait(delay);
