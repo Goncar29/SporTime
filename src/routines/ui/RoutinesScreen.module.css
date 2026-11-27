@@ -202,7 +202,8 @@
 .back:focus-visible,
 .primary:focus-visible,
 .summary:focus-visible,
-.iconButton:focus-visible {
+.iconButton:focus-visible,
+.showMore:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
@@ -255,4 +256,19 @@
 .noticeAction:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* At the end of the list: brings the next page of older items (T38). */
+.showMore {
+  align-self: center;
+  min-height: 48px;
+  padding: 8px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
 }

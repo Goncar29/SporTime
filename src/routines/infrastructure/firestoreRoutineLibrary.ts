@@ -5,6 +5,7 @@ import {
   doc,
   getDocFromCache,
   getDocFromServer,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -121,9 +122,15 @@ export function createFirestoreRoutineLibrary(
     parse: parseRoutine,
     newestFirst: (a, b) => b.createdAt - a.createdAt,
     collection: {
-      subscribe(onData, onError) {
+      subscribe(onData, onError, newest) {
+        // Asked for a number, it reads only that many (T38): from the server online, and from this
+        // device's cache offline, where it never fails for want of a connection. A received
+        // routine is dated when it was sent, so a new one is among the newest.
+        const newestFirst = orderBy("createdAt", "desc");
         return onSnapshot(
-          query(routines, orderBy("createdAt", "desc")),
+          newest === undefined
+            ? query(routines, newestFirst)
+            : query(routines, newestFirst, limit(newest)),
           (snapshot) => {
             onData(snapshot.docs.flatMap((item) => parseRoutine(item.id, item.data()) ?? []));
           },

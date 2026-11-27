@@ -165,6 +165,7 @@ export const en: Messages = {
   loadHistoryFailed: "We couldn't load your history.",
   back: "Back",
   loading: "Loading…",
+  showMore: "Show more",
   settings: "Settings",
   soundSettings: "Sound settings",
   soundOptions: {

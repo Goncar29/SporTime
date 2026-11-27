@@ -103,6 +103,8 @@ export interface Messages {
   loadHistoryFailed: string;
   back: string;
   loading: string;
+  /** Shows the next page of a long list: saved workouts, routines (T38). */
+  showMore: string;
   settings: string;
   soundSettings: string;
   soundOptions: Record<keyof SoundSettings, string>;

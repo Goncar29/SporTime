@@ -1,9 +1,10 @@
-import type { SubscribeToList } from "../../shared/application/liveList";
+import type { SubscribeToNewest } from "../../shared/application/liveList";
 import type { SavedWorkout, SavedWorkoutDraft } from "../domain/savedWorkout";
 
 /** One user's saved workouts, newest first. Writes apply locally right away and sync when online. */
 export interface WorkoutLibrary {
-  subscribe: SubscribeToList<SavedWorkout>;
+  /** Given `newest`, only that many of the newest stored, plus those not stored yet (T38). */
+  subscribe: SubscribeToNewest<SavedWorkout>;
   /** Settles when the server answers, which never happens offline, so callers must not wait for it. */
   save(draft: SavedWorkoutDraft): Promise<void>;
   /**

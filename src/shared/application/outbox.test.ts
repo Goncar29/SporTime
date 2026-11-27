@@ -102,6 +102,32 @@ describe("withOutbox", () => {
     expect([...fake.stored.keys()]).toEqual(["own-id"]);
   });
 
+  it("asks the collection for every item when not asked for a number, as history and contacts do", () => {
+    const { outbox, fake } = setup();
+    const subscribe = vi.spyOn(fake.collection, "subscribe");
+    outbox.subscribe(vi.fn(), vi.fn());
+    expect(subscribe).toHaveBeenCalledWith(expect.any(Function), expect.any(Function), undefined);
+  });
+
+  it("passes on how many of the newest to read, and still shows every held write (T38)", () => {
+    const ready = deferred<boolean>();
+    const { outbox, fake } = setup({
+      store: memoryStore([
+        { id: "held-1", draft: { order: 10 } },
+        { id: "held-2", draft: { order: 11 } },
+      ]),
+      whenReady: () => ready.promise,
+    });
+    const subscribe = vi.spyOn(fake.collection, "subscribe");
+    const onData = vi.fn();
+    outbox.subscribe(onData, vi.fn(), 1);
+    expect(subscribe).toHaveBeenCalledWith(expect.any(Function), expect.any(Function), 1);
+    expect(onData).toHaveBeenLastCalledWith([
+      { id: "held-2", order: 11 },
+      { id: "held-1", order: 10 },
+    ]);
+  });
+
   it("does not show an item twice while it moves to the collection", async () => {
     const { outbox, fake } = setup();
     const onData = vi.fn();

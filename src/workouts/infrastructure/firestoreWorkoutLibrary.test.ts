@@ -15,6 +15,14 @@ const firestore = vi.hoisted(() => ({
   deleteDoc: vi.fn((_ref: { path: string }) => Promise.resolve()),
   /** What happened, in order, including cache reads. */
   calls: [] as string[],
+  /** The saved workouts the server holds, newest first, as stored. */
+  listedOnServer: [] as { id: string; data: unknown }[],
+  /** Those this device's cache holds, which is all a listener reads offline. */
+  listedHere: [] as { id: string; data: unknown }[],
+  /** Each listened query's limit, or null when it has none. */
+  limits: [] as (number | null)[],
+  /** Errors passed to listeners, which offline must never happen. */
+  listenErrors: [] as unknown[],
 }));
 
 vi.mock("firebase/firestore", () => ({
@@ -28,9 +36,22 @@ vi.mock("firebase/firestore", () => ({
     firestore.serverReachable
       ? Promise.resolve({ exists: () => firestore.onServer.has(ref.path) })
       : Promise.reject(Object.assign(new Error("offline"), { code: "unavailable" })),
-  onSnapshot: () => () => undefined,
+  // Like Firestore's listener: the server's answer online, this device's cache offline; never an error.
+  onSnapshot: (
+    listened: { limit: number | null },
+    onNext: (snapshot: { docs: { id: string; data: () => unknown }[] }) => void,
+  ) => {
+    firestore.limits.push(listened.limit);
+    const listed = firestore.serverReachable ? firestore.listedOnServer : firestore.listedHere;
+    const docs = listened.limit === null ? listed : listed.slice(0, listened.limit);
+    onNext({ docs: docs.map(({ id, data }) => ({ id, data: () => data })) });
+    return () => undefined;
+  },
+  limit: (count: number) => ({ limit: count }),
   orderBy: () => ({}),
-  query: () => ({}),
+  query: (_ref: unknown, ...constraints: { limit?: number }[]) => ({
+    limit: constraints.find((constraint) => constraint.limit !== undefined)?.limit ?? null,
+  }),
   setDoc: firestore.setDoc,
   updateDoc: firestore.updateDoc,
   deleteDoc: firestore.deleteDoc,
@@ -252,5 +273,68 @@ describe("update", () => {
       const { library } = setup();
       await expect(library.update(edited)).rejects.toMatchObject({ code: "permission-denied" });
     });
+  });
+});
+
+describe("reading the newest saved workouts (T38)", () => {
+  /** `count` stored workouts, newest first, named W1, W2… */
+  const storedWorkouts = (count: number, newestAt = 100_000) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `stored-${index + 1}`,
+      data: {
+        name: `W${index + 1}`,
+        config: toStoredConfig(defaultConfig("tabata")),
+        createdAt: newestAt - index,
+      },
+    }));
+  const namesRead = (library: ReturnType<typeof setup>["library"], newest?: number) => {
+    let names: string[] = [];
+    library.subscribe(
+      (items) => {
+        names = items.map(({ name }) => name);
+      },
+      (error) => firestore.listenErrors.push(error),
+      newest,
+    );
+    return names;
+  };
+
+  beforeEach(() => {
+    firestore.serverReachable = true;
+    firestore.listedOnServer = storedWorkouts(25);
+    firestore.listedHere = [];
+    firestore.limits.length = 0;
+    firestore.listenErrors.length = 0;
+  });
+
+  it("asks the server for only the newest it is asked for", () => {
+    const { library } = setup();
+    expect(namesRead(library, 21)).toEqual(storedWorkouts(21).map(({ data }) => data.name));
+    expect(firestore.limits).toEqual([21]);
+  });
+
+  it("reads every saved workout when not asked for a number, as before", () => {
+    const { library } = setup();
+    expect(namesRead(library)).toHaveLength(25);
+    expect(firestore.limits).toEqual([null]);
+  });
+
+  it("shows a save still held on this device at the top, besides the newest read", () => {
+    // The held save was made at 1,000, after every stored one.
+    firestore.listedOnServer = storedWorkouts(25, 900);
+    const { library } = setup({ pending: true, ready: false });
+    const names = namesRead(library, 21);
+    expect(names[0]).toBe("Leg day");
+    expect(names).toHaveLength(22);
+  });
+
+  it("offline, reads more from this device's cache and never fails", () => {
+    firestore.serverReachable = false;
+    firestore.listedHere = storedWorkouts(30);
+    const { library } = setup();
+    expect(namesRead(library, 21)).toHaveLength(21);
+    expect(namesRead(library, 41)).toHaveLength(30);
+    expect(firestore.limits).toEqual([21, 41]);
+    expect(firestore.listenErrors).toEqual([]);
   });
 });

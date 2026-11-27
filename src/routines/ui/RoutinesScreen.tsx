@@ -25,10 +25,13 @@ interface RoutinesScreenProps {
   onOpen: (routine: Routine) => void;
   onEdit: (routine: Routine) => void;
   onRemove: (routine: Routine) => void;
+  /** Shows older routines (T38); without it, none are left and no Show more is offered. */
+  onShowMore?: () => void;
 }
 
 /**
- * The Routines section of Profile: every routine, to open, edit or delete, and a way to add one.
+ * The Routines section of Profile: the newest routines, to open, edit or delete, with Show more at
+ * the end while older ones are left, and a way to add one.
  * A routine's name may have been written by a contact who sent it, so it is always isolated:
  * `<bdi>` where it is shown, U+2068/U+2069 in accessible names and the dialog title. A received
  * routine not seen before is marked New, which its accessible name says too.
@@ -45,6 +48,7 @@ export function RoutinesScreen({
   onOpen,
   onEdit,
   onRemove,
+  onShowMore,
 }: RoutinesScreenProps) {
   const { t } = useI18n();
   const [pending, setPending] = useState<Routine | null>(null);
@@ -183,6 +187,11 @@ export function RoutinesScreen({
             </li>
           ))}
         </ul>
+      )}
+      {routines && routines.length > 0 && onShowMore && (
+        <button type="button" className={styles.showMore} onClick={onShowMore}>
+          {t.showMore}
+        </button>
       )}
 
       {pending && (
