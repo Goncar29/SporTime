@@ -13,7 +13,7 @@ import { createFakeHistoryLog } from "../history/infrastructure/fakeHistoryLog";
 import { I18nProvider } from "../i18n/ui/I18nProvider";
 import { createFakeContactStore } from "../contacts/infrastructure/fakeContactStore";
 import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
-import type { RoutineSharing } from "../sharing/application/ports";
+import type { InboxReceiving, RoutineSharing } from "../sharing/application/ports";
 import {
   createFakeRoutineSharing,
   fakeInboxOf,
@@ -37,6 +37,8 @@ interface Options {
   directoryFor?: (user: User) => DirectoryListing;
   /** Sending routines to contacts as a signed-in user; none by default. */
   sharingFor?: (user: User) => RoutineSharing;
+  /** Receiving an account's inbox; none by default. */
+  receivingFor?: (userId: string) => InboxReceiving;
 }
 
 /** The other tabs' status as the account's stores report it, changed by the test. */
@@ -69,6 +71,7 @@ function setup({
   deleteAccount,
   directoryFor,
   sharingFor,
+  receivingFor,
 }: Options = {}) {
   let report: (user: User | null) => void = () => undefined;
   const gateway = {
@@ -114,6 +117,7 @@ function setup({
     otherTabs,
     directoryFor,
     sharingFor,
+    receiving: receivingFor?.(userId),
   });
   render(
     <I18nProvider store={{ get: () => language, set: vi.fn() }} browserLanguages={["en-US"]}>
@@ -601,9 +605,9 @@ describe("sharing a routine", () => {
     const { switchTo } = setup({ sharingFor });
     await click("Profile");
     await click("Routines");
-    await click("Open Legs");
+    await click("Open \u2068Legs\u2069");
     expect(sharingFor).toHaveBeenLastCalledWith(person("alice"));
-    await click("Share Legs");
+    await click("Share \u2068Legs\u2069");
     fireEvent.click(screen.getByRole("checkbox", { name: "\u2068Bob\u2069" }));
     await click("Continue");
     await click("Send");
@@ -614,5 +618,23 @@ describe("sharing a routine", () => {
 
     switchTo("carol");
     expect(sharingFor).toHaveBeenLastCalledWith(person("carol"));
+  });
+});
+
+describe("receiving routines (T26, S12)", () => {
+  it("receives the signed-in account's inbox, and only the next account's after a switch", () => {
+    const events: string[] = [];
+    const receivingFor = (userId: string): InboxReceiving => ({
+      start() {
+        events.push(`start ${userId}`);
+        return () => {
+          events.push(`stop ${userId}`);
+        };
+      },
+    });
+    const { switchTo } = setup({ receivingFor });
+    expect(events.at(-1)).toBe("start alice");
+    switchTo("carol");
+    expect(events.slice(-2)).toEqual(["stop alice", "start carol"]);
   });
 });

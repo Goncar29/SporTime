@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { Contact } from "../../contacts/domain/contact";
-import { ContactAvatar, isolate, shownName } from "../../contacts/ui/ContactAvatar";
+import { ContactAvatar, shownName } from "../../contacts/ui/ContactAvatar";
+import { isolate } from "../../i18n/messages/isolate";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import type { Routine } from "../../routines/domain/routine";
 import {

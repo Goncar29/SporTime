@@ -217,3 +217,26 @@ describe("sharing a routine (T25, S12)", () => {
     expect(shareKeys("es")).toEqual(shareKeys("en"));
   });
 });
+
+it("names routines received from contacts among the data kept and deleted (T26, S12)", () => {
+  expect(MESSAGES.en.receivedFrom("Ana", "ana@example.com")).toBe(
+    "Received from Ana (ana@example.com)",
+  );
+  expect(MESSAGES.en.receivedFrom(null, "ana@example.com")).toBe("Received from ana@example.com");
+  expect(MESSAGES.es.receivedFrom("Ana", "ana@example.com")).toBe(
+    "Recibida de Ana (ana@example.com)",
+  );
+  expect(MESSAGES.es.receivedFrom(null, "ana@example.com")).toBe("Recibida de ana@example.com");
+  expect(MESSAGES.en.deleteAccountWarning).toContain(
+    "your routines, including those contacts sent you,",
+  );
+  expect(MESSAGES.es.deleteAccountWarning).toContain(
+    "tus rutinas, también las que te enviaron tus contactos,",
+  );
+  const kept = (language: "en" | "es") => MESSAGES[language].privacySections[0]!.body;
+  const removed = (language: "en" | "es") => MESSAGES[language].privacySections.at(-1)!.body;
+  expect(kept("en")).toContain("Routines a contact sends you are saved among yours");
+  expect(kept("es")).toContain("Las rutinas que te envía un contacto se guardan entre las tuyas");
+  expect(removed("en")).toContain("your routines, including those contacts sent you,");
+  expect(removed("es")).toContain("tus rutinas, también las que te enviaron tus contactos,");
+});

@@ -241,8 +241,8 @@ export function buildSharedCopy(routine: RoutineDraft, sender: SenderClaims): Sh
 
 /**
  * Checks the routine part of a copy as stored (one string of lines per stage), as the inbox
- * rules do; the same checks `buildSharedCopy` runs. Kept for the tests that hold the app and the
- * rules in agreement.
+ * rules do; the same checks `buildSharedCopy` runs. Used when receiving a copy (receivedRoutine),
+ * and by the tests that hold the app and the rules in agreement.
  */
 export function storedCopyProblems(content: {
   name: string;

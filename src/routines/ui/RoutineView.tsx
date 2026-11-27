@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { isolate } from "../../i18n/messages/isolate";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import {
@@ -10,6 +11,7 @@ import {
   type Routine,
   type Stage,
 } from "../domain/routine";
+import { ReceivedFrom } from "./ReceivedFrom";
 import styles from "./RoutineView.module.css";
 
 interface RoutineViewProps {
@@ -25,7 +27,11 @@ interface RoutineViewProps {
 /** Shown in a cell the exercise leaves empty. */
 const EMPTY = "—";
 
-/** A routine to read: its notes, then a table per stage. Nothing here can be changed. */
+/**
+ * A routine to read: its notes, then a table per stage. Nothing here can be changed. Every text the
+ * routine holds may have been written by a contact who sent it, so each is isolated: `<bdi>` where
+ * it is shown, U+2068/U+2069 in accessible names and the dialog title.
+ */
 export function RoutineView({
   routine,
   errors,
@@ -40,7 +46,9 @@ export function RoutineView({
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>{routine.name}</h1>
+        <h1 className={styles.title}>
+          <bdi>{routine.name}</bdi>
+        </h1>
         <button type="button" className={styles.back} onClick={onBack}>
           {t.back}
         </button>
@@ -52,13 +60,23 @@ export function RoutineView({
         </p>
       ))}
 
-      {routine.notes !== undefined && <p className={styles.notes}>{routine.notes}</p>}
+      {routine.receivedFrom && (
+        <p className={styles.sender}>
+          <ReceivedFrom sender={routine.receivedFrom} />
+        </p>
+      )}
+
+      {routine.notes !== undefined && (
+        <p className={styles.notes}>
+          <bdi>{routine.notes}</bdi>
+        </p>
+      )}
 
       <div className={styles.actions}>
         <button
           type="button"
           className={styles.action}
-          aria-label={t.editRoutine(routine.name)}
+          aria-label={t.editRoutine(isolate(routine.name))}
           onClick={() => {
             onEdit(routine);
           }}
@@ -68,7 +86,7 @@ export function RoutineView({
         <button
           type="button"
           className={styles.action}
-          aria-label={t.deleteRoutine(routine.name)}
+          aria-label={t.deleteRoutine(isolate(routine.name))}
           onClick={() => {
             setConfirming(true);
           }}
@@ -79,7 +97,7 @@ export function RoutineView({
           <button
             type="button"
             className={styles.action}
-            aria-label={t.shareRoutine(routine.name)}
+            aria-label={t.shareRoutine(isolate(routine.name))}
             onClick={() => {
               onShare(routine);
             }}
@@ -96,7 +114,7 @@ export function RoutineView({
 
       {confirming && (
         <ConfirmDialog
-          title={t.confirmDeleteRoutine(routine.name)}
+          title={t.confirmDeleteRoutine(isolate(routine.name))}
           onConfirm={() => {
             setConfirming(false);
             onRemove(routine);
@@ -167,9 +185,13 @@ function StageTable({ stage, position }: StageTableProps) {
   return (
     <section className={styles.stage}>
       <h2 id={headingId} className={styles.stageTitle}>
-        {stage.name ?? t.stageNumber(position)}
+        {stage.name === undefined ? t.stageNumber(position) : <bdi>{stage.name}</bdi>}
       </h2>
-      {stage.notes !== undefined && <p className={styles.stageNotes}>{stage.notes}</p>}
+      {stage.notes !== undefined && (
+        <p className={styles.stageNotes}>
+          <bdi>{stage.notes}</bdi>
+        </p>
+      )}
       {stage.exercises.length > 0 && (
         // On the narrowest phones the table scrolls on its own, never the page.
         <div className={styles.tableScroll}>
@@ -232,7 +254,9 @@ function ExerciseRows({ exercise, columns, link }: ExerciseRowsProps) {
   return (
     <>
       <tr className={exercise.notes === undefined ? undefined : styles.withNotes}>
-        <td className={styles.name}>{exercise.name ?? EMPTY}</td>
+        <td className={styles.name}>
+          {exercise.name === undefined ? EMPTY : <bdi>{exercise.name}</bdi>}
+        </td>
         {columns.map((column) => (
           <td key={column.id} className={styles.narrow}>
             {column.value(exercise) || EMPTY}
@@ -250,7 +274,7 @@ function ExerciseRows({ exercise, columns, link }: ExerciseRowsProps) {
                 aria-label={
                   exercise.name === undefined
                     ? t.viewLinkTo(link.host)
-                    : t.viewExerciseLink(link.host, exercise.name)
+                    : t.viewExerciseLink(link.host, isolate(exercise.name))
                 }
               >
                 {t.viewLink}
@@ -262,7 +286,7 @@ function ExerciseRows({ exercise, columns, link }: ExerciseRowsProps) {
       {exercise.notes !== undefined && (
         <tr>
           <td className={styles.exerciseNotes} colSpan={cells}>
-            {exercise.notes}
+            <bdi>{exercise.notes}</bdi>
           </td>
         </tr>
       )}

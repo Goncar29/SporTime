@@ -57,7 +57,7 @@ vi.mock("firebase/firestore", () => ({
             (server.get(path) ?? []).filter((item) => item !== id),
           );
         });
-        directory.calls.push("batch");
+        directory.calls.push(`batch ${deletes[0]?.path ?? ""}`);
         return Promise.resolve();
       },
     };
@@ -111,13 +111,16 @@ describe("createFirestoreAccountData", () => {
     expect(localStorage.getItem("sportime.outbox.contacts.u1")).toBeNull();
   });
 
-  it("erases the account's workouts, history, routines and contacts, and no other account's", async () => {
+  it("erases the account's workouts, history, routines, contacts and inbox, and no other account's", async () => {
     server.set("users/u1/workouts", ["w1", "w2"]);
     server.set("users/u1/history", ["h1"]);
-    server.set("users/u1/routines", ["r1", "r2"]);
+    // Received routines are routines like the others.
+    server.set("users/u1/routines", ["r1", "r2", "received-copy"]);
     server.set("users/u1/contacts", ["u2", "u3"]);
+    server.set("users/u1/inbox", ["c1", "c2"]);
     server.set("users/u2/routines", ["r3"]);
     server.set("users/u2/contacts", ["u1"]);
+    server.set("users/u2/inbox", ["c3"]);
 
     await accountData("u1@example.com").erase();
 
@@ -125,8 +128,26 @@ describe("createFirestoreAccountData", () => {
     expect(server.get("users/u1/history")).toEqual([]);
     expect(server.get("users/u1/routines")).toEqual([]);
     expect(server.get("users/u1/contacts")).toEqual([]);
+    expect(server.get("users/u1/inbox")).toEqual([]);
     expect(server.get("users/u2/routines")).toEqual(["r3"]);
     expect(server.get("users/u2/contacts")).toEqual(["u1"]);
+    expect(server.get("users/u2/inbox")).toEqual(["c3"]);
+  });
+
+  it("erases the inbox last, so a copy a contact sends meanwhile is erased too", async () => {
+    for (const name of ["workouts", "history", "routines", "contacts", "inbox"]) {
+      server.set(`users/u1/${name}`, [name]);
+    }
+
+    await accountData(null).erase();
+
+    expect(directory.calls.filter((call) => call.startsWith("batch"))).toEqual([
+      "batch users/u1/workouts",
+      "batch users/u1/history",
+      "batch users/u1/routines",
+      "batch users/u1/contacts",
+      "batch users/u1/inbox",
+    ]);
   });
 
   it("removes the account's directory entry first, under its normalized email", async () => {

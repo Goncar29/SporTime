@@ -5,12 +5,8 @@ import type { Contact } from "../domain/contact";
 /** The name shown for a contact: Google's, or the email they were added by when there is none. */
 export const shownName = ({ name, email }: Contact) => name || email;
 
-/**
- * Wraps text in first-strong isolates, so a name written right to left, or one holding bidi
- * controls, cannot reorder the words of the message around it. For plain strings such as
- * accessible names and the dialog title; text rendered in a list uses `<bdi>`.
- */
-export const isolate = (text: string) => `\u2068${text}\u2069`;
+/** The shared isolation, which also removes the name's own bidi controls (L64 B1). */
+export { isolate } from "../../i18n/messages/isolate";
 
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 

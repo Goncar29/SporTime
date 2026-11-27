@@ -144,6 +144,11 @@ export interface Messages {
   deleteRoutine(name: string): string;
   /** The read-only view of a routine, a table per stage. */
   openRoutine(name: string): string;
+  /**
+   * Marks a routine received from a contact (S12). `name` and `email` arrive isolated; `name` is
+   * null when the sender has none, and then only the email is said.
+   */
+  receivedFrom(name: string | null, email: string): string;
   edit: string;
   noStagesYet: string;
   exerciseColumn: string;

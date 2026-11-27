@@ -185,7 +185,7 @@ export const en: Messages = {
   privacySections: [
     {
       heading: "What we keep",
-      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts, routines and finished sessions, so you can use them on any device. Your contacts, the people you add by the email they let others find them by, are kept with that email and the Google name and photo they listed, and only you can see them. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
+      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts, routines and finished sessions, so you can use them on any device. Routines a contact sends you are saved among yours, with the Google name and email they sent them with. Your contacts, the people you add by the email they let others find them by, are kept with that email and the Google name and photo they listed, and only you can see them. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
     },
     {
       heading: "Where it is kept",
@@ -201,14 +201,14 @@ export const en: Messages = {
     },
     {
       heading: "Removing your data",
-      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your routines, your finished sessions, your contacts and your name and photo from finding by email. Anyone who added you as a contact keeps the name, photo and email they saw then. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
+      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your routines, including those contacts sent you, your finished sessions, your contacts and your name and photo from finding by email. Anyone who added you as a contact keeps the name, photo and email they saw then. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
     },
   ],
   privacyContactHeading: "Contact",
   privacyContactBody: "For questions about your data, or to ask us to remove it, write to",
   deleteAccount: "Delete account",
   deleteAccountWarning:
-    "This permanently removes your account, your saved workouts, your routines, your finished sessions and your contacts. It cannot be undone.",
+    "This permanently removes your account, your saved workouts, your routines, including those contacts sent you, your finished sessions and your contacts. It cannot be undone.",
   deleteAccountConfirmNote:
     "Google may ask you to confirm it's you; the deletion then finishes by itself.",
   confirmDeleteAccount: "Delete my account",
@@ -238,6 +238,8 @@ export const en: Messages = {
   editRoutine: (name) => `Edit ${name}`,
   deleteRoutine: (name) => `Delete ${name}`,
   openRoutine: (name) => `Open ${name}`,
+  receivedFrom: (name, email) =>
+    name === null ? `Received from ${email}` : `Received from ${name} (${email})`,
   edit: "Edit",
   noStagesYet: "No stages yet",
   exerciseColumn: "Exercise",

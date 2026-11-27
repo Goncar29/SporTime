@@ -8,7 +8,16 @@ const firestore = vi.hoisted(() => ({
   cached: new Set<string>(),
   /** Paths whose document the server holds. */
   onServer: new Set<string>(),
+  /** Paths whose document the server's answer shows with a change of this device still waiting. */
+  pendingHere: new Set<string>(),
   serverReachable: true,
+  /** The code the server's read fails with when it cannot be reached. */
+  serverError: "unavailable",
+  /** Cached paths whose routine was received from a contact (has `receivedFrom`). */
+  receivedHere: new Set<string>(),
+  /** Each committed batch, as the paths it deleted. */
+  batches: [] as string[][],
+  commit: vi.fn((_paths: string[]) => Promise.resolve()),
   updateDoc: vi.fn((_ref: { path: string }, _data?: unknown) => Promise.resolve()),
   setDoc: vi.fn((_ref: { path: string }, _data?: unknown) => Promise.resolve()),
   deleteDoc: vi.fn((_ref: { path: string }) => Promise.resolve()),
@@ -24,12 +33,37 @@ vi.mock("firebase/firestore", () => ({
   deleteField: () => firestore.deleted,
   getDocFromCache: (ref: { path: string }) => {
     firestore.calls.push(`cacheRead ${ref.path}`);
-    return Promise.resolve({ exists: () => firestore.cached.has(ref.path) });
+    return Promise.resolve({
+      exists: () => firestore.cached.has(ref.path),
+      data: () =>
+        firestore.cached.has(ref.path)
+          ? {
+              name: "x",
+              ...(firestore.receivedHere.has(ref.path) ? { receivedFrom: { uid: "a" } } : {}),
+            }
+          : undefined,
+    });
+  },
+  writeBatch: () => {
+    const paths: string[] = [];
+    return {
+      delete(ref: { path: string }) {
+        paths.push(ref.path);
+      },
+      commit() {
+        firestore.calls.push(`batch ${paths.join(" ")}`);
+        firestore.batches.push(paths);
+        return firestore.commit(paths);
+      },
+    };
   },
   getDocFromServer: (ref: { path: string }) =>
     firestore.serverReachable
-      ? Promise.resolve({ exists: () => firestore.onServer.has(ref.path) })
-      : Promise.reject(Object.assign(new Error("offline"), { code: "unavailable" })),
+      ? Promise.resolve({
+          exists: () => firestore.onServer.has(ref.path) || firestore.pendingHere.has(ref.path),
+          metadata: { hasPendingWrites: firestore.pendingHere.has(ref.path) },
+        })
+      : Promise.reject(Object.assign(new Error("offline"), { code: firestore.serverError })),
   onSnapshot: () => () => undefined,
   orderBy: () => ({}),
   query: () => ({}),
@@ -74,7 +108,13 @@ function setup({
   pending = false,
   ready = true,
   guard,
-}: { pending?: boolean; ready?: boolean; guard?: Guard } = {}) {
+  wait,
+}: {
+  pending?: boolean;
+  ready?: boolean;
+  guard?: Guard;
+  wait?: (ms: number) => Promise<void>;
+} = {}) {
   let items = pending ? [{ id: "r1", draft }] : [];
   const store: OutboxStore<RoutineDraft> = {
     load: () => items,
@@ -87,6 +127,7 @@ function setup({
     // Not ready keeps a pending save in the outbox, as during a slow sign-in check.
     whenReady: () => (ready ? Promise.resolve(true) : new Promise(() => undefined)),
     guard,
+    wait,
   });
   return { library, store };
 }
@@ -155,10 +196,18 @@ describe("writes while another tab may be signing out", () => {
   });
 
   it("removes while holding the lock, until Firestore's cache has the change", async () => {
+    // The user's own routine: the cache shows it was not received from anyone.
+    firestore.cached.add(PATH);
     const { library } = setup({ guard: recordingGuard() });
     void library.remove("r1");
     await settle();
-    expect(firestore.calls).toEqual(["lock", `deleteDoc ${PATH}`, `cacheRead ${PATH}`, "unlock"]);
+    expect(firestore.calls).toEqual([
+      "lock",
+      `cacheRead ${PATH}`,
+      `deleteDoc ${PATH}`,
+      `cacheRead ${PATH}`,
+      "unlock",
+    ]);
   });
 
   it("writes nothing when the lock refuses, and passes the refusal on", async () => {
@@ -187,6 +236,7 @@ describe("writes while another tab may be signing out", () => {
       { path: "users/u1/routines/new-id" },
       toStoredRoutine(draft),
     );
+    firestore.cached.add(PATH);
     await expect(library.remove("r1")).resolves.toBeUndefined();
     expect(firestore.deleteDoc).toHaveBeenCalledWith({ path: PATH });
   });
@@ -286,5 +336,203 @@ describe("update", () => {
       const { library } = setup();
       await expect(library.update(edited)).rejects.toMatchObject({ code: "permission-denied" });
     });
+  });
+});
+
+describe("receive (T26, S12)", () => {
+  const COPY_PATH = "users/u1/routines/copy-1";
+  const received: Routine = {
+    ...routine,
+    id: "copy-1",
+    createdAt: 1_750_000_000_000,
+    receivedFrom: { uid: "alice", name: "Alice", email: "alice@example.com" },
+  };
+  const { id: _copyId, ...receivedDraft } = received;
+  const denied = () => Object.assign(new Error("refused"), { code: "permission-denied" });
+
+  beforeEach(() => {
+    firestore.cached.clear();
+    firestore.onServer.clear();
+    firestore.pendingHere.clear();
+    firestore.serverReachable = true;
+    firestore.calls.length = 0;
+    firestore.setDoc.mockReset();
+    // The server stores it and answers.
+    firestore.setDoc.mockImplementation((ref: { path: string }) => {
+      firestore.calls.push(`setDoc ${ref.path}`);
+      firestore.cached.add(ref.path);
+      firestore.onServer.add(ref.path);
+      return Promise.resolve();
+    });
+  });
+
+  afterEach(() => {
+    firestore.setDoc.mockReset().mockResolvedValue(undefined);
+    firestore.serverReachable = true;
+    firestore.serverError = "unavailable";
+    firestore.pendingHere.clear();
+  });
+
+  it("stores the routine under the copy's id, with its sender, and settles once the server has it", async () => {
+    const { library, store } = setup({ guard: recordingGuard() });
+    await expect(library.receive(received)).resolves.toBeUndefined();
+    expect(firestore.setDoc).toHaveBeenCalledOnce();
+    expect(firestore.setDoc).toHaveBeenCalledWith(
+      { path: COPY_PATH },
+      toStoredRoutine(receivedDraft),
+    );
+    expect(toStoredRoutine(receivedDraft).receivedFrom).toEqual(received.receivedFrom);
+    // Through the outbox, holding the account's lock like any other save.
+    expect(firestore.calls[0]).toBe("lock");
+    expect(store.load()).toEqual([]);
+  });
+
+  it("leaves a routine the server already holds as it is: received before, maybe edited since", async () => {
+    firestore.onServer.add(COPY_PATH);
+    const { library } = setup();
+    await expect(library.receive(received)).resolves.toBeUndefined();
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing for a routine another tab is still storing, and does not confirm it yet", async () => {
+    firestore.cached.add(COPY_PATH);
+    firestore.pendingHere.add(COPY_PATH);
+    const { library } = setup();
+    await expect(library.receive(received)).rejects.toMatchObject({ code: "not-confirmed" });
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+  });
+
+  it("does not confirm a routine the server answered for but does not hold", async () => {
+    // Another tab's write, already in this device's cache, was then dropped.
+    firestore.cached.add(COPY_PATH);
+    const { library } = setup();
+    await expect(library.receive(received)).rejects.toMatchObject({ code: "not-confirmed" });
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+  });
+
+  it("passes the server's refusal on", async () => {
+    firestore.setDoc.mockImplementation(() => Promise.reject(denied()));
+    const { library } = setup();
+    await expect(library.receive(received)).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  /** A wait the test ends, recording how long the library asked to wait. */
+  function manualWait() {
+    const waits: { ms: number; end: () => void }[] = [];
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => {
+        waits.push({ ms, end: resolve });
+      });
+    return { waits, wait };
+  }
+
+  it("writes nothing while the server cannot be asked, and stores it once it can (L64 A2)", async () => {
+    firestore.serverReachable = false;
+    const { waits, wait } = manualWait();
+    const { library, store } = setup({ wait });
+    let settled = false;
+    void library.receive(received).finally(() => {
+      settled = true;
+    });
+    await settle();
+    waits[0]!.end();
+    await settle();
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+    expect(store.load()).toEqual([]);
+    expect(settled).toBe(false);
+    // It asks again later, waiting longer each time.
+    expect(waits.map(({ ms }) => ms)).toEqual([1_000, 2_000]);
+
+    firestore.serverReachable = true;
+    waits[1]!.end();
+    await settle();
+    await settle();
+    expect(firestore.setDoc).toHaveBeenCalledWith(
+      { path: COPY_PATH },
+      toStoredRoutine(receivedDraft),
+    );
+    expect(settled).toBe(true);
+  });
+
+  it("never overwrites a routine edited elsewhere that only the server holds (L64 A2)", async () => {
+    firestore.serverReachable = false;
+    firestore.onServer.add(COPY_PATH);
+    const { waits, wait } = manualWait();
+    const { library } = setup({ wait });
+    const receiving = library.receive(received);
+    await settle();
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+    firestore.serverReachable = true;
+    waits[0]!.end();
+    await expect(receiving).resolves.toBeUndefined();
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing, and passes it on, when the server refuses to say", async () => {
+    firestore.serverReachable = false;
+    firestore.serverError = "permission-denied";
+    const { library } = setup();
+    await expect(library.receive(received)).rejects.toMatchObject({ code: "permission-denied" });
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when the lock refuses, and passes the refusal on", async () => {
+    const refusal = new Error("signed out in another tab");
+    const { library, store } = setup({ guard: () => Promise.reject(refusal) });
+    await expect(library.receive(received)).rejects.toBe(refusal);
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+    expect(store.load()).toEqual([]);
+  });
+});
+
+describe("removing a received routine (L64 A1)", () => {
+  const COPY = "users/u1/routines/copy-1";
+  const INBOX_COPY = "users/u1/inbox/copy-1";
+
+  beforeEach(() => {
+    firestore.cached.clear();
+    firestore.receivedHere.clear();
+    firestore.batches.length = 0;
+    firestore.calls.length = 0;
+    firestore.commit.mockReset().mockResolvedValue(undefined);
+    firestore.deleteDoc.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("deletes its copy in the inbox with it, in one write, so it cannot come back", async () => {
+    firestore.cached.add(COPY);
+    firestore.receivedHere.add(COPY);
+    const { library } = setup({ guard: recordingGuard() });
+    await expect(library.remove("copy-1")).resolves.toBeUndefined();
+    expect(firestore.batches).toEqual([[COPY, INBOX_COPY]]);
+    expect(firestore.deleteDoc).not.toHaveBeenCalled();
+    // Under the account's lock, like any removal.
+    expect(firestore.calls[0]).toBe("lock");
+    expect(firestore.calls.indexOf(`batch ${COPY} ${INBOX_COPY}`)).toBeLessThan(
+      firestore.calls.indexOf("unlock"),
+    );
+  });
+
+  it("deletes the inbox copy too when this device cannot tell whether it was received", async () => {
+    const { library } = setup();
+    await expect(library.remove("copy-1")).resolves.toBeUndefined();
+    expect(firestore.batches).toEqual([[COPY, INBOX_COPY]]);
+  });
+
+  it("touches no inbox for the user's own routine", async () => {
+    firestore.cached.add(COPY);
+    const { library } = setup();
+    await expect(library.remove("copy-1")).resolves.toBeUndefined();
+    expect(firestore.batches).toEqual([]);
+    expect(firestore.deleteDoc).toHaveBeenCalledWith({ path: COPY });
+  });
+
+  it("passes the server's refusal on", async () => {
+    firestore.cached.add(COPY);
+    firestore.receivedHere.add(COPY);
+    firestore.commit.mockRejectedValue(
+      Object.assign(new Error("refused"), { code: "permission-denied" }),
+    );
+    const { library } = setup();
+    await expect(library.remove("copy-1")).rejects.toMatchObject({ code: "permission-denied" });
   });
 });

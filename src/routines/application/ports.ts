@@ -11,6 +11,24 @@ export interface RoutineLibrary {
    * list, stay. Settles when the server answers, so callers must not wait for it.
    */
   update(routine: Routine): Promise<void>;
-  /** Settles when the server answers, which never happens offline, so callers must not wait for it. */
+  /**
+   * Settles when the server answers, which never happens offline, so callers must not wait for it.
+   * A routine received from a contact goes with its copy in the inbox, if any is left, so it
+   * cannot be received again.
+   */
   remove(id: string): Promise<void>;
+}
+
+/** Keeps the routines received from contacts (T26, S12) among the user's own. */
+export interface ReceivedRoutines {
+  /**
+   * Stores `routine` under its id, through the outbox like any save, unless a routine with that
+   * id is already stored (received before, and maybe edited since), which is left as it is. It is
+   * written only after the server itself says no such routine exists; while the server cannot be
+   * asked, nothing is written.
+   * Resolves only once the server holds that routine with no change of this device waiting;
+   * rejects when it was refused, or when that cannot be confirmed (code `not-confirmed`).
+   * Never settles offline.
+   */
+  receive(routine: Routine): Promise<void>;
 }
