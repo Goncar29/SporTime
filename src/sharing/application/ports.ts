@@ -1,6 +1,6 @@
 import type { Contact } from "../../contacts/domain/contact";
 import type { ReceivedRoutines } from "../../routines/application/ports";
-import type { RoutineDraft } from "../../routines/domain/routine";
+import type { RoutineDraft, Sender } from "../../routines/domain/routine";
 import type { SubscribeToList } from "../../shared/application/liveList";
 import type { StoreFailureKind } from "../../shared/domain/storeFailure";
 import type { BlockedSender } from "../domain/blockedSender";
@@ -90,10 +90,29 @@ export interface InboxReader {
 /** Where a received copy becomes one of the user's own routines. */
 export type ReceivedRoutineStore = ReceivedRoutines;
 
+/**
+ * A copy in the inbox this app cannot open (T29 W5): one of a newer version, or one the inbox
+ * rules accept but the app does not. Shown to the user by its sender, to delete or block them.
+ */
+export interface UnopenedCopy {
+  id: string;
+  sender: Sender;
+}
+
 /** Moves the copies in the signed-in user's inbox into their routines. */
 export interface InboxReceiving {
-  /** Listens to the inbox and receives every copy in it. Returns the function that stops it. */
-  start(): () => void;
+  /**
+   * Listens to the inbox and receives every copy in it. Copies it cannot open are reported to
+   * `onUnopened` by their sender, the whole list each time it changes. Returns the function that
+   * stops it.
+   */
+  start(onUnopened?: (copies: readonly UnopenedCopy[]) => void): () => void;
+  /**
+   * Deletes a copy that could not be opened, which stops being reported at once. Settles when the
+   * server answers, which never happens offline, so callers must not wait for it; when the delete
+   * is refused, it is reported again.
+   */
+  discard(copyId: string): Promise<void>;
 }
 
 /**

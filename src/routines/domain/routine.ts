@@ -1,3 +1,4 @@
+import { isGooglePhoto } from "../../directory/domain/directory";
 import { isTimestamp } from "../../shared/domain/timestamp";
 
 /** Every limit is optional data's ceiling; `firestore/firestore.rules` enforces the same ones. */
@@ -62,7 +63,13 @@ export interface Sender {
   uid: string;
   /** One line of at most `senderNameLength` characters, possibly empty. */
   name: string;
+  /** Any email a verified sign-in may hold (isSenderEmail). */
   email: string;
+  /**
+   * Their Google photo, only when the copy had one on googleusercontent.com (isGooglePhoto); shown
+   * next to the name and email (T29 W3). Like the name, they chose it.
+   */
+  photo?: string;
 }
 
 export interface RoutineDraft {
@@ -97,7 +104,7 @@ export interface StoredRoutine {
   notes?: string;
   stages: StoredStage[];
   createdAt: number;
-  /** Exactly `{ uid, name, email }`; the rules check all three. */
+  /** Exactly `{ uid, name, email }` and maybe `photo`; the rules check each. */
   receivedFrom?: Sender;
 }
 
@@ -150,8 +157,12 @@ function multiLine(raw: unknown, maxLength: number): string | undefined {
   return hasVisibleCharacter(text) && text.length <= maxLength ? text : undefined;
 }
 
-/** One @ with something on each side, no space, slash or control character; the rules agree. */
-const SENDER_EMAIL = /^[^\p{Cc}\p{Z}/@]+@[^\p{Cc}\p{Z}/@]+$/u;
+/**
+ * Something, an @ and something, with no control character; the rules agree. The inbox rules take
+ * the sender's email from their verified sign-in as it is, so any shape Google allows (a '/', a
+ * space, a quoted '@') must be kept (T29 W4).
+ */
+const SENDER_EMAIL = /^[^\p{Cc}]+@[^\p{Cc}]+$/u;
 
 /** Whether `email` can be kept as a sender's: the shape and length the rules accept. */
 export function isSenderEmail(email: unknown): email is string {
@@ -185,13 +196,19 @@ export function isSenderName(name: unknown): name is string {
 /**
  * The sender of untrusted data, or undefined without a usable email, the one thing that tells who
  * they are, or without a usable uid, the account a block names. A name that cannot be kept is read
- * as no name.
+ * as no name, and a photo not on googleusercontent.com as no photo.
  */
-function sanitizeSender(raw: unknown): Sender | undefined {
+export function sanitizeSender(raw: unknown): Sender | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
-  const { uid, name, email } = raw as Record<string, unknown>;
+  const { uid, name, email, photo } = raw as Record<string, unknown>;
   if (!isSenderUid(uid) || !isSenderEmail(email)) return undefined;
-  return { uid, name: isSenderName(name) ? name : "", email };
+  return {
+    uid,
+    name: isSenderName(name) ? name : "",
+    email,
+    // Any other photo is left out, as the rules refuse it.
+    ...(typeof photo === "string" && isGooglePhoto(photo) ? { photo } : {}),
+  };
 }
 
 /**

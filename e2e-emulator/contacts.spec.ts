@@ -56,7 +56,7 @@ test("the find-by-email switch lists and unlists the account, the same on Profil
   await expect(page.getByRole("heading", { level: 1, name: "Contacts" })).toBeVisible();
   await expect(findMe(page)).toBeChecked();
   await expect(findMe(page)).toHaveAccessibleDescription(
-    /^Turn it on so others can add you as a contact\./,
+    /^Turn it on so others can add you as a contact and send you routines\./,
   );
 
   await findMe(page).click();

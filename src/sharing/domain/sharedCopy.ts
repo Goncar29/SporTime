@@ -2,6 +2,7 @@ import { DIRECTORY_LIMITS, isGooglePhoto } from "../../directory/domain/director
 import {
   ROUTINE_LIMITS,
   exerciseFields,
+  isSenderEmail,
   normalizeLink,
   type RoutineDraft,
   type StoredStage,
@@ -43,7 +44,10 @@ export type ExerciseField = "name" | "reps" | "rest" | "weight" | "notes" | "lin
 export type ShareProblem =
   /** The Google name is too long or holds characters the rules refuse. */
   | { kind: "senderName" }
-  /** The sign-in has no verified email. */
+  /**
+   * The sign-in has no verified email, or one a recipient could not keep: longer than
+   * `senderEmailLength` or with a control character (T29 W4).
+   */
   | { kind: "senderEmail" }
   | { kind: "routineName" }
   | { kind: "routineNotes" }
@@ -100,10 +104,10 @@ const WEIGHT = /^(?:(?:1000(?:\.0)?|(?:[1-9]\d{0,2}|0)(?:\.\d)?)(?:kg|lb))?$/;
 /**
  * A link as the inbox rules take it: an ASCII host of letters, digits, - and . with at least one
  * dot, ending in a top-level name of 2 to 63 letters or xn-- and letters, digits or -, then maybe
- * a dot, a port of digits and a path with nothing invisible.
+ * a dot, a port of 0 to 65535 (T29 W5) and a path with nothing invisible.
  */
 const SHARED_LINK =
-  /^https:\/\/[A-Za-z0-9][A-Za-z0-9.-]{0,226}\.([A-Za-z]{2,63}|[xX][nN]--[A-Za-z0-9-]{1,59})\.?(?::\d{1,5})?(?:[/?#\\][^\p{C}\p{Z}]{0,291})?$/u;
+  /^https:\/\/[A-Za-z0-9][A-Za-z0-9.-]{0,226}\.([A-Za-z]{2,63}|[xX][nN]--[A-Za-z0-9-]{1,59})\.?(?::(?:6553[0-5]|655[0-2]\d|65[0-4]\d\d|6[0-4]\d{3}|[0-5]\d{4}|\d{1,4}))?(?:[/?#\\][^\p{C}\p{Z}]{0,291})?$/u;
 /** The top-level names the rules refuse even though they are letters: local network names. */
 const LOCAL_TOP_LEVEL = /^(?:localhost|local|lan|internal|arpa)$/i;
 
@@ -177,7 +181,9 @@ export function buildSharedCopy(routine: RoutineDraft, sender: SenderClaims): Sh
   ) {
     problems.push({ kind: "senderName" });
   }
-  if (!sender.emailVerified || !sender.email) problems.push({ kind: "senderEmail" });
+  // The rules take any email of a verified sign-in; the recipient keeps one of the shape and length
+  // isSenderEmail accepts, so another is refused here, before sending, never left unreceivable.
+  if (!sender.emailVerified || !isSenderEmail(sender.email)) problems.push({ kind: "senderEmail" });
 
   if (!isRoutineName(routine.name)) problems.push({ kind: "routineName" });
   if (routine.notes !== undefined && !isNotes(routine.notes)) {

@@ -4,6 +4,7 @@ import {
   formatReps,
   formatRest,
   isLocalLink,
+  isSenderEmail,
   linkHost,
   normalizeLink,
   normalizeRoutineName,
@@ -500,10 +501,49 @@ describe("received routines (T26, S12)", () => {
     }
   });
 
+  it("keep the sender's Google photo, and leave out any other (T29 W3)", () => {
+    const photo = "https://lh3.googleusercontent.com/a/alice=s96-c";
+    const withPhoto = { ...received, receivedFrom: { ...receivedFrom, photo } };
+    expect(toStoredRoutine(withPhoto)).toEqual(withPhoto);
+    expect(parseRoutine("r", toStoredRoutine(withPhoto))).toEqual({ id: "r", ...withPhoto });
+    for (const other of [
+      "",
+      "https://example.com/a.png",
+      "https://googleusercontent.com.evil.co/a",
+      "https://lh3.googleusercontent.com:443/a",
+      `https://lh3.googleusercontent.com/${"p".repeat(500)}`,
+      5,
+      null,
+    ]) {
+      const routine = { ...received, receivedFrom: { ...receivedFrom, photo: other } };
+      expect(parseRoutine("r", routine)?.receivedFrom, JSON.stringify(other)).toEqual(receivedFrom);
+      expect(toStoredRoutine(routine as never).receivedFrom).toEqual(receivedFrom);
+    }
+  });
+
+  it("keep any sender email a verified sign-in may hold: '/', spaces, a quoted @ (T29 W4)", () => {
+    for (const email of [
+      "a/b@example.com",
+      '"al ice"@example.com',
+      '"a@b"@example.com',
+      "a\u00a0b@example.com",
+    ]) {
+      const sender = { uid: "u", name: "A", email };
+      expect(isSenderEmail(email), email).toBe(true);
+      expect(parseRoutine("r", { ...received, receivedFrom: sender })?.receivedFrom).toEqual(
+        sender,
+      );
+    }
+  });
+
   it("drop a sender without a usable email, keeping the routine", () => {
     for (const sender of [
       { uid: "u", name: "A", email: "nope" },
-      { uid: "u", name: "A", email: "a b@c.d" },
+      { uid: "u", name: "A", email: "@b.co" },
+      { uid: "u", name: "A", email: "a@" },
+      { uid: "u", name: "A", email: "a\u0007b@c.d" },
+      { uid: "u", name: "A", email: "a\nb@c.d" },
+      { uid: "u", name: "A", email: "broken \uD800@c.d" },
       { uid: "u", name: "A", email: `${"a".repeat(ROUTINE_LIMITS.senderEmailLength)}@b.co` },
       { uid: "u", name: "A" },
       "Alice",

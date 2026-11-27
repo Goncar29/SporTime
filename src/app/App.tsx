@@ -20,7 +20,12 @@ import { RoutineEditor } from "../routines/ui/RoutineEditor";
 import { RoutineView } from "../routines/ui/RoutineView";
 import { RoutinesScreen } from "../routines/ui/RoutinesScreen";
 import { useNewRoutines } from "../routines/ui/useNewRoutines";
-import type { BlockedSenders, InboxReceiving, RoutineSharing } from "../sharing/application/ports";
+import type {
+  BlockedSenders,
+  InboxReceiving,
+  RoutineSharing,
+  UnopenedCopy,
+} from "../sharing/application/ports";
 import { blockedSenderOf, isBlocked, type BlockedSender } from "../sharing/domain/blockedSender";
 import { BlockedScreen } from "../sharing/ui/BlockedScreen";
 import { ShareRoutineScreen } from "../sharing/ui/ShareRoutineScreen";
@@ -278,8 +283,17 @@ export function App({
   useHoldUpdates(active !== null || blocked);
   // Received routines are saved by themselves (S7), but not while the account's session is ending:
   // a routine written then could be erased with it or outlive a deleted account. A copy not yet
-  // received stays in the inbox until the next start.
-  useEffect(() => (receiving && !blocked ? receiving.start() : undefined), [receiving, blocked]);
+  // received stays in the inbox until the next start. One that cannot be opened is shown in
+  // Routines by its sender, to delete it or block them (T29 W5).
+  const [unopened, setUnopened] = useState<readonly UnopenedCopy[]>([]);
+  useEffect(() => {
+    if (!receiving || blocked) return undefined;
+    const stop = receiving.start(setUnopened);
+    return () => {
+      stop();
+      setUnopened([]);
+    };
+  }, [receiving, blocked]);
 
   /** Returns the handler for one operation, so the developer's log names what failed. */
   const reportWorkoutFailure = (operation: string) => (error: unknown) => {
@@ -573,8 +587,27 @@ export function App({
           routines && (
             <RoutinesScreen
               routines={routineList.failed ? (routineList.items ?? []) : routineList.items}
-              errors={routineErrors}
+              errors={
+                blockFailedFor !== null &&
+                unopened.some(({ sender }) => sender.uid === blockFailedFor)
+                  ? [...routineErrors, t.blockFailed]
+                  : routineErrors
+              }
               newIds={newRoutines.marked}
+              unopened={unopened}
+              onDeleteUnopened={
+                receiving &&
+                ((copyId) => {
+                  setRoutineFailure(null);
+                  // Not awaited: the server never answers offline; it is no longer shown meanwhile.
+                  receiving
+                    .discard(copyId)
+                    .catch(
+                      reportRoutineFailure("delete", "Deleting a routine that cannot be opened"),
+                    );
+                })
+              }
+              onBlock={blockedSenders && blockSender}
               onBack={openProfile}
               onNew={() => {
                 setViewedRoutineId(null);

@@ -235,25 +235,37 @@ describe("receiving the inbox (T26, S12)", () => {
     stop();
   });
 
-  it("leaves a malformed copy untouched, reports it, and still receives the others", async () => {
+  it("shows a copy it cannot open by its sender, deletes one nobody can be named for, and receives the others (T29 W5)", async () => {
     const fake = server();
     fake.add(
       { id: "newer", data: { ...(inboxCopy("x").data as object), version: 2 } },
       { id: "broken", data: "not a copy" },
       inboxCopy("good"),
     );
-    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store }).start();
+    const shown: string[][] = [];
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store }).start(
+      (copies) => {
+        shown.push(copies.map(({ id, sender }) => `${id} ${sender.uid} ${sender.email}`));
+      },
+    );
     await settle();
     fake.report();
     await settle();
 
     expect([...fake.routines.keys()]).toEqual(["good"]);
-    expect([...fake.copies.keys()].sort()).toEqual(["broken", "newer"]);
-    expect(fake.events).toEqual(["receive good", "stored good", "remove good"]);
+    // The copy from Alice stays, shown to the user; the one with no sender is gone.
+    expect([...fake.copies.keys()]).toEqual(["newer"]);
+    expect(shown.at(-1)).toEqual(["newer alice alice@example.com"]);
+    expect(fake.events.filter((event) => event.startsWith("receive"))).toEqual(["receive good"]);
+    expect(fake.events).toContain("remove broken");
+    expect(fake.events).not.toContain("remove newer");
     // Reported once each, by id only: the developer's log never holds what the copy says.
     expect(errors).toHaveBeenCalledTimes(2);
-    expect(errors).toHaveBeenCalledWith(expect.stringContaining("cannot be received"), "newer");
-    expect(errors).toHaveBeenCalledWith(expect.stringContaining("cannot be received"), "broken");
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining("cannot be opened"), "newer");
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining("no sender it can name; it is deleted"),
+      "broken",
+    );
     stop();
   });
 
@@ -296,6 +308,99 @@ describe("receiving the inbox (T26, S12)", () => {
       expect.stringContaining("inbox could not be read"),
       expect.objectContaining({ code: "permission-denied" }),
     );
+  });
+});
+
+describe("copies the app cannot open (T29 W5)", () => {
+  const newer = (id: string, fromUid = "alice"): InboxCopy => ({
+    id,
+    data: { ...(inboxCopy(id).data as object), fromUid, version: 2 },
+  });
+
+  function listen(receiver: ReturnType<typeof createInboxReceiver>) {
+    const shown: string[][] = [];
+    const stop = receiver.start((copies) => {
+      shown.push(copies.map(({ id }) => id));
+    });
+    return { shown, stop, last: () => shown.at(-1) };
+  }
+
+  it("are deleted when the user asks, and no longer shown", async () => {
+    const fake = server();
+    fake.add(newer("n1"), newer("n2"));
+    const receiver = createInboxReceiver({ inbox: fake.inbox, routines: fake.store });
+    const { stop, last } = listen(receiver);
+    await settle();
+    expect(last()).toEqual(["n1", "n2"]);
+
+    await receiver.discard("n1");
+    await settle();
+    expect(last()).toEqual(["n2"]);
+    expect([...fake.copies.keys()]).toEqual(["n2"]);
+    expect(fake.routines.size).toBe(0);
+    stop();
+  });
+
+  it("stop being shown at once while the delete waits, and come back when it is refused", async () => {
+    const fake = server();
+    fake.refuseRemove("n1");
+    fake.add(newer("n1"));
+    const receiver = createInboxReceiver({ inbox: fake.inbox, routines: fake.store });
+    const { stop, shown, last } = listen(receiver);
+    await settle();
+    const deleting = receiver.discard("n1");
+    expect(last()).toEqual([]);
+    await expect(deleting).rejects.toMatchObject({ code: "permission-denied" });
+    expect(last()).toEqual(["n1"]);
+    expect(shown).toContainEqual([]);
+    expect(fake.copies.has("n1")).toBe(true);
+    stop();
+  });
+
+  it("are deleted, and no longer shown, once their sender is blocked", async () => {
+    const fake = server();
+    fake.add(newer("n1", "mallory"), newer("n2", "alice"));
+    const blocked = blockedList([]);
+    const receiver = createInboxReceiver({ inbox: fake.inbox, routines: fake.store, blocked });
+    const { stop, last } = listen(receiver);
+    await settle();
+    expect(last()).toEqual(["n1", "n2"]);
+
+    blocked.set(["mallory"]);
+    await settle();
+    expect([...fake.copies.keys()]).toEqual(["n2"]);
+    expect(last()).toEqual(["n2"]);
+    expect(fake.events.filter((event) => event === "remove n1")).toHaveLength(1);
+    stop();
+  });
+
+  it("are shown again after receiving stops and starts, as after a sign-out elsewhere ends", async () => {
+    const fake = server();
+    fake.add(newer("n1"));
+    const receiver = createInboxReceiver({ inbox: fake.inbox, routines: fake.store });
+    listen(receiver).stop();
+    const again = listen(receiver);
+    await settle();
+    expect(again.last()).toEqual(["n1"]);
+    again.stop();
+  });
+
+  it("are shown with the sender's name and photo when the copy has them", async () => {
+    const fake = server();
+    const photo = "https://lh3.googleusercontent.com/a/alice";
+    fake.add({
+      id: "n1",
+      data: { fromUid: "alice", fromEmail: "a@b.co", fromName: "Alice", fromPhoto: photo },
+    });
+    let senders: unknown[] = [];
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: fake.store }).start(
+      (copies) => {
+        senders = copies.map(({ sender }) => sender);
+      },
+    );
+    await settle();
+    expect(senders).toEqual([{ uid: "alice", name: "Alice", email: "a@b.co", photo }]);
+    stop();
   });
 });
 
@@ -457,7 +562,7 @@ describe("copies from a blocked sender (T27, S7)", () => {
 });
 
 describe("which blocked list counts (L69)", () => {
-  it("blocks by exact uid only and never deletes a copy with an unreadable sender", async () => {
+  it("blocks by exact uid only; a copy with an unreadable sender is deleted as unattributable (T29 W5), never as blocked", async () => {
     const fake = server();
     const unreadable: InboxCopy = {
       id: "from-7",
@@ -472,9 +577,14 @@ describe("which blocked list counts (L69)", () => {
 
     expect([...fake.routines.keys()]).toEqual(["from-alice"]);
     expect(fake.copies.has("from-alice")).toBe(false);
-    expect(fake.copies.has("from-7")).toBe(true);
-    expect(fake.events).not.toContain("remove from-7");
+    expect(fake.copies.has("from-7")).toBe(false);
+    expect(fake.events.filter((event) => event === "remove from-7")).toHaveLength(1);
     expect(fake.events).not.toContain("receive from-7");
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining("no sender it can name; it is deleted"),
+      "from-7",
+    );
+    expect(errors).not.toHaveBeenCalledWith(expect.stringContaining("blocked"), "from-7");
     stop();
   });
 

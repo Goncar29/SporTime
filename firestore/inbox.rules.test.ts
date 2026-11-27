@@ -145,6 +145,8 @@ async function seed(path: string, data: object) {
 }
 
 const bobContact = { uid: "bob", name: "Bob", photo: "", email: "bob@example.com" };
+/** Bob lets people find him by email (T29 W1: a copy goes only to someone still findable). */
+const bobEntry = { uid: "bob", name: "Bob" };
 
 beforeAll(async () => {
   env = await initializeTestEnvironment({
@@ -156,6 +158,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await env.clearFirestore();
   await seed(contactPath("alice", "bob"), bobContact);
+  await seed("directory/bob@example.com", bobEntry);
 });
 
 afterAll(async () => {
@@ -333,6 +336,45 @@ describe("who may send (T24, S12, S7)", () => {
   it("refuses a sender whose email is not verified", async () => {
     await refused(copy, asAlice({ email_verified: false }));
     await refused(copy, asAlice({ email_verified: undefined }));
+  });
+});
+
+/** Deletes a stored document, bypassing the rules, as the recipient's own app would. */
+async function unseed(path: string) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await deleteDoc(doc(context.firestore(), path));
+  });
+}
+
+describe("the recipient must still be findable by email (T29 W1)", () => {
+  it("refuses a recipient who turned find-by-email off, or whose account was deleted", async () => {
+    // Turning the switch off and deleting the account both remove the directory entry.
+    await unseed("directory/bob@example.com");
+    await refused(copy);
+  });
+
+  it("refuses when the entry under the contact's email now belongs to another account", async () => {
+    await seed("directory/bob@example.com", { uid: "carol", name: "Carol" });
+    await refused(copy);
+  });
+
+  it("looks the entry up under the email the sender's contact holds, not any other", async () => {
+    await seed(contactPath("alice", "bob"), { ...bobContact, email: "old-bob@example.com" });
+    await refused(copy);
+    await seed("directory/old-bob@example.com", bobEntry);
+    await accepted(copy);
+  });
+
+  it("accepts again once the recipient turns find-by-email back on", async () => {
+    await unseed("directory/bob@example.com");
+    await refused(copy);
+    await seed("directory/bob@example.com", bobEntry);
+    await accepted(copy);
+  });
+
+  it("still needs the recipient in the sender's contacts: an entry alone is not enough", async () => {
+    await seed("directory/carol@example.com", { uid: "carol", name: "Carol" });
+    await refused(copy, asAlice(), "carol");
   });
 });
 
@@ -663,9 +705,30 @@ describe("links in a copy (T24, S12, S9)", () => {
       "https://www.",
       "https://x.com:abc",
       "https://x.com:123456",
+      // A port above 65535 opens nothing, so the recipient's app could never open it (T29 W5).
+      "https://x.com:65536",
+      "https://x.com:70000",
+      "https://x.com:99999",
       "https://x_y.com",
     ]) {
       await refused(withLines(lineWithLink(link)));
+    }
+  }, 60_000);
+
+  it("accepts every port a browser opens, 0 to 65535 (T29 W5)", async () => {
+    for (const link of [
+      "https://x.com:0",
+      "https://x.com:443/a",
+      "https://x.com:00080",
+      "https://x.com:9999",
+      "https://x.com:59999",
+      "https://x.com:64999",
+      "https://x.com:65499",
+      "https://x.com:65529",
+      "https://x.com:65535",
+    ]) {
+      expect(normalizeLink(link), link).toBe(link);
+      await accepted(withLines(lineWithLink(link)));
     }
   }, 60_000);
 

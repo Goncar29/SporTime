@@ -282,4 +282,15 @@ export interface Messages {
   unblockSender(name: string): string;
   unblockFailed: string;
   loadBlockedFailed: string;
+  /** The list of copies a contact sent that could not be opened (T29 W5), in Routines. */
+  unopenedRoutines: string;
+  /**
+   * One such copy, by its sender; arguments as for `blockSender` (isolated, `name` null when the
+   * sender has none).
+   */
+  unopenedRoutine(name: string | null, email: string): string;
+  /** The accessible name of its Delete button; arguments as for `unopenedRoutine`. */
+  deleteUnopenedRoutine(name: string | null, email: string): string;
+  /** The visible text of the button that blocks its sender. */
+  blockSenderAction: string;
 }

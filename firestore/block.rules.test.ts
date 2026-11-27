@@ -92,6 +92,8 @@ beforeEach(async () => {
   await env.clearFirestore();
   await seed("users/alice/contacts/bob", contact("bob"));
   await seed("users/carol/contacts/bob", contact("bob"));
+  // Bob lets people find him by email, so copies may reach him (T29 W1).
+  await seed("directory/bob@example.com", { uid: "bob", name: "" });
 });
 
 afterAll(async () => {
@@ -124,6 +126,18 @@ describe("the blocked list (T27, S7)", () => {
     );
   });
 
+  it("accepts every sender email the inbox took from a verified sign-in: '/', spaces, a quoted @ (T29 W4)", async () => {
+    const db = asBob();
+    for (const [index, email] of [
+      "a/b@example.com",
+      '"al ice"@example.com',
+      '"a@b"@example.com',
+      "a@b@c",
+    ].entries()) {
+      await assertSucceeds(setDoc(doc(db, blockedPath("bob", `s${index}`)), { name: "", email }));
+    }
+  });
+
   it("refuses anything but exactly a valid name and email, and blocking oneself", async () => {
     const db = asBob();
     const refused = async (data: object, senderUid = "alice") => {
@@ -142,9 +156,10 @@ describe("the blocked list (T27, S7)", () => {
     await refused({ ...aliceBlocked, email: 7 });
     await refused({ ...aliceBlocked, email: "" });
     await refused({ ...aliceBlocked, email: "alice" });
-    await refused({ ...aliceBlocked, email: "a@b@c" });
-    await refused({ ...aliceBlocked, email: "al ice@example.com" });
-    await refused({ ...aliceBlocked, email: "a/b@example.com" });
+    await refused({ ...aliceBlocked, email: "@example.com" });
+    await refused({ ...aliceBlocked, email: "alice@" });
+    await refused({ ...aliceBlocked, email: "al\nice@example.com" });
+    await refused({ ...aliceBlocked, email: "al\u0085ice@example.com" });
     await refused({
       ...aliceBlocked,
       email: `${"e".repeat(L.senderEmailLength - 10)}@example.co`,
@@ -220,6 +235,7 @@ describe("a blocked sender's copies (T27, S7, S12)", () => {
 
   it("only count for the recipient who blocked: another recipient still receives them", async () => {
     await seed("users/alice/contacts/dave", contact("dave"));
+    await seed("directory/dave@example.com", { uid: "dave", name: "" });
     await seed(blockedPath("bob", "alice"), aliceBlocked);
     // Blocked in someone else's list, or under another uid, changes nothing.
     await seed(blockedPath("dave", "carol"), { name: "Carol", email: "carol@example.com" });
@@ -368,6 +384,7 @@ describe("the largest copy with the blocked check (T27, L6)", () => {
       await lifted.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore() as unknown as Firestore;
         await setDoc(doc(db, "users/alice/contacts/bob"), contact("bob"));
+        await setDoc(doc(db, "directory/bob@example.com"), { uid: "bob", name: "" });
         await setDoc(doc(db, blockedPath("bob", "carol")), { name: "Carol", email: "c@x.co" });
       });
     });
@@ -397,7 +414,7 @@ describe("the largest copy with the blocked check (T27, L6)", () => {
           if (!ok) break;
           fit = stages;
         }
-        console.info(`Inbox create with the blocked check: ${fit} full stages fit`);
+        console.warn(`Inbox create with the blocked check: ${fit} full stages fit`);
         expect(fit).toBeGreaterThan(L.stages);
       },
     );

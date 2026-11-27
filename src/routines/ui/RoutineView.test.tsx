@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { I18nProvider } from "../../i18n/ui/I18nProvider";
+import type { Routine } from "../domain/routine";
 import { RoutineView } from "./RoutineView";
 
 it("shows a stage's table in Spanish, with the weight's decimal comma", () => {
@@ -357,4 +358,52 @@ it("keeps texts with a stray isolate end from reordering labels, dialog and send
   const title = dialog.querySelector(`#${CSS.escape(dialog.getAttribute("aria-labelledby")!)}`);
   expectSealed(title!.textContent);
   expect(title!.textContent).toBe('¿Eliminar "\u2068Piernas\u2069"?');
+});
+
+describe("the sender's Google photo (T29 W3)", () => {
+  const photo = "https://lh3.googleusercontent.com/a/ana=s96-c";
+  const renderWith = (receivedFrom: Routine["receivedFrom"]) =>
+    render(
+      <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["en-US"]}>
+        <RoutineView
+          routine={{ id: "r1", name: "Piernas", createdAt: 1, stages: [], receivedFrom }}
+          errors={[]}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+  it("is shown next to the name and email, which stay as text", () => {
+    const { container } = renderWith({ uid: "ana", name: "Ana", email: "ana@example.com", photo });
+    const line = screen.getByText("Received from \u2068Ana\u2069 (\u2068ana@example.com\u2069)");
+    const image = container.querySelector("img");
+    expect(image).toHaveAttribute("src", photo);
+    expect(image).toHaveAttribute("alt", "");
+    expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(line.parentElement).toContainElement(image);
+  });
+
+  it("is the name's initial without a photo, or with one not on googleusercontent.com", () => {
+    for (const other of [undefined, "https://example.com/ana.png"]) {
+      const { container, unmount } = renderWith({
+        uid: "ana",
+        name: "ana",
+        email: "ana@example.com",
+        ...(other === undefined ? {} : { photo: other }),
+      });
+      expect(container.querySelector("img")).toBeNull();
+      const line = screen.getByText("Received from \u2068ana\u2069 (\u2068ana@example.com\u2069)");
+      const initial = within(line.parentElement!).getByText("A");
+      expect(initial).toHaveAttribute("aria-hidden", "true");
+      unmount();
+    }
+  });
+
+  it("is the email's initial when the sender has no name", () => {
+    renderWith({ uid: "bob", name: "", email: "bob@example.com" });
+    const line = screen.getByText("Received from \u2068bob@example.com\u2069");
+    expect(within(line.parentElement!).getByText("B")).toHaveAttribute("aria-hidden", "true");
+  });
 });

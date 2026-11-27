@@ -6,7 +6,9 @@ import {
   clearEmulatorData,
   contactOf,
   deleteAccount,
+  directoryEntry,
   eventually,
+  findMe,
   listedAccount,
   listMe,
   newAccount,
@@ -50,6 +52,7 @@ const storedRoutines = async (uid: string) =>
         uid: sender.uid?.stringValue,
         name: sender.name?.stringValue,
         email: sender.email?.stringValue,
+        photo: sender.photo?.stringValue,
       },
       stages: (fields.stages?.arrayValue?.values ?? []).map((stage) => ({
         name: stage.mapValue?.fields?.name?.stringValue,
@@ -226,6 +229,16 @@ const hostOf = (link: Locator) => link.evaluate((anchor: HTMLAnchorElement) => a
 const receivedLine = (from: Account) => `Received from ${iso(from.name)} (${iso(from.email)})`;
 
 /**
+ * What shows right before the sender's line: their Google photo, or the initial of their name
+ * when they have none, as every emulator account (T29 W3).
+ */
+const senderAvatar = (line: Locator) => line.locator("xpath=preceding-sibling::*[1]");
+
+/** The notice for a copy that could not be opened, by its sender (T29 W5). */
+const unopenedLine = (name: string, email: string) =>
+  `${iso(name)} (${iso(email)}) sent you a routine that couldn't be opened.`;
+
+/**
  * Beto lets people find him by email and stays signed in on his page; Ana signs in on hers and
  * adds him as a contact.
  */
@@ -306,10 +319,17 @@ test("a routine shared with a contact arrives by itself, marked received and new
   await expect(listed).toBeVisible();
   await expect(listed).toHaveAccessibleDescription(receivedLine(ana));
   await expect(listed.getByText("New", { exact: true })).toBeVisible();
+  // No Google photo on the emulator: the initial of Ana's name sits next to who sent it.
+  const listedLine = listed.getByText(receivedLine(ana));
+  await expect(senderAvatar(listedLine)).toHaveText(ana.name[0]!.toUpperCase());
+  await expect(senderAvatar(listedLine)).toHaveAttribute("aria-hidden", "true");
 
   await listed.click();
   await expect(betoPage.getByRole("heading", { level: 1 })).toHaveText(routine.name);
   await expect(betoPage.getByText(receivedLine(ana))).toBeVisible();
+  await expect(senderAvatar(betoPage.getByText(receivedLine(ana)))).toHaveText(
+    ana.name[0]!.toUpperCase(),
+  );
   await expect(betoPage.getByText(routine.notes ?? "", { exact: true })).toBeVisible();
   await expect(betoPage.getByText("Sin pausa entre ejercicios", { exact: true })).toBeVisible();
   expect(await viewContent(betoPage)).toEqual(sent);
@@ -559,10 +579,16 @@ test("a deleted received routine stays deleted; deleting the account removes the
   await expect(betoPage.getByText(/^No routines yet/)).toBeVisible();
   expect(await storedRoutines(beto.uid)).toEqual([]);
 
-  // A copy the app cannot read stays in the inbox (L62), so only deleting the account removes it.
+  // A copy the app cannot open but that says who sent it stays in the inbox, shown in Routines
+  // (T29 W5); deleting the account removes it with the rest.
   await writeStored(`users/${beto.uid}/inbox/unreadable`, {
     fromUid: "someone-else",
+    fromEmail: "someone@example.com",
+    fromName: "Someone",
     name: "Not a routine",
+  });
+  await expect(betoPage.getByText(unopenedLine("Someone", "someone@example.com"))).toBeVisible({
+    timeout: 60_000,
   });
   expect(await stored(beto.uid, "inbox")).toHaveLength(1);
 
@@ -613,4 +639,102 @@ test("bidi controls in a received routine's name never reorder the recipient's l
   await expect(betoPage.getByRole("alertdialog")).toHaveAccessibleName(
     `Delete "${iso("Piernas")}"?`,
   );
+});
+
+test("a contact who turns off being found by email no longer receives routines (T29 W1)", async ({
+  page,
+  betoPage,
+}) => {
+  const { beto } = await anaAndBeto(page, betoPage);
+  const routine = simpleRoutine("Glúteos");
+  await sendReceived(page, routine, beto);
+
+  // Beto turns "Let people find me by email" off: his entry leaves the directory.
+  await openTab(betoPage, "Profile");
+  await expect(findMe(betoPage)).toBeChecked();
+  await findMe(betoPage).click();
+  await eventually(() => directoryEntry(beto.email)).toBeNull();
+
+  // Ana still has him in her contacts, but her share is refused, saying no more than that.
+  await page.getByRole("button", { name: "Done" }).click();
+  await shareTo(page, routine.name, beto);
+  await expect(resultFor(page, beto)).toContainText(
+    "Not sent: the server refused it. Check they are still in your contacts.",
+    { timeout: 60_000 },
+  );
+  await expect(page.locator("body")).not.toContainText(/find me by email/i);
+  expect(await stored(beto.uid, "inbox")).toEqual([]);
+  expect(await routineNames(beto.uid)).toEqual([routine.name]);
+
+  // Turned back on, Ana's next share arrives.
+  await findMe(betoPage).click();
+  await eventually(() => directoryEntry(beto.email)).not.toBeNull();
+  await page.getByRole("button", { name: "Done" }).click();
+  await shareTo(page, routine.name, beto);
+  await expect(resultFor(page, beto)).toContainText("Sent.", { timeout: 60_000 });
+  await eventually(() => routineNames(beto.uid)).toEqual([routine.name, routine.name]);
+});
+
+test("a received copy the app cannot open is shown by its sender, to delete it or block them (T29 W5)", async ({
+  betoPage,
+}) => {
+  const beto = await newAccount(await openedPage(betoPage), "beto");
+  await openRoutines(betoPage);
+  await expect(betoPage.getByText(/^No routines yet/)).toBeVisible();
+
+  // Written as another version of the app might: the rules here would refuse these shapes, so they
+  // are written past them, to stand for any copy the app cannot open.
+  await writeStored(`users/${beto.uid}/inbox/odd-1`, {
+    fromUid: "mallory-uid",
+    fromEmail: "mallory@example.com",
+    fromName: "Mallory",
+    name: "Rara",
+  });
+  await writeStored(`users/${beto.uid}/inbox/odd-2`, {
+    fromUid: "trudy-uid",
+    fromEmail: "trudy@example.com",
+    fromName: "Trudy",
+    name: "Otra rara",
+  });
+  // One that cannot say who sent it cannot be shown or blocked: it is deleted by itself.
+  await writeStored(`users/${beto.uid}/inbox/nobody`, { name: "Sin remitente" });
+
+  const notices = betoPage.getByRole("list", { name: "Routines that couldn't be opened" });
+  await expect(notices.getByRole("listitem")).toHaveCount(2, { timeout: 60_000 });
+  await expect(betoPage.getByText(unopenedLine("Mallory", "mallory@example.com"))).toBeVisible();
+  await eventually(async () =>
+    (await stored(beto.uid, "inbox"))
+      .map(({ name }) => name.split("/").pop() ?? "")
+      .sort((a, b) => a.localeCompare(b)),
+  ).toEqual(["odd-1", "odd-2"]);
+
+  // Delete removes it from the server.
+  await betoPage
+    .getByRole("button", {
+      name: `Delete the routine from ${iso("Mallory")} (${iso("mallory@example.com")})`,
+      exact: true,
+    })
+    .click();
+  await expect(betoPage.getByText(unopenedLine("Mallory", "mallory@example.com"))).toHaveCount(0);
+  await eventually(async () =>
+    (await stored(beto.uid, "inbox")).map(({ name }) => name.split("/").pop()),
+  ).toEqual(["odd-2"]);
+
+  // Block sender, after confirming, blocks them (T27) and deletes their copy.
+  await betoPage
+    .getByRole("button", {
+      name: `Block ${iso("Trudy")} (${iso("trudy@example.com")})`,
+      exact: true,
+    })
+    .click();
+  await betoPage
+    .getByRole("alertdialog", { name: `Block ${iso("Trudy")} (${iso("trudy@example.com")})?` })
+    .getByRole("button", { name: "Block", exact: true })
+    .click();
+  await eventually(() => storedBlocked(beto.uid)).toEqual([
+    { id: "trudy-uid", name: "Trudy", email: "trudy@example.com" },
+  ]);
+  await eventually(() => stored(beto.uid, "inbox")).toEqual([]);
+  await expect(notices).toHaveCount(0);
+  expect(await routineNames(beto.uid)).toEqual([]);
 });

@@ -16,7 +16,7 @@ function shareProblem(problem: ShareProblem): string {
     case "senderName":
       return "Your Google name is longer than 100 characters or holds characters that can't be sent. Change it in your Google Account, then try again.";
     case "senderEmail":
-      return "Your Google account has no verified email, so you can't share routines.";
+      return "Your Google account has no verified email that can be sent with a routine (at most 254 characters, without control characters), so you can't share routines.";
     case "routineName":
       return `Check the routine's name: it must start with a visible character and fit in ${ROUTINE_LIMITS.nameLength} characters.`;
     case "routineNotes":
@@ -185,7 +185,7 @@ export const en: Messages = {
   privacySections: [
     {
       heading: "What we keep",
-      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts, routines and finished sessions, so you can use them on any device. Routines a contact sends you are saved among yours, with the Google name and email they sent them with. Your contacts, the people you add by the email they let others find them by, are kept with that email and the Google name and photo they listed, and only you can see them. The people you block, from a routine they sent you, are kept with the Google name and email of that routine, and only you can see them too. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo; the addresses are never listed for anyone.",
+      body: "From your Google account we use your name, email and profile photo, to show who is signed in. We also keep your saved workouts, routines and finished sessions, so you can use them on any device. Routines a contact sends you are saved among yours, with the Google name, email and photo they sent them with. Your contacts, the people you add by the email they let others find them by, are kept with that email and the Google name and photo they listed, and only you can see them. The people you block, from a routine they sent you, are kept with the Google name and email of that routine, and only you can see them too. If you turn on Let people find me by email, in Profile, anyone signed in who enters your exact email can find you by email and see your Google name and photo, and your contacts can send you routines; the addresses are never listed for anyone. Turning it off also stops anyone from sending you routines.",
     },
     {
       heading: "Where it is kept",
@@ -201,14 +201,14 @@ export const en: Messages = {
     },
     {
       heading: "Removing your data",
-      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your routines, including those contacts sent you, your finished sessions, your contacts, the people you blocked and your name and photo from finding by email. Anyone who added you as a contact keeps the name, photo and email they saw then. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
+      body: "Delete account, on the main screen, permanently removes your account, your saved workouts, your routines, including those contacts sent you, your finished sessions, your contacts, the people you blocked and your name and photo from finding by email. Anyone who added you as a contact keeps the name, photo and email they saw then. Routines you shared stay with the people you sent them to, with your Google name, email and photo. Close the app in other tabs and on other devices first: anything they save after the deletion can stay on our servers, with no account left to reach or remove it.",
     },
   ],
   privacyContactHeading: "Contact",
   privacyContactBody: "For questions about your data, or to ask us to remove it, write to",
   deleteAccount: "Delete account",
   deleteAccountWarning:
-    "This permanently removes your account, your saved workouts, your routines, including those contacts sent you, your finished sessions and your contacts, and the people you blocked. It cannot be undone.",
+    "This permanently removes your account, your saved workouts, your routines, including those contacts sent you, your finished sessions and your contacts, and the people you blocked. Routines you shared stay with the people you sent them to, with your Google name, email and photo. It cannot be undone.",
   deleteAccountConfirmNote:
     "Google may ask you to confirm it's you; the deletion then finishes by itself.",
   confirmDeleteAccount: "Delete my account",
@@ -273,8 +273,8 @@ export const en: Messages = {
   viewExerciseLink: (host, exercise) => `View ${host} (${exercise})`,
   findByEmail: "Let people find me by email",
   findByEmailHint:
-    "Anyone signed in who enters your exact email will see your Google name and photo.",
-  findByEmailContactsHint: "Turn it on so others can add you as a contact.",
+    "Anyone signed in who enters your exact email will see your Google name and photo. Turn it off and nobody can send you routines.",
+  findByEmailContactsHint: "Turn it on so others can add you as a contact and send you routines.",
   findByEmailChangeFailed: "We couldn't change whether people can find you by email.",
   findByEmailLoadFailed: "We couldn't check whether people can find you by email.",
   contacts: "Contacts",
@@ -351,4 +351,10 @@ export const en: Messages = {
   unblockSender: (name) => `Unblock ${name}`,
   unblockFailed: "We couldn't unblock that person.",
   loadBlockedFailed: "We couldn't load who you blocked.",
+  unopenedRoutines: "Routines that couldn't be opened",
+  unopenedRoutine: (name, email) =>
+    `${name === null ? email : `${name} (${email})`} sent you a routine that couldn't be opened.`,
+  deleteUnopenedRoutine: (name, email) =>
+    `Delete the routine from ${name === null ? email : `${name} (${email})`}`,
+  blockSenderAction: "Block sender",
 };

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { I18nProvider } from "../../i18n/ui/I18nProvider";
 import type { Routine } from "../domain/routine";
 import { RoutinesScreen } from "./RoutinesScreen";
@@ -129,4 +129,111 @@ it("keeps a name with a stray isolate end from reordering the dialog and labels 
   const title = dialog.querySelector(`#${CSS.escape(dialog.getAttribute("aria-labelledby")!)}`);
   expectSealed(title!.textContent);
   expect(title!.textContent).toBe('¿Eliminar "\u2068Piernas\u2069"?');
+});
+
+it("shows the sender's Google photo, or an initial, next to who sent it (T29 W3)", () => {
+  const photo = "https://lh3.googleusercontent.com/a/ana=s96-c";
+  const { container } = render(
+    <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["en-US"]}>
+      <RoutinesScreen
+        routines={[{ ...received, receivedFrom: { ...received.receivedFrom!, photo } }, nameless]}
+        errors={[]}
+        onBack={vi.fn()}
+        onNew={vi.fn()}
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    </I18nProvider>,
+  );
+  const items = within(screen.getByRole("list", { name: "Routines" })).getAllByRole("listitem");
+  expect(container.querySelectorAll("img")).toHaveLength(1);
+  expect(items[0]!.querySelector("img")).toHaveAttribute("src", photo);
+  expect(within(items[1]!).getByText("B")).toHaveAttribute("aria-hidden", "true");
+  // Only the routine's own buttons: the photo is not one, and the line still describes it.
+  expect(within(items[0]!).getAllByRole("button")).toHaveLength(3);
+  expect(
+    screen.getByRole("button", { name: "Open \u2068Piernas\u2069" }),
+  ).toHaveAccessibleDescription("Received from \u2068Ana\u2069 (\u2068ana@example.com\u2069)");
+});
+
+describe("copies that could not be opened (T29 W5)", () => {
+  const mallory = { uid: "mallory", name: "Mallory\u202e", email: "mallory@example.com" };
+  const unopened = [
+    { id: "odd", sender: mallory },
+    { id: "odd2", sender: { uid: "x", name: "", email: "x@example.com" } },
+  ];
+
+  function renderNotices(
+    language: "en-US" | "es-AR",
+    { withBlock = true }: { withBlock?: boolean } = {},
+  ) {
+    const onDeleteUnopened = vi.fn();
+    const onBlock = vi.fn();
+    render(
+      <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={[language]}>
+        <RoutinesScreen
+          routines={[]}
+          errors={[]}
+          unopened={unopened}
+          onDeleteUnopened={onDeleteUnopened}
+          {...(withBlock ? { onBlock } : {})}
+          onBack={vi.fn()}
+          onNew={vi.fn()}
+          onOpen={vi.fn()}
+          onEdit={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    return { onDeleteUnopened, onBlock };
+  }
+
+  it("names each one by its sender, isolated, with Delete and Block sender", () => {
+    const { onDeleteUnopened, onBlock } = renderNotices("es-AR");
+    const notices = within(
+      screen.getByRole("list", { name: "Rutinas que no se pudieron abrir" }),
+    ).getAllByRole("listitem");
+    expect(notices).toHaveLength(2);
+    expect(
+      within(notices[0]!).getByText(
+        "\u2068Mallory\u2069 (\u2068mallory@example.com\u2069) te envió una rutina que no se pudo abrir.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(notices[1]!).getByText(
+        "\u2068x@example.com\u2069 te envió una rutina que no se pudo abrir.",
+      ),
+    ).toBeInTheDocument();
+
+    const remove = within(notices[0]!).getByRole("button", {
+      name: "Eliminar la rutina de \u2068Mallory\u2069 (\u2068mallory@example.com\u2069)",
+    });
+    expect(remove).toHaveTextContent("Eliminar");
+    fireEvent.click(remove);
+    expect(onDeleteUnopened).toHaveBeenCalledWith("odd");
+
+    const block = within(notices[0]!).getByRole("button", {
+      name: "Bloquear a \u2068Mallory\u2069 (\u2068mallory@example.com\u2069)",
+    });
+    expect(block).toHaveTextContent("Bloquear remitente");
+    fireEvent.click(block);
+    expect(onBlock).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("alertdialog", {
+      name: "¿Bloquear a \u2068Mallory\u2069 (\u2068mallory@example.com\u2069)?",
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Bloquear" }));
+    expect(onBlock).toHaveBeenCalledWith(mallory);
+  });
+
+  it("offers no Block sender without a blocked list, and says it in English too", () => {
+    renderNotices("en-US", { withBlock: false });
+    expect(
+      screen.getByText(
+        "\u2068Mallory\u2069 (\u2068mallory@example.com\u2069) sent you a routine that couldn't be opened.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Block/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Delete the routine from/ })).toHaveLength(2);
+  });
 });

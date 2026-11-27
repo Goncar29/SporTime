@@ -111,11 +111,12 @@ describe("contacts messages", () => {
   });
 
   it("says on the Contacts screen that the switch lets others add you", () => {
-    expect(MESSAGES.es.findByEmailContactsHint).toBe(
-      "Actívalo para que otros puedan agregarte como contacto.",
+    // And send you routines (T29 W1), pinned with the other post-review texts below.
+    expect(MESSAGES.es.findByEmailContactsHint).toMatch(
+      /^Actívalo para que otros puedan agregarte como contacto/,
     );
-    expect(MESSAGES.en.findByEmailContactsHint).toBe(
-      "Turn it on so others can add you as a contact.",
+    expect(MESSAGES.en.findByEmailContactsHint).toMatch(
+      /^Turn it on so others can add you as a contact/,
     );
   });
 
@@ -312,4 +313,80 @@ it("names the blocked list among the data kept and deleted (T27)", () => {
   expect(removed("es")).toMatch(/las personas que bloqueaste/);
   expect(MESSAGES.en.deleteAccountWarning).toMatch(/the people you blocked/);
   expect(MESSAGES.es.deleteAccountWarning).toMatch(/las personas que bloqueaste/);
+});
+
+describe("post-review fixes (T29)", () => {
+  const kept = (language: "en" | "es") => MESSAGES[language].privacySections[0]!.body;
+  const removed = (language: "en" | "es") => MESSAGES[language].privacySections.at(-1)!.body;
+
+  it("says routines you shared stay with their recipients, with your name, email and photo (S1)", () => {
+    expect(removed("en")).toContain(
+      "Routines you shared stay with the people you sent them to, with your Google name, email and photo.",
+    );
+    expect(removed("es")).toContain(
+      "Las rutinas que compartiste se quedan con las personas a las que se las enviaste, con tu nombre, email y foto de Google.",
+    );
+    expect(MESSAGES.en.deleteAccountWarning).toContain(
+      "Routines you shared stay with the people you sent them to, with your Google name, email and photo.",
+    );
+    expect(MESSAGES.es.deleteAccountWarning).toContain(
+      "Las rutinas que compartiste se quedan con las personas a las que se las enviaste, con tu nombre, email y foto de Google.",
+    );
+  });
+
+  it("says turning find-by-email off also stops receiving shared routines (W1)", () => {
+    expect(MESSAGES.en.findByEmailHint).toContain("Turn it off and nobody can send you routines.");
+    expect(MESSAGES.es.findByEmailHint).toContain(
+      "Si lo desactivas, nadie podrá enviarte rutinas.",
+    );
+    expect(MESSAGES.en.findByEmailContactsHint).toBe(
+      "Turn it on so others can add you as a contact and send you routines.",
+    );
+    expect(MESSAGES.es.findByEmailContactsHint).toBe(
+      "Actívalo para que otros puedan agregarte como contacto y enviarte rutinas.",
+    );
+    expect(kept("en")).toContain("Turning it off also stops anyone from sending you routines.");
+    expect(kept("es")).toContain("Al desactivarlo, nadie más puede enviarte rutinas.");
+  });
+
+  it("keeps received routines with the sender's Google name, email and photo (W3)", () => {
+    expect(kept("en")).toContain(
+      "Routines a contact sends you are saved among yours, with the Google name, email and photo they sent them with.",
+    );
+    expect(kept("es")).toContain(
+      "Las rutinas que te envía un contacto se guardan entre las tuyas, con el nombre, el email y la foto de Google con que te las envió.",
+    );
+  });
+
+  it("names a routine that could not be opened, by its sender, with Delete and Block (W5)", () => {
+    expect(MESSAGES.en.unopenedRoutine("Ana", "ana@example.com")).toBe(
+      "Ana (ana@example.com) sent you a routine that couldn't be opened.",
+    );
+    expect(MESSAGES.en.unopenedRoutine(null, "ana@example.com")).toBe(
+      "ana@example.com sent you a routine that couldn't be opened.",
+    );
+    expect(MESSAGES.es.unopenedRoutine("Ana", "ana@example.com")).toBe(
+      "Ana (ana@example.com) te envió una rutina que no se pudo abrir.",
+    );
+    expect(MESSAGES.es.unopenedRoutine(null, "ana@example.com")).toBe(
+      "ana@example.com te envió una rutina que no se pudo abrir.",
+    );
+    expect(MESSAGES.en.deleteUnopenedRoutine("Ana", "ana@example.com")).toBe(
+      "Delete the routine from Ana (ana@example.com)",
+    );
+    expect(MESSAGES.es.deleteUnopenedRoutine(null, "ana@example.com")).toBe(
+      "Eliminar la rutina de ana@example.com",
+    );
+    expect(MESSAGES.en.blockSenderAction).toBe("Block sender");
+    expect(MESSAGES.es.blockSenderAction).toBe("Bloquear remitente");
+  });
+
+  it("explains a sign-in email that cannot be sent with (W4)", () => {
+    expect(MESSAGES.en.shareProblem({ kind: "senderEmail" })).toBe(
+      "Your Google account has no verified email that can be sent with a routine (at most 254 characters, without control characters), so you can't share routines.",
+    );
+    expect(MESSAGES.es.shareProblem({ kind: "senderEmail" })).toBe(
+      "Tu cuenta de Google no tiene un email verificado que se pueda enviar con una rutina (hasta 254 caracteres, sin caracteres de control), así que no puedes compartir rutinas.",
+    );
+  });
 });

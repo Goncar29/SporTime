@@ -11,6 +11,8 @@ const routine: RoutineDraft = { name: "Piernas", createdAt: 1, stages: [] };
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem("sportime.fakeContacts.me", JSON.stringify([bob]));
+  // Bob lets people find him by email (T29 W1).
+  localStorage.setItem("sportime.fakeDirectory.bob@example.com", JSON.stringify({ uid: "bob" }));
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -37,6 +39,18 @@ it("keeps copies in the recipient's inbox, refusing like the rules", async () =>
     },
   ]);
   expect(fakeInboxOf("carol")).toEqual({});
+});
+
+it("refuses a contact who can no longer be found by email, like the rules (T29 W1)", async () => {
+  localStorage.removeItem("sportime.fakeDirectory.bob@example.com");
+  const preparation = await createFakeRoutineSharing(me).prepare(routine, [bob]);
+  if (preparation.kind !== "ready") throw new Error(preparation.kind);
+  expect((await preparation.share.send()).map(({ outcome }) => outcome)).toEqual(["refused"]);
+  localStorage.setItem("sportime.fakeDirectory.bob@example.com", JSON.stringify({ uid: "eve" }));
+  const again = await createFakeRoutineSharing(me).prepare(routine, [bob]);
+  if (again.kind !== "ready") throw new Error(again.kind);
+  expect((await again.share.send()).map(({ outcome }) => outcome)).toEqual(["refused"]);
+  expect(fakeInboxOf("bob")).toEqual({});
 });
 
 it("needs a connection", async () => {

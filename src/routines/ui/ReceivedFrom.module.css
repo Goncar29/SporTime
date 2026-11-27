@@ -1,0 +1,28 @@
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The sender's Google photo, or the initial of their name, next to who sent it (T29 W3). */
+.avatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--accent);
+  font-size: 0.9375rem;
+  font-style: normal;
+  font-weight: 800;
+  object-fit: cover;
+}
+
+/* Long names and emails wrap beside the photo instead of pushing it out. */
+.line > bdi {
+  min-width: 0;
+}

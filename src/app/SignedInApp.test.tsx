@@ -611,6 +611,8 @@ describe("sharing a routine", () => {
       "sportime.fakeContacts.alice",
       JSON.stringify([{ uid: "bob", name: "Bob", photo: "", email: "bob@example.com" }]),
     );
+    // Bob still lets people find him by email, so the copy may reach him (T29 W1).
+    localStorage.setItem("sportime.fakeDirectory.bob@example.com", JSON.stringify({ uid: "bob" }));
     await createFakeRoutineLibrary("alice").save({ name: "Legs", createdAt: 1, stages: [] });
     const sharingFor = vi.fn((user: User) => createFakeRoutineSharing(user));
     const { switchTo } = setup({ sharingFor });
@@ -642,6 +644,7 @@ describe("receiving routines (T26, S12)", () => {
           events.push(`stop ${userId}`);
         };
       },
+      discard: () => Promise.resolve(),
     });
     const { switchTo } = setup({ receivingFor });
     expect(events.at(-1)).toBe("start alice");

@@ -1,4 +1,5 @@
 import type { User } from "../../auth/domain/user";
+import { fakeDirectoryEntry } from "../../directory/infrastructure/fakeDirectoryListing";
 import type { InboxWriter, RoutineSharing } from "../application/ports";
 import { createRoutineSharing } from "../application/shareRoutine";
 import type { SharedCopy } from "../domain/sharedCopy";
@@ -24,11 +25,20 @@ export function fakeInboxOf(uid: string): Record<string, FakeInboxCopy> {
   }
 }
 
-/** Whether the fake contact store of `owner` holds `contactUid`, as the rules ask the server. */
-function hasContact(owner: string, contactUid: string): boolean {
+/**
+ * Whether the fake contact store of `owner` holds `contactUid` and that contact can still be found
+ * by email under their uid (T29 W1), as the rules ask the server.
+ */
+function hasFindableContact(owner: string, contactUid: string): boolean {
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(`sportime.fakeContacts.${owner}`) ?? "[]");
-    return Array.isArray(raw) && raw.some((item) => (item as { uid?: unknown }).uid === contactUid);
+    if (!Array.isArray(raw)) return false;
+    const contact = raw.find((item) => (item as { uid?: unknown }).uid === contactUid) as
+      | { email?: unknown }
+      | undefined;
+    if (typeof contact?.email !== "string") return false;
+    const entry = fakeDirectoryEntry(contact.email) as { uid?: unknown } | null;
+    return entry?.uid === contactUid;
   } catch {
     return false;
   }
@@ -36,8 +46,8 @@ function hasContact(owner: string, contactUid: string): boolean {
 
 /**
  * Tests only: sends copies to inboxes kept in localStorage, refusing like the rules (a recipient
- * who is not a contact or who blocked the sender, a copy id already used), with the signed-in user
- * as the sender. Never part of a production build.
+ * who is not a contact, can no longer be found by email or blocked the sender, a copy id already
+ * used), with the signed-in user as the sender. Never part of a production build.
  */
 export function createFakeRoutineSharing(user: User): RoutineSharing {
   const inbox: InboxWriter = {
@@ -45,7 +55,7 @@ export function createFakeRoutineSharing(user: User): RoutineSharing {
       if (!navigator.onLine) return Promise.reject(refused("unavailable"));
       const copies = fakeInboxOf(recipientUid);
       const blocked = fakeBlockedOf(recipientUid).some(({ uid }) => uid === user.id);
-      if (copyId in copies || !hasContact(user.id, recipientUid) || blocked) {
+      if (copyId in copies || !hasFindableContact(user.id, recipientUid) || blocked) {
         return Promise.reject(refused("permission-denied"));
       }
       const stored: FakeInboxCopy = { ...copy, sentAt: Date.now() };

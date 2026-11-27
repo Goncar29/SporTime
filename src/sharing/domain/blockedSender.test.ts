@@ -15,6 +15,10 @@ const alice = { uid: "alice", name: "Alice Liddell", email: "alice@example.com" 
 describe("a blocked sender (T27, S7)", () => {
   it("is the sender of a received routine: their uid, and the name and email it showed", () => {
     expect(blockedSenderOf(alice)).toEqual(alice);
+    // The photo a received routine keeps (T29 W3) is never part of a block.
+    expect(
+      blockedSenderOf({ ...alice, photo: "https://lh3.googleusercontent.com/a/alice" }),
+    ).toEqual(alice);
     expect(toStoredBlockedSender(alice)).toEqual({
       name: "Alice Liddell",
       email: "alice@example.com",
@@ -51,6 +55,11 @@ describe("a blocked sender (T27, S7)", () => {
     expect(parseBlockedSender("alice", { name: "Alice", email: "not an email" })).toBeNull();
     expect(parseBlockedSender("", { name: "Alice", email: alice.email })).toBeNull();
     expect(parseBlockedSender("a/b", { name: "Alice", email: alice.email })).toBeNull();
+    expect(parseBlockedSender("alice", { name: "A", email: "a\u0007@b.co" })).toBeNull();
+    // Any email a verified sign-in may hold, as the rules keep it (T29 W4).
+    for (const email of ["a/b@example.com", '"al ice"@example.com', '"a@b"@example.com']) {
+      expect(parseBlockedSender("alice", { name: "A", email })?.email).toBe(email);
+    }
     expect(parseBlockedSender("alice", null)).toBeNull();
     expect(parseBlockedSender("alice", "alice")).toBeNull();
   });
