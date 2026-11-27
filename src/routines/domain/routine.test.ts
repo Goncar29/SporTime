@@ -12,6 +12,7 @@ import {
   parseRoutine,
   parseWeightInput,
   sanitizeExercise,
+  senderName,
   toStoredRoutine,
   type RoutineDraft,
 } from "./routine";
@@ -466,5 +467,82 @@ describe("stored routines", () => {
       parseRoutine("r", { name: "Ok", createdAt: 1, stages: [{ exercises: "\tnope\t\t\t" }] })
         ?.stages,
     ).toEqual([]);
+  });
+});
+
+describe("received routines (T26, S12)", () => {
+  const receivedFrom = { uid: "alice-uid", name: "Alice Liddell", email: "Alice@Example.com" };
+  const received = { name: "Piernas", createdAt: 1, stages: [], receivedFrom };
+
+  it("keep who sent them, uid included, through storage and in the outbox's shape", () => {
+    expect(toStoredRoutine(received)).toEqual(received);
+    expect(parseRoutine("r", toStoredRoutine(received))).toEqual({ id: "r", ...received });
+    expect(parseRoutine("r", received)).toEqual({ id: "r", ...received });
+  });
+
+  it("keep an empty sender name, which shows the email alone", () => {
+    const sender = { uid: "u", name: "", email: "a@b.co" };
+    expect(parseRoutine("r", { ...received, receivedFrom: sender })?.receivedFrom).toEqual(sender);
+  });
+
+  it("keep a sender uid of up to 128 characters", () => {
+    const sender = { uid: "u".repeat(ROUTINE_LIMITS.senderUidLength), name: "A", email: "a@b.co" };
+    expect(ROUTINE_LIMITS.senderUidLength).toBe(128);
+    expect(parseRoutine("r", { ...received, receivedFrom: sender })?.receivedFrom).toEqual(sender);
+  });
+
+  it("read a sender with an unusable name as one without a name", () => {
+    for (const name of ["Ali\u0007ce", "N".repeat(ROUTINE_LIMITS.senderNameLength + 1), 5, null]) {
+      expect(
+        parseRoutine("r", { ...received, receivedFrom: { uid: "u", name, email: "a@b.co" } })
+          ?.receivedFrom,
+      ).toEqual({ uid: "u", name: "", email: "a@b.co" });
+    }
+  });
+
+  it("drop a sender without a usable email, keeping the routine", () => {
+    for (const sender of [
+      { uid: "u", name: "A", email: "nope" },
+      { uid: "u", name: "A", email: "a b@c.d" },
+      { uid: "u", name: "A", email: `${"a".repeat(ROUTINE_LIMITS.senderEmailLength)}@b.co` },
+      { uid: "u", name: "A" },
+      "Alice",
+      null,
+    ]) {
+      const routine = parseRoutine("r", { ...received, receivedFrom: sender });
+      expect(routine?.name).toBe("Piernas");
+      expect(routine).not.toHaveProperty("receivedFrom");
+    }
+  });
+
+  it("drop a sender without a usable uid, keeping the routine", () => {
+    for (const uid of [
+      undefined,
+      "",
+      "u".repeat(ROUTINE_LIMITS.senderUidLength + 1),
+      "a/b",
+      "a\u0007b",
+      "a\nb",
+      "a\u0085b",
+      "broken \uD800 half",
+      7,
+      null,
+    ]) {
+      const routine = parseRoutine("r", {
+        ...received,
+        receivedFrom: { uid, name: "A", email: "a@b.co" },
+      });
+      expect(routine?.name, JSON.stringify(uid)).toBe("Piernas");
+      expect(routine, JSON.stringify(uid)).not.toHaveProperty("receivedFrom");
+    }
+  });
+
+  it("show the sender's name only when it has something visible", () => {
+    const named = (name: string) => senderName({ uid: "u", name, email: "a@b.co" });
+    expect(named("  Alice  ")).toBe("Alice");
+    expect(named("")).toBeNull();
+    expect(named("   ")).toBeNull();
+    expect(named("\u202e\u200b")).toBeNull();
+    expect(named("\u202eecilA")).toBe("\u202eecilA");
   });
 });

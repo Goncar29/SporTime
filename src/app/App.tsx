@@ -19,6 +19,8 @@ import type { Routine } from "../routines/domain/routine";
 import { RoutineEditor } from "../routines/ui/RoutineEditor";
 import { RoutineView } from "../routines/ui/RoutineView";
 import { RoutinesScreen } from "../routines/ui/RoutinesScreen";
+import type { InboxReceiving, RoutineSharing } from "../sharing/application/ports";
+import { ShareRoutineScreen } from "../sharing/ui/ShareRoutineScreen";
 import type { SubscribeToList } from "../shared/application/liveList";
 import type { StoreFailureKind } from "../shared/domain/storeFailure";
 import { reportStoreFailure, storeFailureMessage } from "../shared/ui/storeFailure";
@@ -83,6 +85,13 @@ interface AppProps {
   directory?: DirectoryListing;
   /** Without it, Profile offers no Contacts section. */
   contactStore?: ContactStore;
+  /** Sends copies of routines to contacts; without it (or contacts), no routine offers Share. */
+  sharing?: RoutineSharing;
+  /**
+   * Moves routines contacts sent into the user's routines while the app can be used; without it,
+   * nothing is received.
+   */
+  receiving?: InboxReceiving;
   deleteAccount: () => Promise<void>;
   deletionConfirmedByRedirect: () => Promise<boolean>;
   account?: ReactNode;
@@ -109,7 +118,8 @@ type Screen =
   | "contacts"
   | "routines"
   | "routineView"
-  | "routineEditor";
+  | "routineEditor"
+  | "routineShare";
 
 const tabOf = (screen: Screen): Tab =>
   screen === "settings" ||
@@ -117,7 +127,8 @@ const tabOf = (screen: Screen): Tab =>
   screen === "contacts" ||
   screen === "routines" ||
   screen === "routineView" ||
-  screen === "routineEditor"
+  screen === "routineEditor" ||
+  screen === "routineShare"
     ? "profile"
     : screen;
 
@@ -133,6 +144,8 @@ export function App({
   routines,
   directory,
   contactStore,
+  sharing,
+  receiving,
   deleteAccount,
   deletionConfirmedByRedirect,
   account,
@@ -165,6 +178,11 @@ export function App({
   }, [screen, clearContactSaveFailures]);
   /** The routine open in the editor, or null for a new one. */
   const [editedRoutine, setEditedRoutine] = useState<Routine | null>(null);
+  /**
+   * The routine being sent to contacts, as it was when Share was pressed: its copy is built from
+   * this, and the screen stays to show the results even if the routine changes meanwhile.
+   */
+  const [sharedRoutine, setSharedRoutine] = useState<Routine | null>(null);
   /** The routine open to read, which the editor goes back to; null when opened from the list. */
   const [viewedRoutineId, setViewedRoutineId] = useState<string | null>(null);
   // Read from the live list, so an edit shows when coming back from the editor.
@@ -219,6 +237,10 @@ export function App({
   // A new version of the app reloads the page, which would stop a running workout, or cut a
   // sign-out or a deletion short between its steps.
   useHoldUpdates(active !== null || blocked);
+  // Received routines are saved by themselves (S7), but not while the account's session is ending:
+  // a routine written then could be erased with it or outlive a deleted account. A copy not yet
+  // received stays in the inbox until the next start.
+  useEffect(() => (receiving && !blocked ? receiving.start() : undefined), [receiving, blocked]);
 
   /** Returns the handler for one operation, so the developer's log names what failed. */
   const reportWorkoutFailure = (operation: string) => (error: unknown) => {
@@ -502,6 +524,36 @@ export function App({
               onRemove={(routine) => {
                 removeRoutine(routine);
                 openRoutineList();
+              }}
+              onShare={
+                sharing &&
+                contactStore &&
+                ((routine) => {
+                  // The listener stops for good after an error, so picking contacts reads again.
+                  if (liveContacts.failed) liveContacts.retry();
+                  setSharedRoutine(routine);
+                  setScreen("routineShare");
+                })
+              }
+            />
+          )
+        );
+      case "routineShare":
+        return (
+          sharing &&
+          sharedRoutine && (
+            <ShareRoutineScreen
+              key={sharedRoutine.id}
+              routine={sharedRoutine}
+              liveContacts={liveContacts}
+              sharing={sharing}
+              onBack={() => {
+                setSharedRoutine(null);
+                setScreen("routineView");
+              }}
+              onOpenContacts={() => {
+                setSharedRoutine(null);
+                setScreen("contacts");
               }}
             />
           )

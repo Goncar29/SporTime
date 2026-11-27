@@ -15,6 +15,13 @@ import { InstallProvider } from "../install/ui/InstallProvider";
 import type { RoutineLibrary } from "../routines/application/ports";
 import type { Routine, RoutineDraft } from "../routines/domain/routine";
 import { createFakeRoutineLibrary } from "../routines/infrastructure/fakeRoutineLibrary";
+import type { Delivery, InboxReceiving, RoutineSharing } from "../sharing/application/ports";
+import { createInboxReceiver } from "../sharing/application/receiveInbox";
+import { createFakeInboxReader } from "../sharing/infrastructure/fakeInboxReader";
+import {
+  createFakeRoutineSharing,
+  fakeInboxOf,
+} from "../sharing/infrastructure/fakeRoutineSharing";
 import { createAppUpdater, type AppUpdater } from "../update/application/appUpdater";
 import { UpdateProvider } from "../update/ui/UpdateProvider";
 import type { WorkoutLibrary } from "../workouts/application/ports";
@@ -30,6 +37,10 @@ interface Stores {
   directory?: DirectoryListing;
   /** Without it, Profile offers no Contacts section. */
   contacts?: ContactStore;
+  /** Without it, a routine's view offers no Share button. */
+  sharing?: RoutineSharing;
+  /** Without it, nothing is received from the inbox. */
+  receiving?: InboxReceiving;
   deleteAccount?: () => Promise<void>;
   deletionConfirmedByRedirect?: () => Promise<boolean>;
   updater?: AppUpdater;
@@ -43,6 +54,8 @@ function setup({
   routines,
   directory,
   contacts,
+  sharing,
+  receiving,
   deleteAccount = () => Promise.resolve(),
   deletionConfirmedByRedirect = () => Promise.resolve(false),
   updater = createAppUpdater(() => undefined),
@@ -67,6 +80,8 @@ function setup({
           routines={routines}
           directory={directory}
           contactStore={contacts}
+          sharing={sharing}
+          receiving={receiving}
           deleteAccount={deleteAccount}
           deletionConfirmedByRedirect={deletionConfirmedByRedirect}
           otherTabs={otherTabs}
@@ -667,7 +682,7 @@ describe("App account data", () => {
       const dialog = screen.getByRole("alertdialog", { name: "Delete account" });
       expect(dialog).toHaveTextContent(/cannot be undone/);
       expect(dialog).toHaveTextContent(
-        /saved workouts, your routines, your finished sessions and your contacts/,
+        /saved workouts, your routines, including those contacts sent you, your finished sessions and your contacts/,
       );
       expect(deleteAccount).not.toHaveBeenCalled();
 
@@ -1769,7 +1784,7 @@ describe("routines", () => {
     expect(items()[0]).toHaveTextContent("Push");
     expect(items()[0]).toHaveTextContent("1 stage");
 
-    click("Edit Push");
+    click("Edit \u2068Push\u2069");
     const edited = exercise("Stage 1", 1);
     expect(within(edited).getByRole("textbox", { name: "Reps" })).toHaveValue("8 - 10");
     expect(within(edited).getByRole("textbox", { name: "Rest" })).toHaveValue("90''");
@@ -1888,8 +1903,8 @@ describe("routines", () => {
       }),
     );
 
-    click("Open Push");
-    const link = screen.getByRole("link", { name: "View youtube.com (Bench press)" });
+    click("Open \u2068Push\u2069");
+    const link = screen.getByRole("link", { name: "View youtube.com (\u2068Bench press\u2069)" });
     expect(link.textContent).toBe("View");
     expect(link).toHaveAttribute("title", "youtube.com");
     expect(link).toHaveAttribute("href", "https://www.youtube.com/watch?v=abc");
@@ -1907,7 +1922,7 @@ describe("routines", () => {
         .map((cell) => cell.textContent),
     ).toEqual(["Exercise", "Link"]);
 
-    click("Edit Push");
+    click("Edit \u2068Push\u2069");
     expect(within(exercise("Stage 1", 1)).getByRole("textbox", { name: "Link" })).toHaveValue(
       "https://www.youtube.com/watch?v=abc",
     );
@@ -1978,7 +1993,7 @@ describe("routines", () => {
     ]);
     setup({ routines });
     openRoutines();
-    click("Open Old");
+    click("Open \u2068Old\u2069");
     expect(screen.getByRole("table", { name: "Stage 1" })).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
@@ -1994,7 +2009,7 @@ describe("routines", () => {
     )();
     setup({ routines });
     openRoutines();
-    click("Edit Old");
+    click("Edit \u2068Old\u2069");
     expect(screen.getByRole("heading", { level: 1, name: "Edit routine" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Routine name" })).toHaveValue("Old");
     type("Routine name", "New");
@@ -2011,7 +2026,7 @@ describe("routines", () => {
     const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
     setup({ routines });
     openRoutines();
-    click("Edit Old");
+    click("Edit \u2068Old\u2069");
     type("Routine name", "Something else");
     click("Cancel");
     expect(routines.update).not.toHaveBeenCalled();
@@ -2022,13 +2037,13 @@ describe("routines", () => {
     const routines = await routineLibrary([{ name: "Old", createdAt: 1_000 }]);
     setup({ routines });
     openRoutines();
-    click("Delete Old");
-    const dialog = screen.getByRole("alertdialog", { name: 'Delete "Old"?' });
+    click("Delete \u2068Old\u2069");
+    const dialog = screen.getByRole("alertdialog", { name: 'Delete "\u2068Old\u2069"?' });
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(routines.remove).not.toHaveBeenCalled();
     expect(items()).toHaveLength(1);
 
-    click("Delete Old");
+    click("Delete \u2068Old\u2069");
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
     );
@@ -2058,7 +2073,7 @@ describe("routines", () => {
     routines.update.mockImplementation(() => Promise.reject(refusal("not-found")));
     setup({ routines });
     openRoutines();
-    click("Edit Old");
+    click("Edit \u2068Old\u2069");
     type("Routine name", "New");
     click("Save changes");
     await settle();
@@ -2118,7 +2133,7 @@ describe("routines", () => {
     it("opens from the list with the routine's notes and a table per stage", async () => {
       setup({ routines: await routineLibrary([push]) });
       openRoutines();
-      click("Open Push");
+      click("Open \u2068Push\u2069");
 
       expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Profile" })).toHaveAttribute(
@@ -2156,7 +2171,7 @@ describe("routines", () => {
     it("says when a routine has no stages", async () => {
       setup({ routines: await routineLibrary([{ name: "Old", createdAt: 1_000 }]) });
       openRoutines();
-      click("Open Old");
+      click("Open \u2068Old\u2069");
       expect(screen.getByRole("heading", { level: 1, name: "Old" })).toBeInTheDocument();
       expect(screen.getByText("No stages yet")).toBeInTheDocument();
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -2166,15 +2181,15 @@ describe("routines", () => {
       const routines = await routineLibrary([push]);
       setup({ routines });
       openRoutines();
-      click("Open Push");
-      click("Edit Push");
+      click("Open \u2068Push\u2069");
+      click("Edit \u2068Push\u2069");
       expect(screen.getByRole("heading", { level: 1, name: "Edit routine" })).toBeInTheDocument();
       type("Routine name", "Something else");
       click("Cancel");
       expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
       expect(routines.update).not.toHaveBeenCalled();
 
-      click("Edit Push");
+      click("Edit \u2068Push\u2069");
       type("Routine name", "Push day");
       click("Save changes");
       await settle();
@@ -2188,14 +2203,14 @@ describe("routines", () => {
       const id = idOf(routines);
       setup({ routines });
       openRoutines();
-      click("Open Push");
-      click("Delete Push");
-      const dialog = screen.getByRole("alertdialog", { name: 'Delete "Push"?' });
+      click("Open \u2068Push\u2069");
+      click("Delete \u2068Push\u2069");
+      const dialog = screen.getByRole("alertdialog", { name: 'Delete "\u2068Push\u2069"?' });
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       expect(routines.remove).not.toHaveBeenCalled();
       expect(screen.getByRole("heading", { level: 1, name: "Push" })).toBeInTheDocument();
 
-      click("Delete Push");
+      click("Delete \u2068Push\u2069");
       fireEvent.click(
         within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
       );
@@ -2209,7 +2224,7 @@ describe("routines", () => {
       const id = idOf(routines);
       setup({ routines });
       openRoutines();
-      click("Open Push");
+      click("Open \u2068Push\u2069");
       await act(() => routines.remove(id));
       expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
       expect(screen.getByText(/No routines yet/)).toBeInTheDocument();
@@ -2222,7 +2237,7 @@ describe("routines", () => {
     routines.remove.mockImplementation(() => Promise.reject(new Error("boom")));
     setup({ routines });
     openRoutines();
-    click("Delete Old");
+    click("Delete \u2068Old\u2069");
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
     );
@@ -2811,7 +2826,9 @@ describe("contacts", () => {
     expect(item(0).querySelector("b")).toBeNull();
     // The initial skips what is not a letter.
     expect(item(0)).toHaveTextContent(/^G/);
-    expect(screen.getByRole("button", { name: `Remove ${isolated(tricky)}` })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: `Remove ${isolated(tricky.replace("\u202E", ""))}` }),
+    ).toBeInTheDocument();
   });
 
   it("removes a contact only after confirming", async () => {
@@ -3127,5 +3144,422 @@ describe("contacts", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Nadie se puede encontrar con ese email. Pídele que active «Permitir que me encuentren por email» en su Perfil.",
     );
+  });
+});
+
+describe("sharing a routine (T25, S12, S7)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const isolated = (name: string) => `\u2068${name}\u2069`;
+  const me = { id: "me", name: "Me", email: "me@example.com", photoUrl: null };
+  const ana: Contact = { uid: "ana", name: "Ana", photo: "", email: "ana@example.com" };
+  const bob: Contact = {
+    uid: "bob",
+    name: "Bob Stone",
+    photo: "https://lh3.googleusercontent.com/a/bob=s96-c",
+    email: "bob@example.com",
+  };
+  const keep = (contacts: Contact[]) => {
+    localStorage.setItem("sportime.fakeContacts.me", JSON.stringify(contacts));
+  };
+  const legs = {
+    name: "Legs",
+    createdAt: 1_000,
+    stages: [{ name: "A", exercises: [{ name: "Squat", repsMin: 8, repsMax: 10 }] }],
+  };
+  const routinesWith = async (routine: RoutineDraft = legs) => {
+    const library = createFakeRoutineLibrary("test");
+    await library.save(routine);
+    return library;
+  };
+  const settle = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+  const openLegs = async (name = "Legs") => {
+    click("Profile");
+    click("Routines");
+    click(`Open \u2068${name}\u2069`);
+    await settle();
+  };
+  const recipients = () => screen.getByRole("group", { name: "Choose who gets a copy" });
+  const choose = (name: string) => {
+    fireEvent.click(within(recipients()).getByRole("checkbox", { name: isolated(name) }));
+  };
+
+  it("keeps names with a stray isolate end from reordering the question (L64 B1)", async () => {
+    keep([{ ...ana, name: "Ana\u2069\u202e" }]);
+    setup({
+      routines: await routinesWith({ ...legs, name: "Legs\u2069\u202e" }),
+      contacts: createFakeContactStore("me"),
+      sharing: createFakeRoutineSharing(me),
+    });
+    click("Profile");
+    click("Routines");
+    fireEvent.click(screen.getAllByRole("button", { name: /^Open / })[0]!);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: /^Share / }));
+    await settle();
+    fireEvent.click(within(recipients()).getByRole("checkbox"));
+    click("Continue");
+    const question = document.activeElement!;
+    expect(question.tagName).toBe("H2");
+    const outside = (question.textContent ?? "").replace(
+      /\u2068[^\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]*\u2069/gu,
+      "",
+    );
+    expect(outside).not.toMatch(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u);
+    expect(question.textContent).toBe(`Send "${isolated("Legs")}" to ${isolated("Ana")}?`);
+  });
+
+  it("is offered in a routine's view only where sharing and contacts are", async () => {
+    setup({ routines: await routinesWith(), contacts: createFakeContactStore("me") });
+    await openLegs();
+    expect(
+      screen.queryByRole("button", { name: "Share \u2068Legs\u2069" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("picks contacts with their photo or initial, confirms and sends each a copy", async () => {
+    keep([bob, ana]);
+    setup({
+      routines: await routinesWith(),
+      contacts: createFakeContactStore("me"),
+      sharing: createFakeRoutineSharing(me),
+    });
+    await openLegs();
+    click("Share \u2068Legs\u2069");
+    await settle();
+
+    expect(screen.getByRole("heading", { level: 1, name: "Share routine" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Profile" })).toHaveAttribute("aria-current", "page");
+    const items = within(recipients()).getAllByRole("listitem");
+    expect(items.map((item) => item.querySelector("bdi")?.textContent)).toEqual([
+      "Ana",
+      "Bob Stone",
+    ]);
+    expect(within(items[0]!).getByText("A")).toHaveAttribute("aria-hidden", "true");
+    expect(items[1]!.querySelector("img")).toHaveAttribute("src", bob.photo);
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+
+    choose("Ana");
+    choose("Bob Stone");
+    click("Continue");
+    const question = screen.getByRole("heading", {
+      name: `Send "${isolated("Legs")}" to ${isolated("Ana")} and ${isolated("Bob Stone")}?`,
+    });
+    expect(question).toHaveFocus();
+    expect(screen.getByText(/with your Google name, photo and email/)).toBeInTheDocument();
+
+    click("Send");
+    await settle();
+    const result = screen.getByRole("heading", { name: "Result" });
+    expect(result).toHaveFocus();
+    const deliveries = within(screen.getByRole("list", { name: "Result" })).getAllByRole(
+      "listitem",
+    );
+    expect(deliveries.map((item) => item.textContent)).toEqual([
+      expect.stringContaining("Sent."),
+      expect.stringContaining("Sent."),
+    ]);
+    expect(Object.values(fakeInboxOf("ana"))).toEqual([
+      expect.objectContaining({ fromUid: "me", fromEmail: "me@example.com", name: "Legs" }),
+    ]);
+    expect(Object.values(fakeInboxOf("bob"))).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    click("Done");
+    expect(screen.getByRole("heading", { level: 1, name: "Legs" })).toBeInTheDocument();
+  });
+
+  it("goes back from the question to the picked contacts, keeping them picked", async () => {
+    keep([ana]);
+    setup({
+      routines: await routinesWith(),
+      contacts: createFakeContactStore("me"),
+      sharing: createFakeRoutineSharing(me),
+    });
+    await openLegs();
+    click("Share \u2068Legs\u2069");
+    await settle();
+    choose("Ana");
+    click("Continue");
+    click("Cancel");
+    expect(within(recipients()).getByRole("checkbox", { name: isolated("Ana") })).toBeChecked();
+    expect(fakeInboxOf("ana")).toEqual({});
+  });
+
+  it("points to Contacts when there are none yet", async () => {
+    setup({
+      routines: await routinesWith(),
+      contacts: createFakeContactStore("me"),
+      sharing: createFakeRoutineSharing(me),
+    });
+    await openLegs();
+    click("Share \u2068Legs\u2069");
+    await settle();
+    expect(screen.getByText(/You have no contacts yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    click("Go to Contacts");
+    expect(screen.getByRole("heading", { level: 1, name: "Contacts" })).toBeInTheDocument();
+  });
+
+  it("refuses a routine the inbox rules refuse before sending anything, naming what to fix", async () => {
+    keep([ana]);
+    setup({
+      routines: await routinesWith({
+        ...legs,
+        stages: [{ name: "A", exercises: [{ name: "Video", link: "https://x_y.com" }] }],
+      }),
+      contacts: createFakeContactStore("me"),
+      sharing: createFakeRoutineSharing(me),
+    });
+    await openLegs();
+    click("Share \u2068Legs\u2069");
+    await settle();
+    choose("Ana");
+    click("Continue");
+    click("Send");
+    await settle();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("This routine can't be shared yet:");
+    expect(alert).toHaveTextContent(
+      `Check the link of exercise "${isolated("Video")}" of stage 1:`,
+    );
+    expect(fakeInboxOf("ana")).toEqual({});
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("says sharing needs a connection, and sends nothing offline", async () => {
+    keep([ana]);
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    setup({
+      routines: await routinesWith(),
+      contacts: createFakeContactStore("me"),
+      sharing: createFakeRoutineSharing(me),
+    });
+    await openLegs();
+    click("Share \u2068Legs\u2069");
+    await settle();
+    choose("Ana");
+    click("Continue");
+    click("Send");
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent("You need a connection to share.");
+    expect(fakeInboxOf("ana")).toEqual({});
+  });
+
+  describe("with each recipient's own result", () => {
+    /** A sharing whose sends answer when the test says, with the given outcomes. */
+    const scripted = (...rounds: Delivery["outcome"][][]) => {
+      const answers: (() => void)[] = [];
+      const prepare = vi.fn((_routine: RoutineDraft, contacts: readonly Contact[]) => {
+        let round = 0;
+        const send = vi.fn(
+          () =>
+            new Promise<Delivery[]>((resolve) => {
+              const outcomes = rounds[round++] ?? [];
+              answers.push(() => {
+                resolve(
+                  contacts.map((contact, index) => ({
+                    contact,
+                    outcome: outcomes[index] ?? "sent",
+                  })),
+                );
+              });
+            }),
+        );
+        return Promise.resolve({ kind: "ready" as const, share: { recipients: contacts, send } });
+      });
+      return {
+        sharing: { prepare } satisfies RoutineSharing,
+        prepare,
+        /** Lets the oldest pending send answer. */
+        answer: () => {
+          answers.shift()?.();
+        },
+      };
+    };
+    const ben: Contact = { uid: "ben", name: "Ben", photo: "", email: "ben@example.com" };
+
+    it("shows sent, refused and may-have-arrived, never a false failure, and retries", async () => {
+      keep([ana, ben, bob]);
+      const fake = scripted(["sent", "refused", "mayHaveArrived"], ["sent", "refused", "sent"]);
+      setup({
+        routines: await routinesWith(),
+        contacts: createFakeContactStore("me"),
+        sharing: fake.sharing,
+      });
+      await openLegs();
+      click("Share \u2068Legs\u2069");
+      await settle();
+      choose("Ana");
+      choose("Ben");
+      choose("Bob Stone");
+      click("Continue");
+      click("Send");
+      await settle();
+
+      const send = screen.getByRole("button", { name: "Sending…" });
+      expect(send).toBeDisabled();
+      fireEvent.click(send);
+      expect(fake.prepare).toHaveBeenCalledTimes(1);
+
+      fake.answer();
+      await settle();
+      const results = () =>
+        within(screen.getByRole("list", { name: "Result" }))
+          .getAllByRole("listitem")
+          .map((item) => item.textContent);
+      expect(results()).toEqual([
+        expect.stringMatching(/Ana.*Sent\.$/),
+        expect.stringMatching(/Ben.*Not sent: the server refused it\./),
+        expect.stringMatching(/Bob Stone.*It may have arrived: the answer was lost\./),
+      ]);
+      expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+
+      click("Try again");
+      expect(screen.getByRole("button", { name: "Sending…" })).toBeDisabled();
+      fake.answer();
+      await settle();
+      expect(results()).toEqual([
+        expect.stringMatching(/Sent\.$/),
+        expect.stringMatching(/Not sent: the server refused it\./),
+        expect.stringMatching(/Sent\.$/),
+      ]);
+      // One confirmation, one set of copy ids: the retry reuses the same share.
+      expect(fake.prepare).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe("sharing a routine in Spanish", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("asks '¿Enviar \"Piernas\" a Beto y Ana?'", async () => {
+    const isolated = (name: string) => `\u2068${name}\u2069`;
+    localStorage.setItem(
+      "sportime.fakeContacts.me",
+      JSON.stringify([
+        { uid: "ana", name: "Ana", photo: "", email: "ana@example.com" },
+        { uid: "beto", name: "Beto", photo: "", email: "beto@example.com" },
+      ]),
+    );
+    const routines = createFakeRoutineLibrary("test");
+    await routines.save({ name: "Piernas", createdAt: 1, stages: [] });
+    const timer = {
+      clock: { now: () => 0 },
+      cues: { unlock: vi.fn(), play: vi.fn(), vibrate: vi.fn() },
+      voice: { unlock: vi.fn(), canSpeak: () => false, say: vi.fn() },
+      soundStore: { get: () => null, set: vi.fn() },
+      screenAwake: { acquire: vi.fn(), release: vi.fn() },
+    };
+    render(
+      <I18nProvider store={{ get: () => null, set: vi.fn() }} browserLanguages={["es-AR"]}>
+        <App
+          timer={timer}
+          workouts={createFakeWorkoutLibrary("test")}
+          history={createFakeHistoryLog("test")}
+          routines={routines}
+          contactStore={createFakeContactStore("me")}
+          sharing={createFakeRoutineSharing({
+            id: "me",
+            name: "Yo",
+            email: "me@example.com",
+            photoUrl: null,
+          })}
+          deleteAccount={() => Promise.resolve()}
+          deletionConfirmedByRedirect={() => Promise.resolve(false)}
+        />
+      </I18nProvider>,
+    );
+    click("Perfil");
+    click("Rutinas");
+    click("Ver \u2068Piernas\u2069");
+    click("Compartir \u2068Piernas\u2069");
+    await act(() => Promise.resolve());
+    const group = screen.getByRole("group", { name: "Elige quién recibe una copia" });
+    fireEvent.click(within(group).getByRole("checkbox", { name: isolated("Beto") }));
+    fireEvent.click(within(group).getByRole("checkbox", { name: isolated("Ana") }));
+    click("Continuar");
+    // In the order of the list, which is by name.
+    expect(
+      screen.getByRole("heading", {
+        name: `¿Enviar "${isolated("Piernas")}" a ${isolated("Ana")} y ${isolated("Beto")}?`,
+      }),
+    ).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled();
+  });
+});
+
+describe("receiving routines from contacts (T26, S12)", () => {
+  const sent = {
+    fromUid: "alice",
+    fromEmail: "alice@example.com",
+    fromName: "Alice",
+    name: "Piernas",
+    stages: [{ name: "A", exercises: "Sentadilla\t8-10\t90\t\t\t" }],
+    sentAt: 1_750_000_000_000,
+  };
+  const label = "Received from \u2068Alice\u2069 (\u2068alice@example.com\u2069)";
+  const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("sportime.fakeInbox.test", JSON.stringify({ "copy-1": sent }));
+  });
+
+  const receivingInto = (routines: ReturnType<typeof createFakeRoutineLibrary>) =>
+    createInboxReceiver({ inbox: createFakeInboxReader("test"), routines });
+
+  it("saves each copy as the user's own routine, marked with who sent it, and empties the inbox", async () => {
+    const routines = createFakeRoutineLibrary("test");
+    setup({ routines, receiving: receivingInto(routines) });
+    await settle();
+
+    expect(fakeInboxOf("test")).toEqual({});
+    click("Profile");
+    click("Routines");
+    const list = screen.getByRole("list", { name: "Routines" });
+    expect(
+      within(list).getByRole("button", { name: "Open \u2068Piernas\u2069" }),
+    ).toHaveAccessibleDescription(label);
+    click("Open \u2068Piernas\u2069");
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "A" })).toHaveTextContent("Sentadilla");
+  });
+
+  it("receives nothing while the account is signing out, so nothing is written meanwhile", async () => {
+    const routines = createFakeRoutineLibrary("test");
+    setup({ routines, receiving: receivingInto(routines), signingOut: true });
+    await settle();
+    expect(Object.keys(fakeInboxOf("test"))).toEqual(["copy-1"]);
+    expect(localStorage.getItem("sportime.fakeRoutines.test")).toBeNull();
+  });
+
+  it("stops while another tab signs out, and receives again afterwards", async () => {
+    const routines = createFakeRoutineLibrary("test");
+    const { setOtherTabs } = setup({ routines, receiving: receivingInto(routines) });
+    await settle();
+    expect(fakeInboxOf("test")).toEqual({});
+
+    setOtherTabs("signingOut");
+    localStorage.setItem("sportime.fakeInbox.test", JSON.stringify({ "copy-2": sent }));
+    window.dispatchEvent(new StorageEvent("storage", { key: "sportime.fakeInbox.test" }));
+    await settle();
+    expect(Object.keys(fakeInboxOf("test"))).toEqual(["copy-2"]);
+
+    setOtherTabs("idle");
+    await settle();
+    expect(fakeInboxOf("test")).toEqual({});
   });
 });

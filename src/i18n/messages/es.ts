@@ -1,5 +1,57 @@
 import { CONTACT_LIMITS } from "../../contacts/domain/contact";
+import { ROUTINE_LIMITS } from "../../routines/domain/routine";
+import type { ShareProblem } from "../../sharing/domain/sharedCopy";
 import type { Messages } from "./types";
+
+const names = new Intl.ListFormat("es", { type: "conjunction" });
+
+/** Where an exercise is: by its name when it has one that can be shown, else by position. */
+const exerciseIn = (problem: Extract<ShareProblem, { kind: "exercise" }>) =>
+  problem.exerciseName === undefined
+    ? `ejercicio ${problem.exercise} de la etapa ${problem.stage}`
+    : `ejercicio "${problem.exerciseName}" de la etapa ${problem.stage}`;
+
+function shareProblem(problem: ShareProblem): string {
+  switch (problem.kind) {
+    case "senderName":
+      return "Tu nombre de Google tiene más de 100 caracteres o caracteres que no se pueden enviar. Cámbialo en tu cuenta de Google e inténtalo de nuevo.";
+    case "senderEmail":
+      return "Tu cuenta de Google no tiene un email verificado, así que no puedes compartir rutinas.";
+    case "routineName":
+      return `Revisa el nombre de la rutina: debe empezar con un carácter visible y tener hasta ${ROUTINE_LIMITS.nameLength} caracteres.`;
+    case "routineNotes":
+      return `Revisa los comentarios de la rutina: deben empezar con un carácter visible y tener hasta ${ROUTINE_LIMITS.notesLength} caracteres.`;
+    case "tooManyStages":
+      return `Una rutina compartida puede tener hasta ${ROUTINE_LIMITS.stages} etapas.`;
+    case "stageName":
+      return `Revisa el nombre de la etapa ${problem.stage}: debe empezar con un carácter visible.`;
+    case "stageNotes":
+      return `Revisa los comentarios de la etapa ${problem.stage}: deben empezar con un carácter visible.`;
+    case "emptyStage":
+      return `La etapa ${problem.stage} está vacía: agrega un ejercicio, un nombre o comentarios.`;
+    case "tooManyExercises":
+      return `La etapa ${problem.stage} tiene más de ${ROUTINE_LIMITS.exercisesPerStage} ejercicios.`;
+    case "exercise": {
+      const where = exerciseIn(problem);
+      switch (problem.field) {
+        case "name":
+          return `Revisa el nombre del ${where}: debe empezar con un carácter visible.`;
+        case "notes":
+          return `Revisa los comentarios del ${where}: deben empezar con un carácter visible.`;
+        case "reps":
+          return `Revisa las repeticiones del ${where}: escribe un número como 10 o un rango de menor a mayor, como 8 - 10.`;
+        case "rest":
+          return `Revisa la pausa del ${where}.`;
+        case "weight":
+          return `Revisa el peso del ${where}.`;
+        case "link":
+          return `Revisa el enlace del ${where}: debe ser la dirección de un sitio web que se pueda compartir, sin guiones bajos, con un puerto válido y un dominio real.`;
+        case "empty":
+          return `Revisa el ${where}: está vacío. Completa un campo o quítalo.`;
+      }
+    }
+  }
+}
 
 export const es: Messages = {
   tagline: "Elige tu batalla.",
@@ -139,7 +191,7 @@ export const es: Messages = {
   privacySections: [
     {
       heading: "Qué guardamos",
-      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados, tus rutinas y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Tus contactos, las personas que agregas con el email por el que permiten que las encuentren, se guardan con ese email y el nombre y la foto de Google que publicaron, y solo tú puedes verlos. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google; las direcciones nunca se muestran en una lista.",
+      body: "De tu cuenta de Google usamos tu nombre, correo y foto de perfil, para mostrar quién inició sesión. También guardamos tus entrenamientos guardados, tus rutinas y tus sesiones terminadas, para que puedas usarlos en cualquier dispositivo. Las rutinas que te envía un contacto se guardan entre las tuyas, con el nombre y el email de Google con que te las envió. Tus contactos, las personas que agregas con el email por el que permiten que las encuentren, se guardan con ese email y el nombre y la foto de Google que publicaron, y solo tú puedes verlos. Si activas Permitir que me encuentren por email, en Perfil, quien haya iniciado sesión y escriba tu email exacto podrá encontrarte y ver tu nombre y foto de Google; las direcciones nunca se muestran en una lista.",
     },
     {
       heading: "Dónde se guarda",
@@ -155,14 +207,14 @@ export const es: Messages = {
     },
     {
       heading: "Eliminar tus datos",
-      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, tus sesiones terminadas, tus contactos y tu nombre y foto de la búsqueda por email. Quien te haya agregado como contacto conserva el nombre, la foto y el email que vio entonces. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
+      body: "Eliminar cuenta, en la pantalla principal, borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas, tus contactos y tu nombre y foto de la búsqueda por email. Quien te haya agregado como contacto conserva el nombre, la foto y el email que vio entonces. Cierra antes la app en otras pestañas y otros dispositivos: lo que guarden después de la eliminación puede quedar en nuestros servidores, sin una cuenta que pueda acceder a ello o borrarlo.",
     },
   ],
   privacyContactHeading: "Contacto",
   privacyContactBody: "Para consultas sobre tus datos, o para pedirnos que los borremos, escribe a",
   deleteAccount: "Eliminar cuenta",
   deleteAccountWarning:
-    "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, tus sesiones terminadas y tus contactos. No se puede deshacer.",
+    "Esto borra de forma permanente tu cuenta, tus entrenamientos guardados, tus rutinas, también las que te enviaron tus contactos, tus sesiones terminadas y tus contactos. No se puede deshacer.",
   deleteAccountConfirmNote:
     "Google puede pedirte que confirmes que eres tú; después la eliminación termina sola.",
   confirmDeleteAccount: "Eliminar mi cuenta",
@@ -193,6 +245,8 @@ export const es: Messages = {
   editRoutine: (name) => `Editar ${name}`,
   deleteRoutine: (name) => `Eliminar ${name}`,
   openRoutine: (name) => `Ver ${name}`,
+  receivedFrom: (name, email) =>
+    name === null ? `Recibida de ${email}` : `Recibida de ${name} (${email})`,
   edit: "Editar",
   noStagesYet: "Sin etapas",
   exerciseColumn: "Ejercicio",
@@ -261,4 +315,29 @@ export const es: Messages = {
   confirmRemoveContact: (name) => `¿Quitar a ${name} de tus contactos?`,
   removeContactNote: "Puedes volver a agregarlo con su email mientras permita que lo encuentren.",
   confirmRemoveContactAction: "Quitar",
+  share: "Compartir",
+  shareRoutine: (name) => `Compartir ${name}`,
+  shareTitle: "Compartir rutina",
+  shareChooseContacts: "Elige quién recibe una copia",
+  shareNoContacts: "Todavía no tienes contactos. Agrégalos en Contactos para compartir rutinas.",
+  shareOpenContacts: "Ir a Contactos",
+  shareContinue: "Continuar",
+  confirmShare: (routine, recipients) => `¿Enviar "${routine}" a ${names.format(recipients)}?`,
+  shareNote: "Cada persona recibe su propia copia, con tu nombre, foto y email de Google.",
+  shareSend: "Enviar",
+  shareSending: "Enviando…",
+  shareNeedsConnection: "Necesitas conexión para compartir.",
+  shareFailed: "No pudimos preparar la copia. Inténtalo de nuevo.",
+  shareCannotSend: "Esta rutina todavía no se puede compartir:",
+  shareProblem,
+  shareResults: "Resultado",
+  shareOutcomes: {
+    sent: "Enviada.",
+    refused: "No se envió: el servidor la rechazó. Comprueba que siga en tus contactos.",
+    mayHaveArrived:
+      "Puede que haya llegado: se perdió la respuesta. Reintentar nunca la envía dos veces.",
+    offline: "No se envió: necesitas conexión para compartir.",
+    failed: "No se envió.",
+  },
+  shareDone: "Listo",
 };

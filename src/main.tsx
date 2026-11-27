@@ -105,12 +105,18 @@ async function createStoresFactory(
       { createFakeRoutineLibrary },
       { createFakeDirectoryListing },
       { createFakeContactStore },
+      { createFakeRoutineSharing },
+      { createFakeInboxReader },
+      { createInboxReceiver },
     ] = await Promise.all([
       import("./workouts/infrastructure/fakeWorkoutLibrary"),
       import("./history/infrastructure/fakeHistoryLog"),
       import("./routines/infrastructure/fakeRoutineLibrary"),
       import("./directory/infrastructure/fakeDirectoryListing"),
       import("./contacts/infrastructure/fakeContactStore"),
+      import("./sharing/infrastructure/fakeRoutineSharing"),
+      import("./sharing/infrastructure/fakeInboxReader"),
+      import("./sharing/application/receiveInbox"),
     ]);
     // No Firestore here: nothing waits to be sent and nothing is cached, so sign-out stays as it was.
     const local = {
@@ -120,16 +126,21 @@ async function createStoresFactory(
       keepOnNextStart: () => undefined,
       erase: () => Promise.resolve(),
     };
-    return (userId) => ({
-      workouts: createFakeWorkoutLibrary(userId),
-      history: createFakeHistoryLog(userId),
-      routines: createFakeRoutineLibrary(userId),
-      contacts: createFakeContactStore(userId),
-      directoryFor: createFakeDirectoryListing,
-      deleteAccount: () => authGateway.signOut(),
-      deletionConfirmedByRedirect: () => Promise.resolve(false),
-      signOut: (options) => signOut({ auth, local }, options),
-    });
+    return (userId) => {
+      const routines = createFakeRoutineLibrary(userId);
+      return {
+        workouts: createFakeWorkoutLibrary(userId),
+        history: createFakeHistoryLog(userId),
+        routines,
+        contacts: createFakeContactStore(userId),
+        directoryFor: createFakeDirectoryListing,
+        sharingFor: createFakeRoutineSharing,
+        receiving: createInboxReceiver({ inbox: createFakeInboxReader(userId), routines }),
+        deleteAccount: () => authGateway.signOut(),
+        deletionConfirmedByRedirect: () => Promise.resolve(false),
+        signOut: (options) => signOut({ auth, local }, options),
+      };
+    };
   }
   const [
     {
@@ -147,6 +158,11 @@ async function createStoresFactory(
     { createFirestoreRoutineLibrary },
     { createFirestoreDirectoryListing },
     { createFirestoreContactStore },
+    { createRoutineSharing },
+    { createFirestoreInbox },
+    { createFirestoreInboxReader },
+    { createInboxReceiver },
+    { createFirebaseSenderIdentity },
     { deleteAccount },
     { createFirebaseAccountIdentity },
     { createFirestoreAccountData },
@@ -161,6 +177,11 @@ async function createStoresFactory(
     import("./routines/infrastructure/firestoreRoutineLibrary"),
     import("./directory/infrastructure/firestoreDirectoryListing"),
     import("./contacts/infrastructure/firestoreContactStore"),
+    import("./sharing/application/shareRoutine"),
+    import("./sharing/infrastructure/firestoreInbox"),
+    import("./sharing/infrastructure/firestoreInboxReader"),
+    import("./sharing/application/receiveInbox"),
+    import("./sharing/infrastructure/firebaseSenderIdentity"),
     import("./account/application/deleteAccount"),
     import("./account/infrastructure/firebaseAccountIdentity"),
     import("./account/infrastructure/firestoreAccountData"),
@@ -265,6 +286,22 @@ async function createStoresFactory(
         unlist: () => otherTabs.confirming(listing.unlist()),
       };
     };
+    // A copy goes to the server now or not at all: never through an outbox or Firestore's offline
+    // queue, where one the rules refuse could wait for ever (L58). The sender is read from the
+    // ID token, which the rules compare the copy with.
+    const sharingFor = (user: { id: string }) =>
+      createRoutineSharing({
+        identity: createFirebaseSenderIdentity(user.id),
+        inbox: createFirestoreInbox(firestore()),
+        online: () => navigator.onLine,
+      });
+    // Copies contacts sent move into the routines through the routines' outbox, and leave the inbox
+    // only once the server holds them. Held by a sign-out in another tab like any change, but not
+    // followed by the lost-change check: one lost that way stays in the inbox, to be received again.
+    const receiving = createInboxReceiver({
+      inbox: createFirestoreInboxReader(firestore(), userId, { guard: otherTabs.guard }),
+      routines: routineLibrary,
+    });
     const local = createLocalAccountData({
       outboxes: [workouts, history, routines, contactStore],
       discardPendingWrites,
@@ -302,6 +339,8 @@ async function createStoresFactory(
       routines,
       contacts: contactStore,
       directoryFor,
+      sharingFor,
+      receiving,
       // Holds every change, here and in the other tabs, from erasing until the account is gone.
       deleteAccount: () =>
         deleteAccount({

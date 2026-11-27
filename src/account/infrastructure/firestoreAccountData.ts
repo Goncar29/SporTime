@@ -78,6 +78,10 @@ export function createFirestoreAccountData({
     await eraseCollection(db, collection(db, "users", userId, "history"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "routines"), isCancelled);
     await eraseCollection(db, collection(db, "users", userId, "contacts"), isCancelled);
+    // Received routines were erased with the routines. Last, as contacts may still send copies
+    // here until the account is gone: this takes every one sent while the rest was erased. One
+    // sent after this, before the account is removed, stays, out of anyone's reach.
+    await eraseCollection(db, collection(db, "users", userId, "inbox"), isCancelled);
   };
 
   return {

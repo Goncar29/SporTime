@@ -1,5 +1,4 @@
 import { useId, useState, type FormEvent, type ReactNode } from "react";
-import { isGooglePhoto } from "../../directory/domain/directory";
 import { useI18n } from "../../i18n/ui/I18nProvider";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import {
@@ -10,6 +9,7 @@ import {
 import type { LiveList } from "../../shared/ui/useLiveList";
 import type { ContactStore } from "../application/ports";
 import { CONTACT_LIMITS, ContactRefused, type Contact } from "../domain/contact";
+import { ContactAvatar, isolate, shownName } from "./ContactAvatar";
 import styles from "./ContactsScreen.module.css";
 import type { ContactSaveFailure, ContactSaveFailures } from "./useContactSaveFailures";
 
@@ -23,24 +23,6 @@ interface ContactsScreenProps {
   /** The switch to be found by email, shown at the top; without it, none is offered. */
   findByEmail?: ReactNode;
   onBack: () => void;
-}
-
-/** The name shown for a contact: Google's, or the email they were added by when there is none. */
-const shownName = ({ name, email }: Contact) => name || email;
-
-/**
- * Wraps text in first-strong isolates, so a name written right to left, or one holding bidi
- * controls, cannot reorder the words of the message around it. For plain strings such as
- * accessible names and the dialog title; text rendered in the list uses `<bdi>`.
- */
-const isolate = (text: string) => `\u2068${text}\u2069`;
-
-const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
-
-/** The first letter or digit of the name, else of the email; bidi controls and marks are skipped. */
-function initialOf({ name, email }: Contact): string {
-  const first = LETTER_OR_DIGIT.exec(name)?.[0] ?? LETTER_OR_DIGIT.exec(email)?.[0] ?? "?";
-  return first.toLocaleUpperCase();
 }
 
 type Feedback = { kind: "added" } | { kind: "error"; message: string } | null;
@@ -193,7 +175,7 @@ export function ContactsScreen({
         <ul className={styles.list} aria-label={t.contacts}>
           {contacts.map((contact) => (
             <li key={contact.uid} className={styles.item}>
-              <Avatar contact={contact} />
+              <ContactAvatar contact={contact} className={styles.avatar} />
               <span className={styles.identity}>
                 <bdi className={styles.name}>{shownName(contact)}</bdi>
                 {contact.name && <bdi className={styles.email}>{contact.email}</bdi>}
@@ -228,29 +210,5 @@ export function ContactsScreen({
         />
       )}
     </main>
-  );
-}
-
-/** Google's photo when there is one and it loads, otherwise the initial; the name sits beside it. */
-function Avatar({ contact }: { contact: Contact }) {
-  const [photoFailed, setPhotoFailed] = useState(false);
-  if (contact.photo && isGooglePhoto(contact.photo) && !photoFailed) {
-    return (
-      <img
-        className={styles.avatar}
-        src={contact.photo}
-        alt=""
-        // Google's image host rejects some referrers, and it does not need to know this app.
-        referrerPolicy="no-referrer"
-        onError={() => {
-          setPhotoFailed(true);
-        }}
-      />
-    );
-  }
-  return (
-    <span className={styles.avatar} aria-hidden="true">
-      {initialOf(contact)}
-    </span>
   );
 }

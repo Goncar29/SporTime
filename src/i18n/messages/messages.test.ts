@@ -138,3 +138,105 @@ it("explains a link to the local network or an IP address in both languages", ()
     "Usa el enlace de un sitio web, no una dirección de red local o IP.",
   );
 });
+
+describe("sharing a routine (T25, S12)", () => {
+  it("asks to confirm, naming the routine and every recipient in a list", () => {
+    expect(MESSAGES.es.confirmShare("Piernas", ["Beto", "Ana"])).toBe(
+      '¿Enviar "Piernas" a Beto y Ana?',
+    );
+    expect(MESSAGES.es.confirmShare("Piernas", ["Beto"])).toBe('¿Enviar "Piernas" a Beto?');
+    expect(MESSAGES.en.confirmShare("Legs", ["Beto", "Ana", "Carla"])).toBe(
+      'Send "Legs" to Beto, Ana, and Carla?',
+    );
+  });
+
+  it("says sharing needs a connection, in the app's tone", () => {
+    expect(MESSAGES.es.shareNeedsConnection).toBe("Necesitas conexión para compartir.");
+    expect(MESSAGES.en.shareNeedsConnection).toBe("You need a connection to share.");
+    expect(MESSAGES.es.share).toBe("Compartir");
+    expect(MESSAGES.es.shareRoutine("Piernas")).toBe("Compartir Piernas");
+  });
+
+  it("names what to fix: the routine, a stage or an exercise of a stage", () => {
+    expect(MESSAGES.es.shareProblem({ kind: "routineName" })).toMatch(
+      /^Revisa el nombre de la rutina/,
+    );
+    expect(MESSAGES.es.shareProblem({ kind: "stageNotes", stage: 2 })).toMatch(
+      /^Revisa los comentarios de la etapa 2/,
+    );
+    expect(
+      MESSAGES.es.shareProblem({
+        kind: "exercise",
+        field: "link",
+        stage: 1,
+        exercise: 2,
+        exerciseName: "Remo",
+      }),
+    ).toMatch(/^Revisa el enlace del ejercicio "Remo" de la etapa 1:/);
+    expect(
+      MESSAGES.en.shareProblem({ kind: "exercise", field: "reps", stage: 3, exercise: 2 }),
+    ).toMatch(/^Check the reps of exercise 2 of stage 3:/);
+    expect(MESSAGES.en.shareProblem({ kind: "senderName" })).toContain("100");
+  });
+
+  it.each(["en", "es"] as const)("%s explains every problem and outcome", (language) => {
+    const messages = MESSAGES[language];
+    const fields = ["name", "reps", "rest", "weight", "notes", "link", "empty"] as const;
+    const texts = [
+      messages.shareProblem({ kind: "senderName" }),
+      messages.shareProblem({ kind: "senderEmail" }),
+      messages.shareProblem({ kind: "routineName" }),
+      messages.shareProblem({ kind: "routineNotes" }),
+      messages.shareProblem({ kind: "tooManyStages" }),
+      messages.shareProblem({ kind: "stageName", stage: 1 }),
+      messages.shareProblem({ kind: "stageNotes", stage: 1 }),
+      messages.shareProblem({ kind: "emptyStage", stage: 1 }),
+      messages.shareProblem({ kind: "tooManyExercises", stage: 1 }),
+      ...fields.map((field) =>
+        messages.shareProblem({ kind: "exercise", field, stage: 1, exercise: 1 }),
+      ),
+      ...Object.values(messages.shareOutcomes),
+    ];
+    expect(new Set(texts).size).toBe(texts.length);
+    for (const text of texts) expect(text).not.toBe("");
+    expect(Object.keys(messages.shareOutcomes).sort()).toEqual(
+      ["failed", "mayHaveArrived", "offline", "refused", "sent"].sort(),
+    );
+  });
+
+  it("never calls an answer that was lost a failure", () => {
+    expect(MESSAGES.es.shareOutcomes.mayHaveArrived).toMatch(/^Puede que haya llegado/);
+    expect(MESSAGES.en.shareOutcomes.mayHaveArrived).toMatch(/^It may have arrived/);
+  });
+
+  it("has the same sharing messages in English and Spanish", () => {
+    const shareKeys = (language: "en" | "es") =>
+      Object.keys(MESSAGES[language])
+        .filter((key) => /share/i.test(key))
+        .sort();
+    expect(shareKeys("es")).toEqual(shareKeys("en"));
+  });
+});
+
+it("names routines received from contacts among the data kept and deleted (T26, S12)", () => {
+  expect(MESSAGES.en.receivedFrom("Ana", "ana@example.com")).toBe(
+    "Received from Ana (ana@example.com)",
+  );
+  expect(MESSAGES.en.receivedFrom(null, "ana@example.com")).toBe("Received from ana@example.com");
+  expect(MESSAGES.es.receivedFrom("Ana", "ana@example.com")).toBe(
+    "Recibida de Ana (ana@example.com)",
+  );
+  expect(MESSAGES.es.receivedFrom(null, "ana@example.com")).toBe("Recibida de ana@example.com");
+  expect(MESSAGES.en.deleteAccountWarning).toContain(
+    "your routines, including those contacts sent you,",
+  );
+  expect(MESSAGES.es.deleteAccountWarning).toContain(
+    "tus rutinas, también las que te enviaron tus contactos,",
+  );
+  const kept = (language: "en" | "es") => MESSAGES[language].privacySections[0]!.body;
+  const removed = (language: "en" | "es") => MESSAGES[language].privacySections.at(-1)!.body;
+  expect(kept("en")).toContain("Routines a contact sends you are saved among yours");
+  expect(kept("es")).toContain("Las rutinas que te envía un contacto se guardan entre las tuyas");
+  expect(removed("en")).toContain("your routines, including those contacts sent you,");
+  expect(removed("es")).toContain("tus rutinas, también las que te enviaron tus contactos,");
+});

@@ -10,6 +10,13 @@ export const ROUTINE_LIMITS = {
   exerciseNameLength: 40,
   exerciseNotesLength: 120,
   linkLength: 300,
+  /**
+   * Who sent a received routine: their Firebase uid (at most 128 characters, as Firebase allows),
+   * their Google name, as the directory keeps names, and email.
+   */
+  senderUidLength: 128,
+  senderNameLength: 100,
+  senderEmailLength: 254,
   reps: { min: 1, max: 999 },
   restSeconds: { min: 0, max: 3_600 },
   weight: { min: 0, max: 1_000 },
@@ -44,11 +51,28 @@ export interface Stage {
   exercises: Exercise[];
 }
 
+/**
+ * Who sent a routine received from a contact (S12), as their sign-in said when they sent it. The
+ * name is the one they chose for their Google account, so it may be empty or say anything; only
+ * the email, verified by Google, tells who they are. The uid is the account that wrote the copy
+ * (the inbox rules bind it to the sender's sign-in), so blocking a sender can name it.
+ */
+export interface Sender {
+  /** At most `senderUidLength` characters, never empty, with no '/' or control character. */
+  uid: string;
+  /** One line of at most `senderNameLength` characters, possibly empty. */
+  name: string;
+  email: string;
+}
+
 export interface RoutineDraft {
   name: string;
   notes?: string;
   stages: Stage[];
+  /** For a received routine, when it was sent. */
   createdAt: number;
+  /** Only on a routine received from a contact; it stays when the routine is edited. */
+  receivedFrom?: Sender;
 }
 
 export interface Routine extends RoutineDraft {
@@ -73,6 +97,8 @@ export interface StoredRoutine {
   notes?: string;
   stages: StoredStage[];
   createdAt: number;
+  /** Exactly `{ uid, name, email }`; the rules check all three. */
+  receivedFrom?: Sender;
 }
 
 const FIELD_SEPARATOR = "\t";
@@ -122,6 +148,59 @@ function multiLine(raw: unknown, maxLength: number): string | undefined {
     .replace(/[^\P{Cc}\n]/gu, " ")
     .trim();
   return hasVisibleCharacter(text) && text.length <= maxLength ? text : undefined;
+}
+
+/** One @ with something on each side, no space, slash or control character; the rules agree. */
+const SENDER_EMAIL = /^[^\p{Cc}\p{Z}/@]+@[^\p{Cc}\p{Z}/@]+$/u;
+
+/** Whether `email` can be kept as a sender's: the shape and length the rules accept. */
+export function isSenderEmail(email: unknown): email is string {
+  return (
+    typeof email === "string" &&
+    email.length <= ROUTINE_LIMITS.senderEmailLength &&
+    !/\p{Cs}/u.test(email) &&
+    SENDER_EMAIL.test(email)
+  );
+}
+
+/** Whether `uid` can be kept as a sender's: never empty, within the limit, no '/' or control. */
+export function isSenderUid(uid: unknown): uid is string {
+  return (
+    typeof uid === "string" &&
+    uid !== "" &&
+    uid.length <= ROUTINE_LIMITS.senderUidLength &&
+    !/[\p{Cc}\p{Cs}/]/u.test(uid)
+  );
+}
+
+/** Whether `name` can be kept as a sender's: one line within the limit, possibly empty. */
+export function isSenderName(name: unknown): name is string {
+  return (
+    typeof name === "string" &&
+    name.length <= ROUTINE_LIMITS.senderNameLength &&
+    !/[\p{Cc}\p{Cs}]/u.test(name)
+  );
+}
+
+/**
+ * The sender of untrusted data, or undefined without a usable email, the one thing that tells who
+ * they are, or without a usable uid, the account a block names. A name that cannot be kept is read
+ * as no name.
+ */
+function sanitizeSender(raw: unknown): Sender | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const { uid, name, email } = raw as Record<string, unknown>;
+  if (!isSenderUid(uid) || !isSenderEmail(email)) return undefined;
+  return { uid, name: isSenderName(name) ? name : "", email };
+}
+
+/**
+ * The sender's name to show, trimmed, or null when it shows nothing: then only the email is shown.
+ * It is the sender's own text, so it must be shown isolated (it may hold bidi controls).
+ */
+export function senderName(sender: Sender): string | null {
+  const name = sender.name.trim();
+  return hasVisibleCharacter(name) ? name : null;
 }
 
 export function normalizeRoutineName(raw: string): string | null {
@@ -331,7 +410,11 @@ function exerciseFromLine(line: string, forStorage: boolean): Exercise | null {
   );
 }
 
-function exerciseToLine(exercise: Exercise): string {
+/**
+ * An exercise's six fields as one stored line holds them, in order, without checking them:
+ * name, reps, rest, weight, notes and link. A shared copy checks them strictly instead.
+ */
+export function exerciseFields(exercise: Exercise): string[] {
   const reps =
     exercise.repsMin === undefined
       ? ""
@@ -347,7 +430,11 @@ function exerciseToLine(exercise: Exercise): string {
     weight,
     exercise.notes ?? "",
     exercise.link ?? "",
-  ].join(FIELD_SEPARATOR);
+  ];
+}
+
+function exerciseToLine(exercise: Exercise): string {
+  return exerciseFields(exercise).join(FIELD_SEPARATOR);
 }
 
 /** Reads a stage in the app's shape or the stored one; null when nothing in it is valid. */
@@ -388,6 +475,8 @@ function sanitizeRoutine(raw: unknown, forStorage: boolean): RoutineDraft | null
   const routine: RoutineDraft = { name, stages, createdAt: source.createdAt };
   const notes = multiLine(source.notes, ROUTINE_LIMITS.notesLength);
   if (notes !== undefined) routine.notes = notes;
+  const receivedFrom = sanitizeSender(source.receivedFrom);
+  if (receivedFrom !== undefined) routine.receivedFrom = receivedFrom;
   return routine;
 }
 
@@ -415,5 +504,6 @@ export function toStoredRoutine(draft: RoutineDraft): StoredRoutine {
     })),
   };
   if (routine.notes !== undefined) stored.notes = routine.notes;
+  if (routine.receivedFrom !== undefined) stored.receivedFrom = routine.receivedFrom;
   return stored;
 }

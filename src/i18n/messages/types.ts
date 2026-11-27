@@ -1,4 +1,6 @@
 import type { ContactRefusal } from "../../contacts/domain/contact";
+import type { DeliveryOutcome } from "../../sharing/application/ports";
+import type { ShareProblem } from "../../sharing/domain/sharedCopy";
 import type { SoundSettings } from "../../timer/domain/soundSettings";
 import type { PhaseKind } from "../../workouts/domain/timeline";
 import type { FieldId, WorkoutMode } from "../../workouts/domain/workout";
@@ -142,6 +144,11 @@ export interface Messages {
   deleteRoutine(name: string): string;
   /** The read-only view of a routine, a table per stage. */
   openRoutine(name: string): string;
+  /**
+   * Marks a routine received from a contact (S12). `name` and `email` arrive isolated; `name` is
+   * null when the sender has none, and then only the email is said.
+   */
+  receivedFrom(name: string | null, email: string): string;
   edit: string;
   noStagesYet: string;
   exerciseColumn: string;
@@ -219,4 +226,32 @@ export interface Messages {
   confirmRemoveContact(name: string): string;
   removeContactNote: string;
   confirmRemoveContactAction: string;
+  /** Sending a copy of a routine to contacts (S12): the button in the routine's view. */
+  share: string;
+  /** Its accessible name. */
+  shareRoutine(name: string): string;
+  /** The screen where the recipients are picked. */
+  shareTitle: string;
+  shareChooseContacts: string;
+  /** With no contacts yet, pointing to Contacts. */
+  shareNoContacts: string;
+  shareOpenContacts: string;
+  shareContinue: string;
+  /** `routine` and every name arrive isolated; the names are joined as a list. */
+  confirmShare(routine: string, names: readonly string[]): string;
+  /** What the recipients get, and what they see of the sender. */
+  shareNote: string;
+  shareSend: string;
+  shareSending: string;
+  shareNeedsConnection: string;
+  /** The copy could not be prepared, for a reason none of the others explains. */
+  shareFailed: string;
+  /** Before the list of what keeps the routine from being shared. */
+  shareCannotSend: string;
+  /** What to fix before sending; an exercise's name arrives isolated. */
+  shareProblem(problem: ShareProblem): string;
+  shareResults: string;
+  /** What became of one recipient's copy; `failed` is followed by its reason when known. */
+  shareOutcomes: Record<DeliveryOutcome, string>;
+  shareDone: string;
 }
