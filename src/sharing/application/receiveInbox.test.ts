@@ -235,6 +235,33 @@ describe("receiving the inbox (T26, S12)", () => {
     stop();
   });
 
+  it("keeps a copy whose routine was given up after repeated conflicts, and receives it once on the next page load (T36, L99)", async () => {
+    const fake = server();
+    fake.add(inboxCopy("c1"));
+    // The routine store gave up (5 conflicts) and passed the failure on.
+    const givingUp: ReceivedRoutineStore = {
+      receive(routine) {
+        fake.events.push(`receive ${routine.id}`);
+        return Promise.reject(failure("failed-precondition"));
+      },
+    };
+    const stop = createInboxReceiver({ inbox: fake.inbox, routines: givingUp }).start();
+    await settle();
+    fake.report();
+    await settle();
+    expect(fake.copies.has("c1")).toBe(true);
+    expect(fake.events).toEqual(["receive c1"]);
+    stop();
+
+    // The next page load has a new receiver, which tries it again.
+    const next = createInboxReceiver({ inbox: fake.inbox, routines: fake.store }).start();
+    await settle();
+    expect(fake.events).toEqual(["receive c1", "receive c1", "stored c1", "remove c1"]);
+    expect([...fake.routines.keys()]).toEqual(["c1"]);
+    expect(fake.copies.size).toBe(0);
+    next();
+  });
+
   it("shows a copy it cannot open by its sender, deletes one nobody can be named for, and receives the others (T29 W5)", async () => {
     const fake = server();
     fake.add(

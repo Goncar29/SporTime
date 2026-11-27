@@ -13,6 +13,25 @@
   justify-content: flex-end;
 }
 
+/*
+ * The install notice (InstallBanner's <section>) arrives after the page is drawn, when Chrome offers
+ * the install. As a bar fixed at the bottom, out of the page's flow, it never pushes the hero down
+ * (T37, L99: "Abajo, como barra fija"); it may cover the note and Privacy link until dismissed.
+ * Only on this screen: the signed-in screens place it themselves.
+ */
+.page > section {
+  position: fixed;
+  z-index: 10;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: max(12px, env(safe-area-inset-left));
+  max-width: 536px;
+  max-height: calc(100dvh - 24px);
+  margin-inline: auto;
+  overflow-y: auto;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 55%);
+}
+
 .hero {
   flex: 1;
   display: flex;

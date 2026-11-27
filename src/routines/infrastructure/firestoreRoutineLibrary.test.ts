@@ -149,16 +149,35 @@ const { notes: _dropped, ...withoutNotes } = edited;
 
 type Guard = <T>(write: () => Promise<T>) => Promise<T>;
 
+/** Whether the browser says it is online, which the test switches, as the 'online' event would. */
+function fakeConnectivity(online = true) {
+  const waiting: (() => void)[] = [];
+  return {
+    isOnline: () => online,
+    whenOnline: () =>
+      online ? Promise.resolve() : new Promise<void>((resolve) => waiting.push(resolve)),
+    goOffline() {
+      online = false;
+    },
+    goOnline() {
+      online = true;
+      for (const resolve of waiting.splice(0)) resolve();
+    },
+  };
+}
+
 function setup({
   pending = false,
   ready = true,
   guard,
   wait,
+  connectivity,
 }: {
   pending?: boolean;
   ready?: boolean;
   guard?: Guard;
   wait?: (ms: number) => Promise<void>;
+  connectivity?: ReturnType<typeof fakeConnectivity>;
 } = {}) {
   let items = pending ? [{ id: "r1", draft }] : [];
   const store: OutboxStore<RoutineDraft> = {
@@ -173,6 +192,7 @@ function setup({
     whenReady: () => (ready ? Promise.resolve(true) : new Promise(() => undefined)),
     guard,
     wait,
+    connectivity,
   });
   return { library, store };
 }
@@ -524,6 +544,113 @@ describe("receive (T26, S12; T29 W2)", () => {
     await expect(receiving).resolves.toBeUndefined();
     expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
     expect(firestore.transactions).toHaveLength(2);
+  });
+
+  describe("while the browser says it is offline (T36)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("asks the server nothing more until the browser is back online, then asks at once and stores it once", async () => {
+      firestore.serverReachable = false;
+      const connectivity = fakeConnectivity(false);
+      const { library } = setup({ connectivity });
+      let settled = false;
+      void library.receive(received).finally(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(firestore.transactions).toHaveLength(1);
+
+      // An hour offline: no further try, so no read is spent.
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(firestore.transactions).toHaveLength(1);
+      expect(settled).toBe(false);
+
+      firestore.serverReachable = true;
+      connectivity.goOnline();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(firestore.transactions).toHaveLength(2);
+      expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
+      expect(settled).toBe(true);
+    });
+
+    it("pauses when the browser goes offline during a wait, and keeps the backoff while online", async () => {
+      firestore.serverReachable = false;
+      const connectivity = fakeConnectivity(true);
+      const { library } = setup({ connectivity });
+      void library.receive(received);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(firestore.transactions).toHaveLength(1);
+      // Online: tried again after 1 s, then after 2 s more.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(firestore.transactions).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(firestore.transactions).toHaveLength(3);
+
+      // Offline during the 4 s wait: no try when it ends, nor long after.
+      connectivity.goOffline();
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(firestore.transactions).toHaveLength(3);
+
+      firestore.serverReachable = true;
+      connectivity.goOnline();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(firestore.transactions).toHaveLength(4);
+      expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
+    });
+  });
+
+  describe("errors that are not about the network (T36, L99)", () => {
+    for (const code of ["failed-precondition", "aborted", "already-exists"]) {
+      it(`gives up after 5 tries in total on ${code}, writing nothing, and passes it on`, async () => {
+        firestore.commitFailure = code;
+        const { waits, wait } = manualWait();
+        const { library } = setup({ wait, connectivity: fakeConnectivity(true) });
+        let outcome: unknown = "pending";
+        library.receive(received).then(
+          () => {
+            outcome = "stored";
+          },
+          (error: unknown) => {
+            outcome = error;
+          },
+        );
+        for (let ended = 0; ended < 4; ended += 1) {
+          await settle();
+          waits[ended]!.end();
+        }
+        await settle();
+        await settle();
+        expect(firestore.transactions).toHaveLength(5);
+        // Still waiting with backoff between tries; no sixth wait or try.
+        expect(waits.map(({ ms }) => ms)).toEqual([1_000, 2_000, 4_000, 8_000]);
+        expect(outcome).toMatchObject({ code });
+        expect(firestore.transactionWrites).toEqual([]);
+      });
+    }
+
+    it("keeps trying, unbounded, while the server cannot be reached", async () => {
+      firestore.serverReachable = false;
+      const { waits, wait } = manualWait();
+      const { library } = setup({ wait, connectivity: fakeConnectivity(true) });
+      void library.receive(received);
+      for (let ended = 0; ended < 8; ended += 1) {
+        await settle();
+        waits[ended]!.end();
+      }
+      await settle();
+      expect(firestore.transactions).toHaveLength(9);
+      firestore.serverReachable = true;
+      waits[8]!.end();
+      await settle();
+      await settle();
+      expect(firestore.transactionWrites).toEqual([[COPY_PATH, toStoredRoutine(receivedDraft)]]);
+    });
   });
 
   it("writes nothing, and passes it on, when the server refuses to answer", async () => {
