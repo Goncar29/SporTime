@@ -1,7 +1,8 @@
-import type { SubscribeToList } from "../application/liveList";
+import type { SubscribeToNewest } from "../application/liveList";
 
 export interface FakeStoredList<T, Draft> {
-  subscribe: SubscribeToList<T>;
+  /** Given `newest`, only that many of the newest, like a Firestore query with a limit. */
+  subscribe: SubscribeToNewest<T>;
   add: (draft: Draft) => Promise<void>;
   update: (item: T) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -23,10 +24,13 @@ export function createFakeStoredList<Draft, T extends Draft & { id: string }>(
   };
 
   return {
-    subscribe(onData) {
-      listeners.add(onData);
-      onData([...read()].sort(newestFirst));
-      return () => listeners.delete(onData);
+    subscribe(onData, _onError, newest) {
+      const listener = (items: T[]) => {
+        onData(newest === undefined ? items : items.slice(0, newest));
+      };
+      listeners.add(listener);
+      listener([...read()].sort(newestFirst));
+      return () => listeners.delete(listener);
     },
     add(draft) {
       const id = `${Date.now()}-${Math.random()}`;

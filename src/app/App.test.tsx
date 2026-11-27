@@ -36,6 +36,8 @@ import {
 import { createAppUpdater, type AppUpdater } from "../update/application/appUpdater";
 import { UpdateProvider } from "../update/ui/UpdateProvider";
 import type { WorkoutLibrary } from "../workouts/application/ports";
+import type { SavedWorkout } from "../workouts/domain/savedWorkout";
+import { defaultConfig } from "../workouts/domain/workout";
 import { createFakeWorkoutLibrary } from "../workouts/infrastructure/fakeWorkoutLibrary";
 import { App } from "./App";
 
@@ -4105,5 +4107,220 @@ describe("a received copy the app cannot open (T29 W5)", () => {
     ]);
     expect(fakeInboxOf("me")).toEqual({});
     expect(screen.queryByText(notice)).not.toBeInTheDocument();
+  });
+});
+
+describe("long lists show the 20 newest and Show more (T38)", () => {
+  const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  const isolated = (name: string) => `\u2068${name}\u2069`;
+  /** `count` saved workouts, newest first, named W1, W2…, all older than anything saved now. */
+  const seedWorkouts = (count: number) => {
+    localStorage.setItem(
+      "sportime.fakeWorkouts.test",
+      JSON.stringify(
+        Array.from({ length: count }, (_, index) => ({
+          id: `w${index + 1}`,
+          name: `W${index + 1}`,
+          config: defaultConfig("tabata"),
+          createdAt: -1 - index,
+        })),
+      ),
+    );
+  };
+  /** `count` routines, newest first, named R1, R2…; those in `received` came from a contact. */
+  const seedRoutines = (count: number, received: readonly number[] = []) => {
+    localStorage.setItem(
+      "sportime.fakeRoutines.test",
+      JSON.stringify(
+        Array.from({ length: count }, (_, index) => ({
+          id: `r${index + 1}`,
+          name: `R${index + 1}`,
+          stages: [],
+          createdAt: -1 - index,
+          ...(received.includes(index + 1)
+            ? { receivedFrom: { uid: "alice", name: "Alice", email: "alice@example.com" } }
+            : {}),
+        })),
+      ),
+    );
+  };
+  const workoutNames = () =>
+    screen
+      .getAllByRole("button", { name: /^Edit / })
+      .map((button) => button.getAttribute("aria-label")?.replace(/^Edit /, ""));
+  const routineNames = () =>
+    within(screen.getByRole("list", { name: "Routines" }))
+      .getAllByRole("button", { name: /^Open / })
+      .map((button) => button.getAttribute("aria-label")?.replace(/^Open /, ""));
+  const showMore = () => screen.queryByRole("button", { name: "Show more" });
+  const range = (from: number, to: number, prefix: string) =>
+    Array.from({ length: to - from + 1 }, (_, index) => `${prefix}${from + index}`);
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  describe("saved workouts", () => {
+    it("shows the 20 newest, then the rest with Show more, which then goes away", () => {
+      seedWorkouts(25);
+      setup();
+      click("Saved");
+      expect(workoutNames()).toEqual(range(1, 20, "W"));
+      fireEvent.click(showMore() as HTMLElement);
+      expect(workoutNames()).toEqual(range(1, 25, "W"));
+      expect(showMore()).not.toBeInTheDocument();
+    });
+
+    it("offers no Show more when every workout fits", () => {
+      seedWorkouts(20);
+      setup();
+      click("Saved");
+      expect(workoutNames()).toHaveLength(20);
+      expect(showMore()).not.toBeInTheDocument();
+    });
+
+    it("shows a new save at the top at once, still 20 at a time", async () => {
+      seedWorkouts(25);
+      setup();
+      fireEvent.change(screen.getByRole("textbox", { name: "Workout name" }), {
+        target: { value: "Fresh" },
+      });
+      click("Save");
+      await settle();
+      click("Saved");
+      expect(workoutNames()).toEqual(["Fresh", ...range(1, 19, "W")]);
+      expect(showMore()).toBeInTheDocument();
+    });
+
+    it("edits a workout shown only after Show more", async () => {
+      seedWorkouts(25);
+      setup();
+      click("Saved");
+      fireEvent.click(showMore() as HTMLElement);
+      click("Edit W25");
+      expect(screen.getByText("Editing “W25”")).toBeInTheDocument();
+      fireEvent.change(screen.getByRole("textbox", { name: "Workout name" }), {
+        target: { value: "W25 harder" },
+      });
+      click("Save changes");
+      await settle();
+      click("Saved");
+      expect(workoutNames()).toEqual([...range(1, 24, "W"), "W25 harder"]);
+    });
+
+    it("keeps editing a workout that a newer save pushes past the 20 shown", async () => {
+      seedWorkouts(21);
+      const fake = createFakeWorkoutLibrary("test");
+      const update = vi.fn((workout: SavedWorkout) => fake.update(workout));
+      setup({ workouts: { ...fake, update } });
+      click("Saved");
+      click("Edit W20");
+      // Saved on another device, say: W20 is now the 21st.
+      await act(() =>
+        fake.save({ name: "Elsewhere", config: defaultConfig("emom"), createdAt: 5 }),
+      );
+      expect(screen.getByText("Editing “W20”")).toBeInTheDocument();
+      click("Save changes");
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ id: "w20", name: "W20" }));
+    });
+
+    it("fills the 20 again from older ones after a delete", async () => {
+      seedWorkouts(25);
+      setup();
+      click("Saved");
+      click("Delete W1");
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+      );
+      await settle();
+      expect(workoutNames()).toEqual(range(2, 21, "W"));
+      expect(showMore()).toBeInTheDocument();
+    });
+  });
+
+  describe("routines", () => {
+    const openRoutines = () => {
+      click("Profile");
+      click(/^Routines\b/);
+    };
+
+    it("shows the 20 newest, then the rest with Show more, which then goes away", () => {
+      seedRoutines(25);
+      setup({ routines: createFakeRoutineLibrary("test") });
+      openRoutines();
+      expect(routineNames()).toEqual(range(1, 20, "R").map(isolated));
+      fireEvent.click(showMore() as HTMLElement);
+      expect(routineNames()).toEqual(range(1, 25, "R").map(isolated));
+      expect(showMore()).not.toBeInTheDocument();
+    });
+
+    it("shows a new routine at the top at once", async () => {
+      seedRoutines(25);
+      setup({ routines: createFakeRoutineLibrary("test") });
+      openRoutines();
+      click("New routine");
+      fireEvent.change(screen.getByRole("textbox", { name: "Routine name" }), {
+        target: { value: "Fresh" },
+      });
+      click("Save routine");
+      await settle();
+      expect(routineNames()).toEqual(["Fresh", ...range(1, 19, "R")].map(isolated));
+      expect(showMore()).toBeInTheDocument();
+    });
+
+    it("opens and edits a routine shown only after Show more, and keeps showing it", async () => {
+      seedRoutines(25);
+      setup({ routines: createFakeRoutineLibrary("test") });
+      openRoutines();
+      fireEvent.click(showMore() as HTMLElement);
+      click(`Open ${isolated("R25")}`);
+      expect(screen.getByRole("heading", { level: 1, name: "R25" })).toBeInTheDocument();
+      click("Back");
+      click(`Edit ${isolated("R25")}`);
+      fireEvent.change(screen.getByRole("textbox", { name: "Routine name" }), {
+        target: { value: "R25 harder" },
+      });
+      click("Save changes");
+      await settle();
+      expect(routineNames()).toEqual([...range(1, 24, "R"), "R25 harder"].map(isolated));
+    });
+
+    it("keeps showing a routine open to read that a newer one pushes past the 20 shown", async () => {
+      seedRoutines(21);
+      const routines = createFakeRoutineLibrary("test");
+      setup({ routines });
+      openRoutines();
+      click(`Open ${isolated("R20")}`);
+      // Received meanwhile, say: R20 is now the 21st.
+      await act(() => routines.save({ name: "Elsewhere", createdAt: 5, stages: [] }));
+      expect(screen.getByRole("heading", { level: 1, name: "R20" })).toBeInTheDocument();
+    });
+
+    it("still leaves a routine open to read once it is deleted", async () => {
+      seedRoutines(21);
+      const routines = createFakeRoutineLibrary("test");
+      setup({ routines });
+      openRoutines();
+      click(`Open ${isolated("R20")}`);
+      await act(() => routines.remove("r20"));
+      expect(screen.getByRole("heading", { level: 1, name: "Routines" })).toBeInTheDocument();
+    });
+
+    it("does not mark New again an older received routine already seen, once Show more shows it", () => {
+      seedRoutines(25, [2, 23]);
+      localStorage.setItem("sportime.seenRoutines.test", JSON.stringify(["r23"]));
+      setup({
+        routines: createFakeRoutineLibrary("test"),
+        seenRoutines: createLocalStorageSeenRoutines("test"),
+      });
+      openRoutines();
+      expect(
+        screen.getByRole("button", { name: `Open ${isolated("R2")}, new` }),
+      ).toBeInTheDocument();
+      fireEvent.click(showMore() as HTMLElement);
+      expect(screen.getByRole("button", { name: `Open ${isolated("R23")}` })).toBeInTheDocument();
+      click("Back");
+      expect(screen.getByRole("button", { name: /^Routines\b/ })).toHaveTextContent(/^Routines$/);
+    });
   });
 });

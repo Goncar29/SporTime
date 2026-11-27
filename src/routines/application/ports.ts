@@ -1,9 +1,10 @@
-import type { SubscribeToList } from "../../shared/application/liveList";
+import type { SubscribeToNewest } from "../../shared/application/liveList";
 import type { Routine, RoutineDraft } from "../domain/routine";
 
 /** One user's routines, newest first. Writes apply locally right away and sync when online. */
 export interface RoutineLibrary {
-  subscribe: SubscribeToList<Routine>;
+  /** Given `newest`, only that many of the newest stored, plus those not stored yet (T38). */
+  subscribe: SubscribeToNewest<Routine>;
   /** Settles when the server answers, which never happens offline, so callers must not wait for it. */
   save(draft: RoutineDraft): Promise<void>;
   /**

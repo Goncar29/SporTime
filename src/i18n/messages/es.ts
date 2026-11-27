@@ -171,6 +171,7 @@ export const es: Messages = {
   loadHistoryFailed: "No pudimos cargar tu historial.",
   back: "Volver",
   loading: "Cargando…",
+  showMore: "Ver más",
   settings: "Configuración",
   soundSettings: "Ajuste de sonidos",
   soundOptions: {

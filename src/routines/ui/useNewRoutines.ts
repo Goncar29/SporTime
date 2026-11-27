@@ -17,12 +17,17 @@ const NONE: ReadonlySet<string> = new Set();
  * the routine list is shown with it; it is then kept as seen on this device (`seen`), and stays
  * marked New for as long as the Routines section is open (the list and the routines opened from
  * it), so the user can see which ones arrived. The marks go once the section is left.
- * Without `seen`, nothing is new.
+ * Without `seen`, nothing is new. When `routines` are only the newest (`complete` false, T38), the
+ * routines seen before that are not among them are kept as seen, since they may just be older.
  */
 export function useNewRoutines(
   seen: SeenRoutines | undefined,
   routines: readonly Routine[] | null,
-  { listShown, inSection }: { listShown: boolean; inSection: boolean },
+  {
+    listShown,
+    inSection,
+    complete = true,
+  }: { listShown: boolean; inSection: boolean; complete?: boolean },
 ): NewRoutines {
   const [seenIds, setSeenIds] = useState<ReadonlySet<string>>(() => new Set(seen?.load() ?? []));
   const [marked, setMarked] = useState<ReadonlySet<string>>(NONE);
@@ -35,10 +40,11 @@ export function useNewRoutines(
   useEffect(() => {
     if (!listShown || !seen || !routines || !unseen || unseen.length === 0) return;
     setMarked((current) => new Set([...current, ...unseen]));
-    const ids = receivedIds(routines);
+    const shownIds = receivedIds(routines);
+    const ids = complete ? shownIds : [...new Set([...seenIds, ...shownIds])];
     seen.save(ids);
     setSeenIds(new Set(ids));
-  }, [listShown, seen, routines, unseen]);
+  }, [listShown, seen, routines, unseen, complete, seenIds]);
 
   useEffect(() => {
     if (!inSection) setMarked(NONE);

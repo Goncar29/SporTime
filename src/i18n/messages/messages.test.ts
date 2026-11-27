@@ -242,6 +242,11 @@ it("names routines received from contacts among the data kept and deleted (T26, 
   expect(removed("es")).toContain("tus rutinas, también las que te enviaron tus contactos,");
 });
 
+it("names the button that shows more of a long list (T38)", () => {
+  expect(MESSAGES.en.showMore).toBe("Show more");
+  expect(MESSAGES.es.showMore).toBe("Ver más");
+});
+
 it("names new received routines on the list and the Profile menu (T27, S7)", () => {
   expect(MESSAGES.en.newRoutineMark).toBe("New");
   expect(MESSAGES.es.newRoutineMark).toBe("Nueva");

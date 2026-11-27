@@ -29,10 +29,11 @@ import type {
 import { blockedSenderOf, isBlocked, type BlockedSender } from "../sharing/domain/blockedSender";
 import { BlockedScreen } from "../sharing/ui/BlockedScreen";
 import { ShareRoutineScreen } from "../sharing/ui/ShareRoutineScreen";
-import type { SubscribeToList } from "../shared/application/liveList";
+import type { SubscribeToList, SubscribeToNewest } from "../shared/application/liveList";
 import type { StoreFailureKind } from "../shared/domain/storeFailure";
 import { reportStoreFailure, storeFailureMessage } from "../shared/ui/storeFailure";
 import { useLiveList } from "../shared/ui/useLiveList";
+import { mayBeOlder, useNewestList } from "../shared/ui/useNewestList";
 import type {
   Announcer,
   Clock,
@@ -152,7 +153,7 @@ const tabOf = (screen: Screen): Tab =>
     : screen;
 
 /** Stands in for a missing routine library: it never answers, and nothing reads it. */
-const noRoutines: SubscribeToList<Routine> = () => () => undefined;
+const noRoutines: SubscribeToNewest<Routine> = () => () => undefined;
 /** Stands in for a missing contact list the same way. */
 const noContacts: SubscribeToList<Contact> = () => () => undefined;
 /** Stands in for a missing blocked list the same way. */
@@ -193,8 +194,10 @@ export function App({
     what: "workout" | "session";
     kind: StoreFailureKind;
   } | null>(null);
-  const library = useLiveList(workouts.subscribe, "Loading saved workouts");
-  const routineList = useLiveList(routines?.subscribe ?? noRoutines, "Loading routines");
+  // The newest 20 of each, and 20 more with each Show more (T38). How many are shown is kept while
+  // the app is open, so a workout or routine shown only after Show more can be opened and edited.
+  const library = useNewestList(workouts.subscribe, "Loading saved workouts");
+  const routineList = useNewestList(routines?.subscribe ?? noRoutines, "Loading routines");
   // Read here, so Profile can count them; unknown while loading or after a failed read.
   const liveContacts = useLiveList(contactStore?.subscribe ?? noContacts, "Loading contacts");
   const contactCount =
@@ -212,6 +215,7 @@ export function App({
   const newRoutines = useNewRoutines(seenRoutines, routineList.failed ? null : routineList.items, {
     listShown: screen === "routines",
     inSection: ROUTINE_SCREENS.includes(screen),
+    complete: !routineList.hasMore,
   });
   // Refusals shown on Contacts are let go once it is left; one arriving later waits for it.
   const shownScreen = useRef<Screen>(screen);
@@ -230,10 +234,22 @@ export function App({
   /** The routine open to read, which the editor goes back to; null when opened from the list. */
   const [viewedRoutineId, setViewedRoutineId] = useState<string | null>(null);
   // Read from the live list, so an edit shows when coming back from the editor.
-  const viewedRoutine =
+  const listedViewedRoutine =
     viewedRoutineId === null
       ? null
       : (routineList.items?.find(({ id }) => id === viewedRoutineId) ?? null);
+  // Its last version listed, still shown when newer routines push it past those shown (T38).
+  const [lastListedViewed, setLastListedViewed] = useState<Routine | null>(null);
+  useEffect(() => {
+    if (listedViewedRoutine) setLastListedViewed(listedViewedRoutine);
+  }, [listedViewedRoutine]);
+  const viewedRoutine =
+    listedViewedRoutine ??
+    (lastListedViewed !== null &&
+    lastListedViewed.id === viewedRoutineId &&
+    mayBeOlder(routineList, lastListedViewed)
+      ? lastListedViewed
+      : null);
   // Deleted meanwhile, here or on another device: there is nothing left to show.
   const viewedRoutineGone =
     screen === "routineView" && routineList.items !== null && viewedRoutine === null;
@@ -247,9 +263,13 @@ export function App({
     kind: StoreFailureKind;
   } | null>(null);
   const [editing, setEditing] = useState<SavedWorkout | null>(null);
-  // Deleted meanwhile, here or on another device: there is nothing left to save changes to.
+  // Deleted meanwhile, here or on another device: there is nothing left to save changes to. One
+  // that newer saves pushed past those shown is still there (T38).
   const editingWorkout =
-    editing && (library.items === null || library.items.some(({ id }) => id === editing.id))
+    editing &&
+    (library.items === null ||
+      library.items.some(({ id }) => id === editing.id) ||
+      mayBeOlder(library, editing))
       ? editing
       : null;
   // A refused save puts its name back in the form; the version remounts the form to show it.
@@ -510,6 +530,7 @@ export function App({
               setSaveFailure(null);
               workouts.remove(id).catch(reportWorkoutFailure("Deleting a saved workout"));
             }}
+            onShowMore={library.hasMore ? library.showMore : undefined}
           />
         );
       case "history":
@@ -622,6 +643,7 @@ export function App({
                 openRoutineEditor(routine);
               }}
               onRemove={removeRoutine}
+              onShowMore={routineList.hasMore ? routineList.showMore : undefined}
             />
           )
         );

@@ -4,6 +4,7 @@ import {
   doc,
   getDocFromCache,
   getDocFromServer,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -75,9 +76,14 @@ export function createFirestoreWorkoutLibrary(
     parse: parseSavedWorkout,
     newestFirst: (a, b) => b.createdAt - a.createdAt,
     collection: {
-      subscribe(onData, onError) {
+      subscribe(onData, onError, newest) {
+        // Asked for a number, it reads only that many (T38): from the server online, and from this
+        // device's cache offline, where it never fails for want of a connection.
+        const newestFirst = orderBy("createdAt", "desc");
         return onSnapshot(
-          query(workouts, orderBy("createdAt", "desc")),
+          newest === undefined
+            ? query(workouts, newestFirst)
+            : query(workouts, newestFirst, limit(newest)),
           (snapshot) => {
             onData(snapshot.docs.flatMap((item) => parseSavedWorkout(item.id, item.data()) ?? []));
           },

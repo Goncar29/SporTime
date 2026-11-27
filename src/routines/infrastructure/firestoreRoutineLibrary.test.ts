@@ -33,6 +33,14 @@ const firestore = vi.hoisted(() => ({
   commitFailure: null as string | null,
   /** When set, the next commit is applied on the server but its answer is lost. */
   loseNextAnswer: false,
+  /** The routines the server holds, newest first, as stored. */
+  listedOnServer: [] as { id: string; data: unknown }[],
+  /** Those this device's cache holds, which is all a listener reads offline. */
+  listedHere: [] as { id: string; data: unknown }[],
+  /** Each listened query's limit, or null when it has none. */
+  limits: [] as (number | null)[],
+  /** Errors passed to listeners, which offline must never happen. */
+  listenErrors: [] as unknown[],
 }));
 
 const failed = (code: string) => Object.assign(new Error(code), { code });
@@ -108,10 +116,23 @@ vi.mock("firebase/firestore", () => ({
           metadata: { hasPendingWrites: firestore.pendingHere.has(ref.path) },
         })
       : Promise.reject(Object.assign(new Error("offline"), { code: firestore.serverError })),
-  onSnapshot: () => () => undefined,
+  // Like Firestore's listener: the server's answer online, this device's cache offline; never an error.
+  onSnapshot: (
+    listened: { limit: number | null },
+    onNext: (snapshot: { docs: { id: string; data: () => unknown }[] }) => void,
+  ) => {
+    firestore.limits.push(listened.limit);
+    const listed = firestore.serverReachable ? firestore.listedOnServer : firestore.listedHere;
+    const docs = listened.limit === null ? listed : listed.slice(0, listened.limit);
+    onNext({ docs: docs.map(({ id, data }) => ({ id, data: () => data })) });
+    return () => undefined;
+  },
   runTransaction: (...args: Parameters<typeof runTransaction>) => runTransaction(...args),
+  limit: (count: number) => ({ limit: count }),
   orderBy: () => ({}),
-  query: () => ({}),
+  query: (_ref: unknown, ...constraints: { limit?: number }[]) => ({
+    limit: constraints.find((constraint) => constraint.limit !== undefined)?.limit ?? null,
+  }),
   setDoc: firestore.setDoc,
   updateDoc: firestore.updateDoc,
   deleteDoc: firestore.deleteDoc,
@@ -720,5 +741,66 @@ describe("removing a received routine (L64 A1)", () => {
     );
     const { library } = setup();
     await expect(library.remove("copy-1")).rejects.toMatchObject({ code: "permission-denied" });
+  });
+});
+
+describe("reading the newest routines (T38)", () => {
+  /** `count` stored routines, newest first, named R1, R2… */
+  const storedRoutines = (count: number, newestAt = 100_000) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `stored-${index + 1}`,
+      data: toStoredRoutine({ ...draft, name: `R${index + 1}`, createdAt: newestAt - index }),
+    }));
+  const namesRead = (library: ReturnType<typeof setup>["library"], newest?: number) => {
+    let names: string[] = [];
+    library.subscribe(
+      (items) => {
+        names = items.map(({ name }) => name);
+      },
+      (error) => firestore.listenErrors.push(error),
+      newest,
+    );
+    return names;
+  };
+
+  beforeEach(() => {
+    firestore.serverReachable = true;
+    firestore.listedOnServer = storedRoutines(25);
+    firestore.listedHere = [];
+    firestore.limits.length = 0;
+    firestore.listenErrors.length = 0;
+  });
+
+  it("asks the server for only the newest it is asked for", () => {
+    const { library } = setup();
+    expect(namesRead(library, 21)).toEqual(
+      Array.from({ length: 21 }, (_, index) => `R${index + 1}`),
+    );
+    expect(firestore.limits).toEqual([21]);
+  });
+
+  it("reads every routine when not asked for a number, as before", () => {
+    const { library } = setup();
+    expect(namesRead(library)).toHaveLength(25);
+    expect(firestore.limits).toEqual([null]);
+  });
+
+  it("shows a save still held on this device at the top, besides the newest read", () => {
+    // The held save was made at 1,000, after every stored one.
+    firestore.listedOnServer = storedRoutines(25, 900);
+    const { library } = setup({ pending: true, ready: false });
+    const names = namesRead(library, 21);
+    expect(names[0]).toBe("Push day");
+    expect(names).toHaveLength(22);
+  });
+
+  it("offline, reads more from this device's cache and never fails", () => {
+    firestore.serverReachable = false;
+    firestore.listedHere = storedRoutines(30);
+    const { library } = setup();
+    expect(namesRead(library, 21)).toHaveLength(21);
+    expect(namesRead(library, 41)).toHaveLength(30);
+    expect(firestore.limits).toEqual([21, 41]);
+    expect(firestore.listenErrors).toEqual([]);
   });
 });

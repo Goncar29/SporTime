@@ -1,4 +1,4 @@
-import type { SubscribeToList } from "./liveList";
+import type { SubscribeToNewest } from "./liveList";
 
 export interface Pending<Draft> {
   id: string;
@@ -19,7 +19,8 @@ export interface OutboxStore<Draft> {
 }
 
 export interface DurableCollection<T, Draft> {
-  subscribe: SubscribeToList<T>;
+  /** Given `newest`, reads only that many of the newest items (T38); otherwise all of them. */
+  subscribe: SubscribeToNewest<T>;
   newId: () => string;
   /** Settles when the server answers, which never happens offline. */
   put: (id: string, draft: Draft) => Promise<void>;
@@ -46,7 +47,11 @@ export interface HeldWrites {
 }
 
 export interface Outbox<T, Draft> extends HeldWrites {
-  subscribe: SubscribeToList<T>;
+  /**
+   * The collection's items, with the writes still held here; `newest` is passed on to the
+   * collection, and every held write is shown whatever it asks for.
+   */
+  subscribe: SubscribeToNewest<T>;
   /**
    * Durable as soon as it returns. Settles when the server answers, so callers must not wait for it.
    * Written under `id` when the item has its own, otherwise under a new one.
@@ -163,7 +168,7 @@ export function withOutbox<T extends { id: string }, Draft>({
   void flush();
 
   return {
-    subscribe(onData, onError) {
+    subscribe(onData, onError, newest) {
       let answered: T[] | null = null;
       let reported = false;
 
@@ -181,10 +186,14 @@ export function withOutbox<T extends { id: string }, Draft>({
 
       refreshers.add(refresh);
       refresh();
-      const stop = collection.subscribe((items) => {
-        answered = items;
-        refresh();
-      }, onError);
+      const stop = collection.subscribe(
+        (items) => {
+          answered = items;
+          refresh();
+        },
+        onError,
+        newest,
+      );
 
       return () => {
         refreshers.delete(refresh);

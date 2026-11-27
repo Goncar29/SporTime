@@ -88,10 +88,22 @@ interface SavedWorkoutsProps {
   onLoad: (workout: SavedWorkout) => void;
   onEdit: (workout: SavedWorkout) => void;
   onRemove: (workout: SavedWorkout) => void;
+  /** Shows older saved workouts (T38); without it, none are left and no Show more is offered. */
+  onShowMore?: () => void;
 }
 
-/** The Saved tab: every saved workout, to load into the timer, edit or delete. */
-export function SavedWorkouts({ workouts, errors, onLoad, onEdit, onRemove }: SavedWorkoutsProps) {
+/**
+ * The Saved tab: the newest saved workouts, to load into the timer, edit or delete, with Show more
+ * at the end while older ones are left.
+ */
+export function SavedWorkouts({
+  workouts,
+  errors,
+  onLoad,
+  onEdit,
+  onRemove,
+  onShowMore,
+}: SavedWorkoutsProps) {
   const { t } = useI18n();
   const [pending, setPending] = useState<SavedWorkout | null>(null);
 
@@ -154,6 +166,11 @@ export function SavedWorkouts({ workouts, errors, onLoad, onEdit, onRemove }: Sa
             </li>
           ))}
         </ul>
+      )}
+      {workouts && workouts.length > 0 && onShowMore && (
+        <button type="button" className={styles.showMore} onClick={onShowMore}>
+          {t.showMore}
+        </button>
       )}
 
       {pending && (
